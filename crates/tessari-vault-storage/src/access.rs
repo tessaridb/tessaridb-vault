@@ -252,6 +252,7 @@ pub(crate) fn thrown(error: Error) -> Error {
         ("no key", Conflict::NoKey),
         ("already shared", Conflict::AlreadyShared),
         ("stale shares", Conflict::StaleShares),
+        ("rotation due", Conflict::RotationDue),
     ];
     if message.starts_with("not found") {
         return Error::NotFound;

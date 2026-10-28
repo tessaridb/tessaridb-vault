@@ -20,6 +20,7 @@ mod oidc;
 mod passkeys;
 mod record_types;
 mod records;
+mod revocation;
 mod rules;
 mod shares;
 mod sign_in;
@@ -61,7 +62,8 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         .replace("{group}", &cast.team_a)
         .replace("{account}", &cast.member_a_id)
         .replace("{record}", &cast.record_a)
-        .replace("{file}", &cast.file_a);
+        .replace("{file}", &cast.file_a)
+        .replace("{target}", &cast.owner_a_id);
     let manage = Some((Who::Member, StatusCode::FORBIDDEN));
     let hidden = Some((Who::OtherAdmin, StatusCode::NOT_FOUND));
     let not_author = Some((Who::Owner, StatusCode::NOT_FOUND));
@@ -242,6 +244,9 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             not_author,
             hidden,
         ),
+        ("DELETE", "/api/companies/{company}/records/{record}/shares/{target}") => {
+            row(None, not_author, hidden)
+        }
         ("PUT", "/api/companies/{company}/records/{record}") => {
             let mut body = world::sealed_record();
             body["revision"] = json!(1);

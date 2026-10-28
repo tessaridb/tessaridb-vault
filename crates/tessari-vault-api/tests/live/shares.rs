@@ -40,11 +40,11 @@ pub(crate) async fn keyed(world: &World, cast: &Cast, group: &str, key_id: &str,
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
-fn shares(cast: &Cast, record: &str) -> String {
+pub(crate) fn shares(cast: &Cast, record: &str) -> String {
     format!("/api/companies/{}/records/{record}/shares", cast.company_a)
 }
 
-fn record_path(cast: &Cast, record: &str) -> String {
+pub(crate) fn record_path(cast: &Cast, record: &str) -> String {
     format!("/api/companies/{}/records/{record}", cast.company_a)
 }
 
@@ -52,11 +52,11 @@ fn to_group(group: &str, key_id: &str, right: &str, seed: u8) -> Value {
     json!({ "group": group, "right": right, "key_id": key_id, "wrap": encoded(&[seed; 82]) })
 }
 
-fn to_member(account: &str, key_id: &str, right: &str, seed: u8) -> Value {
+pub(crate) fn to_member(account: &str, key_id: &str, right: &str, seed: u8) -> Value {
     json!({ "member": account, "right": right, "key_id": key_id, "wrap": encoded(&[seed; 82]) })
 }
 
-async fn listed(world: &World, cast: &Cast, token: &str) -> Vec<String> {
+pub(crate) async fn listed(world: &World, cast: &Cast, token: &str) -> Vec<String> {
     let (status, list) = world
         .call(
             Method::GET,
@@ -75,7 +75,7 @@ async fn listed(world: &World, cast: &Cast, token: &str) -> Vec<String> {
 }
 
 /// A revision of the record over `expected` by the member whose key is `key`, carrying `wraps`.
-fn revision(expected: i64, key: &str, wraps: Vec<Value>) -> Value {
+pub(crate) fn revision(expected: i64, key: &str, wraps: Vec<Value>) -> Value {
     let mut body = sealed_record();
     body.as_object_mut()
         .map(|fields| fields.remove("record_type"));

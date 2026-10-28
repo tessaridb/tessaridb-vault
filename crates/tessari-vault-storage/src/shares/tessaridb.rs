@@ -7,10 +7,10 @@ use tessari_vault_infrastructure::tessaridb::{Database, Place, Value};
 use tessari_vault_types::{AccountId, CompanyId};
 
 use super::entity::{DirectGroup, Named, ShareEntity, ShareTarget};
-use super::repository::{ShareRepository, ShareWrite};
+use super::repository::{ShareRemoval, ShareRepository, ShareWrite};
 use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
-use crate::records::RecordVaults;
+use crate::records::{RecordVaults, SHARES_UNCHANGED};
 use crate::{Result, answers};
 
 /// Refuses a target outside the company and a target holding no key, or another key than the one wrapped to.
@@ -116,7 +116,7 @@ impl ShareRepository for TessaridbShareRepository {
         let share = write.share;
         let target = share.target.id();
         let next = write
-            .shares
+            .share_version
             .checked_add(1)
             .ok_or_else(|| crate::Error::Unreadable {
                 record: "record",
@@ -136,7 +136,7 @@ impl ShareRepository for TessaridbShareRepository {
             bind("company", write.company.as_str()),
             bind("record", write.record.as_str()),
             bind("revision", write.revision),
-            bind("shares", write.shares),
+            bind("share_version", write.share_version),
             bind("next", next),
             bind(
                 "vid",
@@ -159,16 +159,64 @@ impl ShareRepository for TessaridbShareRepository {
             "BEGIN; {GUARD} \
              THROW 'not found' IF (GET records:$record).company != $company; \
              THROW 'stale revision' IF (GET records:$record).revision != $revision; \
-             THROW 'stale shares' IF (GET records:$record).shares != $shares; \
+             {SHARES_UNCHANGED} \
              {target_key} \
              THROW 'already shared' IF (GET shares:$sid).record != NONE; \
              CREATE shares:$sid = {{ company: $company, record: $record, target_kind: $kind, target: $target, \
              access: $access, recipient: $recipient, by_account: $by, created: $now }}; \
-             UPDATE records:$record SET shares = $next; \
+             UPDATE records:$record SET share_version = $next; \
              ADD RECIPIENT $recipient TO {vault}:$vid KEY $wrap; {RECORD} COMMIT;"
         );
         self.database
             .run_presenting(place, &script, guard, &vault, write.vault_key)
+            .await
+            .map_err(|error| thrown(error.into()))?;
+        Ok(())
+    }
+
+    async fn remove(
+        &self,
+        place: &Place,
+        mut guard: Vec<(String, Value)>,
+        removal: ShareRemoval<'_>,
+    ) -> Result<()> {
+        let vault = RecordVaults::name(removal.company);
+        let next =
+            removal
+                .share_version
+                .checked_add(1)
+                .ok_or_else(|| crate::Error::Unreadable {
+                    record: "record",
+                    reason: "a share version past its range".to_owned(),
+                })?;
+        guard.extend([
+            bind("company", removal.company.as_str()),
+            bind("record", removal.record.as_str()),
+            bind("revision", removal.revision),
+            bind("share_version", removal.share_version),
+            bind("next", next),
+            bind(
+                "vid",
+                format!("{}.{}", removal.record.as_str(), removal.revision).as_str(),
+            ),
+            bind(
+                "sid",
+                format!("{}_{}", removal.record.as_str(), removal.target).as_str(),
+            ),
+        ]);
+        // Older revisions keep their wraps: the removed member could already open them. The next revision rotates.
+        let script = format!(
+            "BEGIN; {GUARD} \
+             THROW 'not found' IF (GET records:$record).company != $company; \
+             THROW 'stale revision' IF (GET records:$record).revision != $revision; \
+             {SHARES_UNCHANGED} \
+             THROW 'not found' IF (GET shares:$sid).record != $record; \
+             REMOVE RECIPIENT (GET shares:$sid).recipient FROM {vault}:$vid; \
+             DELETE shares:$sid; \
+             UPDATE records:$record SET share_version = $next, rotate = true; {RECORD} COMMIT;"
+        );
+        self.database
+            .run_presenting(place, &script, guard, &vault, removal.vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())

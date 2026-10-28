@@ -14,6 +14,8 @@ pub(crate) struct FileRef<'a> {
     pub(crate) file: &'a FileId,
     /// The caller; a file they start records them as its author.
     pub(crate) author: &'a AccountId,
+    /// The record's share version when the caller's reach was decided, which every write and read checks again.
+    pub(crate) share_version: i64,
 }
 
 /// One part of a file about to be written at `offset`, ending at `end`.

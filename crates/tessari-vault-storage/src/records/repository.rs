@@ -20,8 +20,8 @@ pub(crate) struct Write<'a> {
     pub(crate) vault_key: VaultKey,
     /// For a record of a company type: the type and the roles the decision admitted, which the write checks again.
     pub(crate) company_type: Option<(&'a RecordTypeId, Roles)>,
-    /// The shares the record held when it was read, which a revision checks again.
-    pub(crate) shares: i64,
+    /// The record's share version when it was read, which a revision checks again.
+    pub(crate) share_version: i64,
     /// The record key wrapped to every other recipient the revision keeps, by recipient name.
     pub(crate) extra: &'a [(String, Vec<u8>)],
 }

@@ -48,3 +48,18 @@ pub(crate) async fn create(
         .await?;
     Ok(StatusCode::CREATED)
 }
+
+pub(crate) async fn remove(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path((company, record, target)): Path<(String, String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let company = company_id(&company)?;
+    let record = record_id(&record)?;
+    state
+        .storage
+        .shares
+        .remove(&actor, &company, &record, &target)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}

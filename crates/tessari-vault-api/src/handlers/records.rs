@@ -22,6 +22,7 @@ pub(crate) struct RecordItem {
     author: String,
     created: i64,
     updated: i64,
+    rotation_due: bool,
 }
 
 impl From<&Record> for RecordItem {
@@ -34,6 +35,7 @@ impl From<&Record> for RecordItem {
             author: record.author.to_string(),
             created: record.created,
             updated: record.updated,
+            rotation_due: record.rotation_due,
         }
     }
 }

@@ -198,6 +198,10 @@ const fn conflicted(conflict: Conflict) -> ApiError {
         ),
         Conflict::NoKey => ("no_key", "the group or member holds no key to share with"),
         Conflict::AlreadyShared => ("already_shared", "the record is shared with them already"),
+        Conflict::RotationDue => (
+            "rotation_due",
+            "a share was removed; seal the next revision under a new record key",
+        ),
         Conflict::StaleShares => (
             "stale_shares",
             "the revision must carry a wrap for exactly the record's author and shares; read it again",

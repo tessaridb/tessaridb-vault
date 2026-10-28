@@ -20,6 +20,11 @@ use crate::{Error, Result, answers};
 pub(crate) const COMPANYS_RECORD: &str =
     "THROW 'not found' IF (GET records:$record).company != $company;";
 
+/// Refuses when a share was made or removed since the caller's reach was decided, so a removal committed in between
+/// is never served past.
+pub(crate) const SHARES_UNCHANGED: &str =
+    "THROW 'stale shares' IF (GET records:$record).share_version != $share_version;";
+
 /// Refuses unless `$author_key` is the key set `$author` keeps in `$company`, so a revision names no key but theirs.
 const OWN_KEY: &str = "THROW 'unknown key' IF (GET member_keys:$own_keys).key_id != $author_key;";
 
@@ -204,7 +209,7 @@ impl RecordRepository for TessaridbRecordRepository {
         let script = format!(
             "BEGIN; {GUARD} {type_unchanged} {OWN_KEY} \
              CREATE records:$record = {{ record_id: $record, company: $company, record_type: $type, \
-             revision: $revision, key_id: $key_id, author: $author, state: 'active', shares: 0, created: $now, \
+             revision: $revision, key_id: $key_id, author: $author, state: 'active', share_version: 0, rotate: false, created: $now, \
              updated: $now }}; {revision} {RECORD} COMMIT;"
         );
         self.write(place, &script, guard, write).await
@@ -220,14 +225,15 @@ impl RecordRepository for TessaridbRecordRepository {
         let vault = RecordVaults::name(write.company);
         let (extra, extra_values) = extra_recipients(&vault, write.extra);
         guard.push(bind("expected", expected));
-        guard.push(bind("shares", write.shares));
+        guard.push(bind("share_version", write.share_version));
         guard.extend(extra_values);
         let revision = revision_statements(&vault);
         let script = format!(
             "BEGIN; {GUARD} {COMPANYS_RECORD} {OWN_KEY} \
              THROW 'stale revision' IF (GET records:$record).revision != $expected; \
-             THROW 'stale shares' IF (GET records:$record).shares != $shares; \
-             UPDATE records:$record SET revision = $revision, key_id = $key_id, updated = $now; \
+             {SHARES_UNCHANGED} \
+             THROW 'rotation due' IF (GET records:$record).rotate = true AND (GET records:$record).key_id = $key_id; \
+             UPDATE records:$record SET revision = $revision, key_id = $key_id, rotate = false, updated = $now; \
              {revision}{extra} {RECORD} COMMIT;"
         );
         self.write(place, &script, guard, write).await
@@ -246,10 +252,11 @@ impl RecordRepository for TessaridbRecordRepository {
             bind("company", company.as_str()),
             bind("record", entity.id.as_str()),
             bind("vid", revision_id(&entity.id, entity.revision).as_str()),
+            bind("share_version", entity.share_version),
         ]);
         // The read is on the trail before anything is opened: the transaction recording it commits first.
         let script = format!(
-            "BEGIN; {GUARD} {COMPANYS_RECORD} {RECORD} COMMIT; \
+            "BEGIN; {GUARD} {COMPANYS_RECORD} {SHARES_UNCHANGED} {RECORD} COMMIT; \
              REVEAL body FROM {vault}:$vid; \
              INFO FOR RECIPIENTS OF {vault}:$vid; \
              RETURN (GET revisions:$vid);"

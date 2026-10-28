@@ -9,7 +9,7 @@ use tessari_vault_infrastructure::tessaridb::{Database, Place, RefusalClass};
 use tessari_vault_types::{CompanyId, RecordId};
 
 use super::entity::{NewShare, ShareTarget};
-use super::repository::{ShareRepository, ShareWrite};
+use super::repository::{ShareRemoval, ShareRepository, ShareWrite};
 use crate::access::{self, Actor, recorded};
 use crate::audit::epoch_seconds;
 use crate::records::{RecordService, RecordVaults};
@@ -81,7 +81,7 @@ impl ShareService {
                     company,
                     record,
                     revision: entity.revision,
-                    shares: entity.shares,
+                    share_version: entity.share_version,
                     share,
                     by: actor.account(),
                     now: epoch_seconds(),
@@ -91,6 +91,61 @@ impl ShareService {
             .await;
         match written {
             // Two shares or a share and a revision at once: the store reports the loser as contention.
+            Err(Error::Store(tessari_vault_infrastructure::Error::Refused {
+                class: Some(RefusalClass::Retry),
+                ..
+            })) => Err(Error::Conflict(Conflict::StaleShares)),
+            other => other,
+        }
+    }
+
+    /// Remove the share of `record` with `target`: it stops reaching them at their next request, and the record's
+    /// next revision must be sealed under a new record key.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Refused`] per the decision and for a caller who only reads the record; [`Error::NotFound`] for a
+    /// record the caller does not reach or a share it does not have; [`Conflict::StaleRevision`] or
+    /// [`Conflict::StaleShares`] when the record moved since it was read.
+    pub async fn remove(
+        &self,
+        actor: &Actor,
+        company: &CompanyId,
+        record: &RecordId,
+        target: &str,
+    ) -> Result<()> {
+        let standing = access::authorize(
+            &self.database,
+            &self.place,
+            actor,
+            company,
+            Action::ShareRecord,
+        )
+        .await?;
+        let (entity, reached) = self.records.reached(actor, company, record).await?;
+        reached.editing()?;
+        // Only a target the record is shared with is named in the statement, never the request's text.
+        let share = reached
+            .shares
+            .iter()
+            .find(|share| share.target == target)
+            .ok_or(Error::NotFound)?;
+        let removed = self
+            .repository
+            .remove(
+                &self.place,
+                recorded(actor, company, &standing, "record.unshare", record.as_str()),
+                ShareRemoval {
+                    company,
+                    record,
+                    revision: entity.revision,
+                    share_version: entity.share_version,
+                    target: &share.target,
+                    vault_key: self.vaults.key(company)?,
+                },
+            )
+            .await;
+        match removed {
             Err(Error::Store(tessari_vault_infrastructure::Error::Refused {
                 class: Some(RefusalClass::Retry),
                 ..

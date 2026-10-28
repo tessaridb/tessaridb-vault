@@ -92,6 +92,9 @@ pub enum Conflict {
     /// the record was read; nothing was written.
     #[error("the revision's wraps do not match the record's shares")]
     StaleShares,
+    /// A share was removed since the record's latest revision, so the next one must be sealed under a new record key.
+    #[error("the next revision must be sealed under a new record key")]
+    RotationDue,
 }
 
 /// The result of a `tessari-vault-storage` call.

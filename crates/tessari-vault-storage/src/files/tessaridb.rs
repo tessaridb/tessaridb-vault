@@ -10,7 +10,7 @@ use super::entity::{FileEntity, Kept};
 use super::repository::{FileRef, FileRepository, Part};
 use crate::access::{GUARD, bind, thrown};
 use crate::audit::RECORD;
-use crate::records::{COMPANYS_RECORD, RecordVaults};
+use crate::records::{COMPANYS_RECORD, RecordVaults, SHARES_UNCHANGED};
 use crate::{Error, Result, answers};
 
 /// Refuses a part unless the file holds exactly the bytes before it.
@@ -32,6 +32,7 @@ fn located(at: &FileRef<'_>) -> Vec<(String, Value)> {
         bind("record", at.record.as_str()),
         bind("file", at.file.as_str()),
         bind("author", at.author.as_str()),
+        bind("share_version", at.share_version),
         bind("vid", format!("file.{}", at.file.as_str()).as_str()),
     ]
 }
@@ -90,7 +91,7 @@ impl FileRepository for TessaridbFiles {
             bind("now", now),
         ]);
         let script = format!(
-            "BEGIN; {GUARD} {COMPANYS_RECORD} \
+            "BEGIN; {GUARD} {COMPANYS_RECORD} {SHARES_UNCHANGED} \
              CREATE files:$file = {{ file_id: $file, company: $company, record: $record, author: $author, \
              size: $size, kept: $kept, written: 0, created: $now }}; {RECORD} COMMIT;"
         );
@@ -134,7 +135,8 @@ impl FileRepository for TessaridbFiles {
             }
         };
         let script = format!(
-            "BEGIN; {GUARD} {IN_ORDER} {store} UPDATE files:$file SET written = $end; {record} COMMIT;"
+            "BEGIN; {GUARD} {SHARES_UNCHANGED} {IN_ORDER} {store} UPDATE files:$file SET written = $end; {record} \
+             COMMIT;"
         );
         let written = match part.kept {
             Kept::Vault => {
@@ -159,7 +161,7 @@ impl FileRepository for TessaridbFiles {
     ) -> Result<Vec<u8>> {
         guard.extend(located(at));
         // The read is on the trail before anything is read: the transaction recording it commits first.
-        let recorded = format!("BEGIN; {GUARD} {RECORD} COMMIT;");
+        let recorded = format!("BEGIN; {GUARD} {SHARES_UNCHANGED} {RECORD} COMMIT;");
         match kept {
             Kept::Vault => {
                 let vault = RecordVaults::name(at.company);

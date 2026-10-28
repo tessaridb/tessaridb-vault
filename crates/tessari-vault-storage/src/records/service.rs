@@ -67,14 +67,7 @@ impl RecordService {
             .list(&self.place, company, actor.account())
             .await?;
         let own: HashSet<String> = records.iter().map(|record| record.id.clone()).collect();
-        let targets = self.reach.targets(company, actor.account()).await?;
-        let shared: Vec<String> = self
-            .reach
-            .shared(company, &targets)
-            .await?
-            .into_iter()
-            .filter(|id| !own.contains(id))
-            .collect();
+        let shared = self.reach.shared(company, actor.account(), &own).await?;
         records.extend(self.repository.among(&self.place, company, shared).await?);
         records.into_iter().map(RecordEntity::into_model).collect()
     }
@@ -142,7 +135,7 @@ impl RecordService {
                     now,
                     vault_key: self.vaults.key(company)?,
                     company_type,
-                    shares: 0,
+                    share_version: 0,
                     extra: &[],
                 },
             )
@@ -155,6 +148,7 @@ impl RecordService {
             author: actor.account().clone(),
             created: now,
             updated: now,
+            rotation_due: false,
         })
     }
 
@@ -233,6 +227,7 @@ impl RecordService {
                 revision.wraps,
             )
             .await?;
+        entity.rotated_by(revision.key_id)?;
         let next = revision
             .expected
             .checked_add(1)
@@ -255,7 +250,7 @@ impl RecordService {
                     now,
                     vault_key: self.vaults.key(company)?,
                     company_type: None,
-                    shares: entity.shares,
+                    share_version: entity.share_version,
                     extra: revision.wraps,
                 },
                 revision.expected,
@@ -269,11 +264,13 @@ impl RecordService {
             })) => return Err(Error::Conflict(Conflict::StaleRevision)),
             other => other?,
         }
-        let mut revised = entity.into_model()?;
-        revised.revision = next;
-        revised.key_id = revision.key_id.clone();
-        revised.updated = now;
-        Ok(revised)
+        Ok(Record {
+            revision: next,
+            key_id: revision.key_id.clone(),
+            updated: now,
+            rotation_due: false,
+            ..entity.into_model()?
+        })
     }
 
     /// The record and what the caller holds on it, when it is the company's and some path reaches the caller.

@@ -7,15 +7,25 @@ use tessari_vault_types::{AccountId, CompanyId, RecordId};
 use super::entity::{DirectGroup, NewShare, ShareEntity};
 use crate::Result;
 
-/// One share about to be written onto `revision` of `record`, while the record holds `shares` of them.
+/// One share about to be written onto `revision` of `record`, at the record's share version `share_version`.
 pub(crate) struct ShareWrite<'a> {
     pub(crate) company: &'a CompanyId,
     pub(crate) record: &'a RecordId,
     pub(crate) revision: i64,
-    pub(crate) shares: i64,
+    pub(crate) share_version: i64,
     pub(crate) share: &'a NewShare,
     pub(crate) by: &'a AccountId,
     pub(crate) now: i64,
+    pub(crate) vault_key: VaultKey,
+}
+
+/// One share about to be removed from `record`, read at `revision` and the share version `share_version`.
+pub(crate) struct ShareRemoval<'a> {
+    pub(crate) company: &'a CompanyId,
+    pub(crate) record: &'a RecordId,
+    pub(crate) revision: i64,
+    pub(crate) share_version: i64,
+    pub(crate) target: &'a str,
     pub(crate) vault_key: VaultKey,
 }
 
@@ -47,5 +57,13 @@ pub(crate) trait ShareRepository: Send + Sync {
         place: &Place,
         guard: Vec<(String, Value)>,
         write: ShareWrite<'_>,
+    ) -> Result<()>;
+    /// Remove the share row and its wrap from the record's latest revision, and mark the record for rotation, in one
+    /// transaction that refuses a share that does not exist and a record that moved since it was read.
+    async fn remove(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        removal: ShareRemoval<'_>,
     ) -> Result<()>;
 }

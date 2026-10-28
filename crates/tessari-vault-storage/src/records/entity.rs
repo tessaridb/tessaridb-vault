@@ -18,7 +18,8 @@ pub(crate) struct RecordEntity {
     pub(crate) revision: i64,
     pub(crate) key_id: String,
     pub(crate) author: String,
-    pub(crate) shares: i64,
+    pub(crate) share_version: i64,
+    pub(crate) rotate: bool,
     pub(crate) created: i64,
     pub(crate) updated: i64,
 }
@@ -31,7 +32,8 @@ impl FromRecord for RecordEntity {
             revision: row.take("revision")?,
             key_id: row.take("key_id")?,
             author: row.take("author")?,
-            shares: row.take("shares")?,
+            share_version: row.take("share_version")?,
+            rotate: row.take("rotate")?,
             created: row.take("created")?,
             updated: row.take("updated")?,
         })
@@ -55,6 +57,8 @@ pub struct Record {
     pub created: i64,
     /// When its latest revision was written, in seconds since 1970.
     pub updated: i64,
+    /// Whether a share was removed since its latest revision, so the next one must be sealed under a new record key.
+    pub rotation_due: bool,
 }
 
 fn unreadable(what: &str) -> Error {
@@ -65,6 +69,15 @@ fn unreadable(what: &str) -> Error {
 }
 
 impl RecordEntity {
+    /// Refuses a revision under the record key `key_id` while a removed share leaves the current key to retire.
+    pub(crate) fn rotated_by(&self, key_id: &KeyId) -> Result<()> {
+        if self.rotate && key_id.as_str() == self.key_id {
+            Err(Error::Conflict(crate::Conflict::RotationDue))
+        } else {
+            Ok(())
+        }
+    }
+
     pub(crate) fn into_model(self) -> Result<Record> {
         Ok(Record {
             id: RecordId::parse(&self.id).map_err(|_| unreadable("id"))?,
@@ -74,6 +87,7 @@ impl RecordEntity {
             author: AccountId::parse(&self.author).map_err(|_| unreadable("author"))?,
             created: self.created,
             updated: self.updated,
+            rotation_due: self.rotate,
         })
     }
 }

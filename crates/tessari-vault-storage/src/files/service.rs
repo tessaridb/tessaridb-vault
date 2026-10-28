@@ -68,11 +68,8 @@ impl FileService {
             Action::ReviseRecord,
         )
         .await?;
-        self.records
-            .reached(actor, company, record)
-            .await?
-            .1
-            .editing()?;
+        let (entity, reached) = self.records.reached(actor, company, record).await?;
+        reached.editing()?;
         let file = FileId::from_random(random::bytes()?);
         let kept = Kept::for_size(size);
         let at = FileRef {
@@ -80,6 +77,7 @@ impl FileService {
             record,
             file: &file,
             author: actor.account(),
+            share_version: entity.share_version,
         };
         self.repository
             .create(
@@ -123,16 +121,14 @@ impl FileService {
             Action::ReviseRecord,
         )
         .await?;
-        self.records
-            .reached(actor, company, record)
-            .await?
-            .1
-            .editing()?;
+        let (entity, reached) = self.records.reached(actor, company, record).await?;
+        reached.editing()?;
         let at = FileRef {
             company,
             record,
             file,
             author: actor.account(),
+            share_version: entity.share_version,
         };
         let meta = self.found(&at).await?;
         let end = u64::try_from(bytes.len())
@@ -205,12 +201,13 @@ impl FileService {
             Action::ReadRecord,
         )
         .await?;
-        self.records.reached(actor, company, record).await?;
+        let (entity, _) = self.records.reached(actor, company, record).await?;
         let at = FileRef {
             company,
             record,
             file,
             author: actor.account(),
+            share_version: entity.share_version,
         };
         let meta = self.found(&at).await?;
         if meta.written != meta.size {

@@ -131,21 +131,26 @@ impl Reach {
         }))
     }
 
-    /// The ids of `company`'s records shared with any of `targets`, each read through the target index.
+    /// The ids of `company`'s records shared with any target reaching `account`, but those in `excluding`, each read
+    /// through the target index.
     pub(crate) async fn shared(
         &self,
         company: &CompanyId,
-        targets: &HashSet<String>,
-    ) -> Result<HashSet<String>> {
+        account: &AccountId,
+        excluding: &HashSet<String>,
+    ) -> Result<Vec<String>> {
         let mut records = HashSet::new();
-        for target in targets {
+        for target in &self.targets(company, account).await? {
             records.extend(
                 self.repository
                     .shared_with(&self.place, company, target)
                     .await?,
             );
         }
-        Ok(records)
+        Ok(records
+            .into_iter()
+            .filter(|id| !excluding.contains(id))
+            .collect())
     }
 
     /// Refuses a revision by `account` under `reviser_key` unless that key is theirs and `wraps` names exactly the

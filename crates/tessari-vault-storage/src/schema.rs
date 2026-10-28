@@ -48,7 +48,7 @@ DEFINE SPACE IF NOT EXISTS sessions; \
 DEFINE SPACE IF NOT EXISTS sign_ins; \
 DEFINE SPACE IF NOT EXISTS throttles; \
 DEFINE TABLE IF NOT EXISTS records (record_id string, company string, record_type string, revision int, key_id string, \
-author string, state string, shares int, created int, updated int); \
+author string, state string, share_version int, rotate bool, created int, updated int); \
 DEFINE INDEX IF NOT EXISTS by_id ON records FIELDS record_id UNIQUE; \
 DEFINE INDEX IF NOT EXISTS by_author ON records FIELDS company, author; \
 DEFINE TABLE IF NOT EXISTS revisions (record string, revision int, author string, author_key string, signature string, \
