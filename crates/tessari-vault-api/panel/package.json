@@ -1,0 +1,18 @@
+{
+  "name": "tessaridb-vault-panel",
+  "version": "0.0.0",
+  "author": "boogvar",
+  "private": true,
+  "description": "Source for the web application the vault serves. Records are encrypted and decrypted here, in the browser; the server stores ciphertext only.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "pretest": "cargo build --quiet -p tessari-vault-crypto --target wasm32-unknown-unknown --release",
+    "test": "node --test --test-reporter=spec 'tests/**/*.test.ts'",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "typescript": "5.9.3"
+  }
+}
