@@ -2,7 +2,7 @@
 //!
 //! A passkey is phishing-resistant because the browser binds every response to the origin and the authenticator to
 //! the relying-party id; that holds only if the server checks every field of every response, so each check here
-//! refuses with its own reason. Registration reads a new credential's public key out of a `none` attestation —
+//! refuses with its own reason. Registration reads a new credential's public key out of a `none` attestation;
 //! nothing here needs to know which authenticator made it. An assertion is a signature, by that key, over the
 //! authenticator data and the hash of the client data, which is what proves possession; the signature is verified by
 //! `ring`, and only the parsing and the checks around it are this module's.

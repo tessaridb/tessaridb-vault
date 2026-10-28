@@ -2,10 +2,10 @@
 //! segment in.
 //!
 //! Written out rather than taken as a dependency: it is a few lines, it is pinned to the published RFC 4648 test
-//! vectors, and the alternative is a supply-chain surface for those few lines. Decoding is strict — no padding and
-//! no stray low bits — so every byte string has exactly one accepted spelling.
+//! vectors, and the alternative is a supply-chain surface for those few lines. Decoding is strict, with no padding and
+//! no stray low bits, so every byte string has exactly one accepted spelling.
 
-/// The base64url alphabet of RFC 4648 §5 — the URL-safe one, with `-` and `_` as its last two characters.
+/// The base64url alphabet of RFC 4648 §5, the URL-safe one, with `-` and `_` as its last two characters.
 const BASE64URL_ALPHABET: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 

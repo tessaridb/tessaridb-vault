@@ -1,5 +1,5 @@
-/// The largest part of a passkey response accepted — client data, authenticator data, attestation object, signature
-/// or stored public key — in bytes. An authenticator sends a few hundred bytes; an attestation carrying certificates a
+/// The largest part of a passkey response accepted, in bytes: client data, authenticator data, attestation object,
+/// signature or stored public key. An authenticator sends a few hundred bytes; an attestation carrying certificates a
 /// few kilobytes; 64 KiB bounds what is parsed long before memory matters.
 pub const WEBAUTHN_PART_MAX_BYTES: usize = 65_536;
 

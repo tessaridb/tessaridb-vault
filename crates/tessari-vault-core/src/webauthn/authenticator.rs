@@ -142,7 +142,7 @@ pub(super) fn client_data(ceremony: &str, challenge: &[u8], origin: &str) -> Vec
     .into_bytes()
 }
 
-/// Authenticator data: the relying-party id's hash, the flags, the counter, and — with `credential` — the attested
+/// Authenticator data: the relying-party id's hash, the flags, the counter and, with `credential`, the attested
 /// credential data (an all-zero AAGUID, the id, the COSE key).
 pub(super) fn authenticator_data(
     rp_id: &str,
