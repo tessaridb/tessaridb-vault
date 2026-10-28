@@ -1,8 +1,122 @@
+<div align="center">
+
+<img src="assets/logo/tessaridb-vault-mark-256.png" alt="" width="112" height="112">
+
 # TessariDB Vault
 
-A corporate password manager on TessariDB: companies, departments and teams share end-to-end encrypted
-records, and neither the server nor the database can read them.
+**A password manager for companies, with every record encrypted in the browser and every piece of state in TessariDB.**
 
-In development.
+Companies, departments and teams share passwords, keys, notes and small files as end-to-end encrypted records.
+The server and the database store and move ciphertext; neither can read a record. Written in Rust, with the web
+application built into the server binary.
 
-Licence: BUSL-1.1 (see `LICENSE`).
+[![status](https://img.shields.io/badge/status-in%20development-6B5FD1?style=flat-square)](#status)
+[![licence](https://img.shields.io/badge/licence-BUSL--1.1-6B5FD1?style=flat-square)](LICENSE)
+[![rust](https://img.shields.io/badge/rust-1.98%2B-6B5FD1?style=flat-square)](#building-and-checking)
+
+[tessaridb.com](https://tessaridb.com) · [TessariDB](https://github.com/tessaridb/tessaridb)
+
+</div>
+
+> [!NOTE]
+> **In development, not released.** Apart from the [Status](#status) section, this page describes what the
+> project is being built to do, not a working system. The first release will be `0.0.1`.
+
+## What it is for
+
+- **Shared by structure.** A record is shared with a person, a team, a department or the whole company, and a change
+  of team changes who can read it without rewriting the record.
+- **Encrypted before it leaves the browser.** Contents, titles, field names and files are sealed on the device that
+  writes them; the unlock password is separate from the sign-in and never leaves the browser.
+- **A second layer in the database.** Each company's ciphertext is kept in its own TessariDB vault, opened by a key
+  the database never stores, so the store's own vault passphrase and its root account open none of it.
+- **Recovery the company can see.** The company's owners can restore a member's access, and every member is told
+  who can recover and read what.
+- **State in TessariDB.** Companies, people, groups, records, files, sessions, throttles and the audit trail are that
+  database's records, vaults, spaces and buckets, not a second store kept beside it.
+
+## The promises it is being designed to keep
+
+These are design commitments. None is claimed until a test backs it, and the [Status](#status) section says which
+exist.
+
+- **Ciphertext at rest, everywhere.** A record written through the browser appears in the store directory, a backup
+  and the audit trail only as ciphertext, checked by scanning the raw bytes.
+- **Writing a row adds no reader.** A browser encrypts to, and trusts revisions from, only keys that a signature chain
+  from the company owner's key vouches for.
+- **Tampering aborts.** A moved, altered or unsigned revision is refused, and so is a revision older than one the
+  browser has already seen.
+- **Every bundle served is on the record**, and one that cannot be recorded is not served.
+- **Removing a person takes effect at their next request**, and the record keys they held are rotated.
+- **Deleting a company destroys its key**, so no later copy of its data opens.
+
+### What it does not protect against
+
+1. **An unlocked browser and the device it runs on.** While your vault is unlocked, the keys are in that tab's memory.
+   Malware on the device, or a browser extension allowed to read the page, can read what you can.
+2. **The code the server delivers.** The web application is loaded from the server you sign in to. Whoever controls
+   that server can serve a modified application that captures your unlock password. It ships no third-party code, sets
+   a strict content security policy and will publish the hash of every release's assets so that a change can be
+   noticed, but a web client cannot prove to you that it is honest.
+3. **The server host.** Someone with control of the host can read the database-side keys and session tokens in the
+   service's memory and see everything in item 5. Without your unlock password they still cannot decrypt a record.
+4. **Your company's owners and admins.** Owners hold the company's recovery key, so they can restore any member's
+   access and can therefore read every record shared with members of that company. Admins hold the keys of the
+   company's departments and teams, so they can read every record shared with a department, a team or the whole
+   company — not records shared only with individual people. Every member is shown this.
+5. **Metadata.** The server sees who belongs to which company, department and team, who shares which record with whom,
+   record types, sizes, counts and timestamps, and when records are fetched. Names of records are encrypted; their
+   existence is not.
+6. **Someone who already read a secret.** Removing a person stops their future access and rotates the record's key.
+   It cannot make them forget a value they saw. Change the secret at its source.
+7. **A restored old copy.** Someone who can write to the database can put back an old version of a record. Your
+   browser refuses a version older than one it has already seen, but cannot detect an old version it has never seen
+   newer of.
+8. **A weak unlock password.** Anyone holding the database and the server's key file can try to guess your unlock
+   password offline. Each guess costs a memory-hard key derivation, but a short or common password still falls.
+9. **Your sign-in provider.** A compromised identity provider can sign you in, but it cannot unlock your vault: the
+   unlock password is separate and never leaves your browser.
+10. **Files kept in an external object store.** When a deployment stores files in TessariDB S3 instead of the
+    database, those files carry the browser's encryption but not the database's second layer, and their removal
+    follows that store's own lifecycle.
+11. **Timing and traffic analysis**, and **future quantum computers** against today's ciphertext (the key exchange is
+    classical X25519 in this version; the format names its algorithms so it can move).
+
+## Status
+
+| | |
+|---|---|
+| Release | none yet; the first will be `0.0.1` |
+| Built and tested | the workspace; the unlock-key derivation — Argon2id with bounds checked before any work (memory at least 47 104 KiB, passes 1–10, lanes 1–8), built for the browser as WebAssembly and checked against an independent vector |
+| In the engine, not yet released | a TessariDB vault opened by a key presented with each request (the second layer), on the engine's `dev` branch for its next third-digit release |
+| Designed, not yet built | the browser encryption and sharing, the server, sign-in, the web application, recovery, files and the audit trail |
+| Licence | BUSL-1.1 (see [Licence](#licence)) |
+
+## Building and checking
+
+A Cargo workspace on Rust 1.98 (edition 2024).
+
+```sh
+cargo build
+cargo test --workspace --tests
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo fmt --all --check
+cargo deny check   # licences, advisories, sources
+```
+
+## Branches
+
+`dev` is where development happens. `main` will carry releases and move only by merging `dev` at a release, with
+each release tagged there.
+
+## Licence
+
+TessariDB Vault is licensed under the [Business Source License 1.1](LICENSE). Production use is free, including use
+by and within a commercial company, and keeping your own organisation's secrets with it is not restricted. Two things
+need a commercial licence from the Licensor:
+- providing TessariDB Vault to third parties as a hosted or managed service for storing, sharing or managing their
+  passwords, credentials, keys or other secrets;
+- selling, reselling, renting or sublicensing it.
+
+On the Change Date in [`LICENSE`](LICENSE) each version converts to the Apache License, Version 2.0. For other
+arrangements, write to licensing@tessaridb.com.
