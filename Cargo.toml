@@ -1,0 +1,62 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+license = "BUSL-1.1"
+authors = ["boogvar"]
+repository = "https://github.com/tessaridb/tessaridb-vault"
+publish = false
+
+[workspace.dependencies]
+tessari-vault-constants = { path = "crates/tessari-vault-constants" }
+tessari-vault-types = { path = "crates/tessari-vault-types" }
+tessari-vault-core = { path = "crates/tessari-vault-core" }
+tessari-vault-crypto = { path = "crates/tessari-vault-crypto" }
+tessari-vault-observability = { path = "crates/tessari-vault-observability" }
+tessari-vault-infrastructure = { path = "crates/tessari-vault-infrastructure" }
+tessari-vault-storage = { path = "crates/tessari-vault-storage" }
+tessari-vault-api = { path = "crates/tessari-vault-api" }
+tessari-vault-daemons = { path = "crates/tessari-vault-daemons" }
+
+thiserror = "2"
+tokio = { version = "1", default-features = false }
+tracing = "0.1"
+# The binary's subscriber: JSON events, a filter from `RUST_LOG`, and a writer on its own thread.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "json", "fmt", "std"] }
+tracing-appender = "0.2"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_sign_loss = "deny"
+cast_precision_loss = "deny"
+unwrap_used = "deny"
+panic = "deny"
+expect_used = "deny"
+arithmetic_side_effects = "deny"
+todo = "warn"
+unimplemented = "warn"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+debug = "line-tables-only"
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev.build-override]
+opt-level = 3

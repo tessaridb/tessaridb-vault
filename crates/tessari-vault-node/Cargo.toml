@@ -1,0 +1,23 @@
+[package]
+name = "tessari-vault-node"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+autotests = false
+
+[[bin]]
+name = "tessaridb-vault"
+path = "src/main.rs"
+# The composition root holds no logic to test; its behaviour is tested in the crates it wires.
+test = false
+
+[dependencies]
+tessari-vault-observability.workspace = true
+tracing.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }
+
+[lints]
+workspace = true
