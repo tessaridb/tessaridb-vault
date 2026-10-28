@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use tessari_vault_api::{AppState, router};
 use tessari_vault_infrastructure::config::PasskeyParty;
 use tessari_vault_infrastructure::custody::{
-    PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal,
+    PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal, VaultKeys,
 };
 use tessari_vault_infrastructure::oidc::OidcProvider;
 use tessari_vault_infrastructure::tessaridb::{Database, Place, StoreConfig};
@@ -34,6 +34,7 @@ static TURN: AtomicU32 = AtomicU32::new(0);
 pub struct Node {
     child: Child,
     pub wire: String,
+    pub http: String,
 }
 
 impl Drop for Node {
@@ -44,8 +45,13 @@ impl Drop for Node {
 }
 
 impl Node {
-    /// A node closed by an initial user, on two free ports.
+    /// A node closed by an initial user, on two free ports, holding its store in memory.
     pub async fn start() -> Self {
+        Self::start_in(None).await
+    }
+
+    /// The same, holding its store in `data` when given.
+    pub async fn start_in(data: Option<&std::path::Path>) -> Self {
         let binary = std::env::var("TESSARIDB_BIN")
             .expect("TESSARIDB_BIN names the engine binary the live suite runs against");
         let http_probe = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
@@ -59,7 +65,11 @@ impl Node {
             wire_probe.local_addr().expect("bound").port()
         );
         drop((http_probe, wire_probe));
-        let child = Command::new(&binary)
+        let mut command = Command::new(&binary);
+        if let Some(data) = data {
+            command.arg(data);
+        }
+        let child = command
             .args(["--http", &http, "--serve", &wire])
             .env("TESSARIDB_INITIAL_USER", STORE_USER)
             .env("TESSARIDB_INITIAL_PASSWORD", STORE_PASSWORD)
@@ -67,7 +77,7 @@ impl Node {
             .stderr(Stdio::null())
             .spawn()
             .expect("the engine binary starts");
-        let node = Self { child, wire };
+        let node = Self { child, wire, http };
         let started = Instant::now();
         while tokio::net::TcpStream::connect(&node.wire).await.is_err() {
             assert!(
@@ -87,12 +97,19 @@ pub struct World {
     /// The store and the place the server keeps everything in, for the rows that act behind the server's back.
     pub database: Database,
     pub place: Place,
-    _node: Node,
+    /// The company vault keys the server derives, for the rows that open a vault behind its back.
+    pub vault_keys: std::sync::Arc<VaultKeys>,
+    pub node: Node,
 }
 
 impl World {
     pub async fn new() -> Self {
-        Self::build(None).await
+        Self::build(None, None).await
+    }
+
+    /// A world whose node keeps its store in `data`.
+    pub async fn on_disk(data: &std::path::Path) -> Self {
+        Self::build(None, Some(data)).await
     }
 
     /// A world whose server signs people in through the stub issuer at `issuer`.
@@ -105,11 +122,14 @@ impl World {
         let provider = OidcProvider::discover(issuer, client_id, redirect)
             .await
             .expect("the issuer is discovered");
-        Self::build(Some(std::sync::Arc::new(provider))).await
+        Self::build(Some(std::sync::Arc::new(provider)), None).await
     }
 
-    async fn build(oidc: Option<std::sync::Arc<OidcProvider>>) -> Self {
-        let node = Node::start().await;
+    async fn build(
+        oidc: Option<std::sync::Arc<OidcProvider>>,
+        data: Option<&std::path::Path>,
+    ) -> Self {
+        let node = Node::start_in(data).await;
         let database = Database::new(
             StoreConfig {
                 address: node.wire.clone(),
@@ -145,6 +165,7 @@ impl World {
             .await
             .expect("the schema applies a second time unchanged");
         let signin_keys = SigninKeys::new(&service_key).expect("the sign-in keys");
+        let vault_keys = std::sync::Arc::new(VaultKeys::new(&service_key).expect("the vault keys"));
         let storage = Storage::new(
             &database,
             &place,
@@ -152,6 +173,7 @@ impl World {
                 passwords,
                 seal,
                 signin_keys,
+                vault_keys: std::sync::Arc::clone(&vault_keys),
             },
         );
         Self {
@@ -166,7 +188,8 @@ impl World {
             storage,
             database,
             place,
-            _node: node,
+            vault_keys,
+            node,
         }
     }
 
@@ -261,6 +284,8 @@ pub struct Cast {
     pub member_a_id: String,
     pub department_a: String,
     pub team_a: String,
+    /// A record member A wrote.
+    pub record_a: String,
 }
 
 async fn company(world: &World, platform: &str, name: &str, owner: &str) -> (String, String) {
@@ -280,6 +305,19 @@ async fn company(world: &World, platform: &str, name: &str, owner: &str) -> (Str
             .expect("the owner")
             .to_owned(),
     )
+}
+
+/// A record's sealed parts as the browser sends them; the bytes mean nothing here.
+pub fn sealed_record() -> Value {
+    use tessari_vault_types::base64url::encode;
+    json!({
+        "record_type": "login",
+        "key_id": "11".repeat(16),
+        "body": encode(b"sealed"),
+        "signature": encode(&[7; 64]),
+        "author_key": "22".repeat(16),
+        "wrap": encode(&[9; 82]),
+    })
 }
 
 pub async fn add_member(world: &World, company: &str, by: &str, email: &str, role: &str) -> String {
@@ -329,6 +367,16 @@ impl Cast {
             .await;
         assert_eq!(status, StatusCode::CREATED, "{team}");
         let team_a = team["id"].as_str().expect("an id").to_owned();
+        let (status, record) = world
+            .call(
+                Method::POST,
+                &format!("/api/companies/{company_a}/records"),
+                Some(&member_a),
+                Some(sealed_record()),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{record}");
+        let record_a = record["id"].as_str().expect("an id").to_owned();
         Self {
             platform,
             company_a,
@@ -343,6 +391,7 @@ impl Cast {
             member_a_id,
             department_a,
             team_a,
+            record_a,
         }
     }
 }

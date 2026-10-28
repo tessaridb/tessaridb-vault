@@ -172,6 +172,10 @@ const fn conflicted(conflict: Conflict) -> ApiError {
             "standing_changed",
             "your role changed while this ran; try again",
         ),
+        Conflict::StaleRevision => (
+            "stale_revision",
+            "the record changed since it was read; read it again",
+        ),
     };
     ApiError::new(StatusCode::CONFLICT, code, message)
 }

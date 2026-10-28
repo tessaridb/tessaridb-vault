@@ -46,7 +46,14 @@ DEFINE INDEX IF NOT EXISTS by_account ON passkeys FIELDS account; \
 DEFINE SPACE IF NOT EXISTS passkey_ceremonies; \
 DEFINE SPACE IF NOT EXISTS sessions; \
 DEFINE SPACE IF NOT EXISTS sign_ins; \
-DEFINE SPACE IF NOT EXISTS throttles;";
+DEFINE SPACE IF NOT EXISTS throttles; \
+DEFINE TABLE IF NOT EXISTS records (record_id string, company string, record_type string, revision int, key_id string, \
+author string, state string, created int, updated int); \
+DEFINE INDEX IF NOT EXISTS by_id ON records FIELDS record_id UNIQUE; \
+DEFINE INDEX IF NOT EXISTS by_author ON records FIELDS company, author; \
+DEFINE TABLE IF NOT EXISTS revisions (record string, revision int, author string, author_key string, signature string, \
+size int, created int); \
+DEFINE INDEX IF NOT EXISTS by_record ON revisions FIELDS record;";
 
 /// Declare the namespace and database of `place` and everything in them that is missing.
 ///

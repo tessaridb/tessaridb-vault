@@ -1,6 +1,7 @@
 //! Every number with a meaning in TessariDB Vault, typed and documented with its unit and its reason.
 
 mod credentials;
+mod records;
 mod storage;
 mod unlock;
 mod webauthn;
@@ -12,6 +13,9 @@ pub use credentials::{
     SERVICE_KEY_BYTES, SIGN_IN_CHALLENGE_MINUTES, SIGN_IN_CODE_MISSES, SIGN_IN_PER_ACCOUNT,
     SIGN_IN_PER_ADDRESS, SIGN_IN_PER_PAIR, TOTP_DIGITS, TOTP_SECRET_BYTES, TOTP_SKEW_STEPS,
     TOTP_STEP_SECS,
+};
+pub use records::{
+    MAX_RECORD_BODY_BYTES, MAX_RECORD_WRAP_BYTES, RECORD_LIST_MAX, RECORD_SIGNATURE_BYTES,
 };
 pub use storage::{
     RATE_PER_ACCOUNT, RATE_PER_ADDRESS, RATE_WINDOW_SECONDS, REASON_MAX_CHARS,

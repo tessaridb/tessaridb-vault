@@ -244,6 +244,7 @@ pub(crate) fn thrown(error: Error) -> Error {
         ("wrong parent", Conflict::WrongParent),
         ("not a member", Conflict::NotAMember),
         ("already enrolled", Conflict::Enrolled),
+        ("stale revision", Conflict::StaleRevision),
     ];
     if message.starts_with("not found") {
         return Error::NotFound;

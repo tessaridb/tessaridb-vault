@@ -12,6 +12,13 @@ fn standing(role: Role) -> Standing {
 
 const READS: [Action; 2] = [Action::ReadMembers, Action::ReadGroups];
 
+/// What every active member may do with records; which records is decided on the record itself.
+const RECORDS: [Action; 3] = [
+    Action::CreateRecord,
+    Action::ReadRecord,
+    Action::ReviseRecord,
+];
+
 const MANAGING: [Action; 10] = [
     Action::AddMember { role: Role::Member },
     Action::AddMember { role: Role::Admin },
@@ -48,6 +55,7 @@ const OWNER_ONLY: [Action; 5] = [
 fn every_action() -> Vec<Action> {
     READS
         .iter()
+        .chain(&RECORDS)
         .chain(&MANAGING)
         .chain(&OWNER_ONLY)
         .copied()
@@ -89,6 +97,15 @@ fn a_suspended_member_or_a_suspended_company_is_the_same_as_none() {
 fn every_active_member_reads_the_structure() {
     for role in [Role::Owner, Role::Admin, Role::Member] {
         for action in READS {
+            assert_eq!(decide(Some(&standing(role)), action), Decision::Permitted);
+        }
+    }
+}
+
+#[test]
+fn every_active_member_keeps_records() {
+    for role in [Role::Owner, Role::Admin, Role::Member] {
+        for action in RECORDS {
             assert_eq!(decide(Some(&standing(role)), action), Decision::Permitted);
         }
     }

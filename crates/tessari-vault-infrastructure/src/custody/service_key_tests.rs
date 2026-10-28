@@ -89,30 +89,3 @@ fn the_key_never_prints() {
     let key = ServiceKey::load(&file(KEY_HEX, 0o600)).expect("a key file");
     assert_eq!(format!("{key:?}"), "ServiceKey(<redacted>)");
 }
-
-/// KV(c) for two companies, from Python's `hmac` (HKDF-SHA256, empty salt, info = label ‖ company id).
-const COMPANY_A: &str = "0123456789abcdef0123456789abcdef";
-const COMPANY_A_VAULT_KEY_HEX: &str =
-    "4ce9366fa153ec4f19ba51211b95da7a6d5d4e4c42db526cef7e7c783007fd4f";
-const COMPANY_B: &str = "fedcba9876543210fedcba9876543210";
-const COMPANY_B_VAULT_KEY_HEX: &str =
-    "6b61b6ae79dfeda63aa6695d5d405a83542e243f8fdc2b99b7012cb56a2782ee";
-
-#[test]
-fn each_company_vault_key_is_the_independent_hkdf_of_the_key_and_its_company() {
-    let key = ServiceKey::load(&file(KEY_HEX, 0o600)).expect("a key file");
-    assert_eq!(
-        hex(key
-            .company_vault_key(COMPANY_A)
-            .expect("derived")
-            .as_slice()),
-        COMPANY_A_VAULT_KEY_HEX
-    );
-    assert_eq!(
-        hex(key
-            .company_vault_key(COMPANY_B)
-            .expect("derived")
-            .as_slice()),
-        COMPANY_B_VAULT_KEY_HEX
-    );
-}

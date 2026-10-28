@@ -15,6 +15,7 @@ mod keyed_vault;
 mod oauth_e2e;
 mod oidc;
 mod passkeys;
+mod records;
 mod rules;
 mod sign_in;
 mod world;
@@ -53,9 +54,11 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
     let path = pattern
         .replace("{company}", a)
         .replace("{group}", &cast.team_a)
-        .replace("{account}", &cast.member_a_id);
+        .replace("{account}", &cast.member_a_id)
+        .replace("{record}", &cast.record_a);
     let manage = Some((Who::Member, StatusCode::FORBIDDEN));
     let hidden = Some((Who::OtherAdmin, StatusCode::NOT_FOUND));
+    let not_author = Some((Who::Owner, StatusCode::NOT_FOUND));
     let platform = Some((Who::Owner, StatusCode::FORBIDDEN));
     let other_platform = Some((Who::OtherAdmin, StatusCode::FORBIDDEN));
     let row = |body: Option<Value>, low, cross| {
@@ -162,6 +165,19 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ),
         ("DELETE", "/api/companies/{company}/groups/{group}/members/{account}") => {
             row(None, manage, hidden)
+        }
+        // Every member keeps records; the lower row is the owner, who is not the record's author.
+        ("GET", "/api/companies/{company}/records") => row(None, None, hidden),
+        ("POST", "/api/companies/{company}/records") => {
+            row(Some(world::sealed_record()), None, hidden)
+        }
+        ("GET", "/api/companies/{company}/records/{record}") => row(None, not_author, hidden),
+        ("PUT", "/api/companies/{company}/records/{record}") => {
+            let mut body = world::sealed_record();
+            body["revision"] = json!(1);
+            body.as_object_mut()
+                .map(|fields| fields.remove("record_type"));
+            row(Some(body), not_author, hidden)
         }
         _ => None,
     }

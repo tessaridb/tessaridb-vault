@@ -62,11 +62,7 @@ fn line(at: i64, company: &str, actor: &str, action: &str, target: &str, reason:
 
 /// The values [`RECORD`] binds, for `event` done by `actor` now.
 pub(crate) fn binds(actor: &Actor, event: &Event<'_>) -> Vec<(String, Value)> {
-    let at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| {
-            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
-        });
+    let at = epoch_seconds();
     let text = line(
         at,
         event.company,
@@ -84,6 +80,15 @@ pub(crate) fn binds(actor: &Actor, event: &Event<'_>) -> Vec<(String, Value)> {
         bind("audit_reason", actor.reason()),
         bind("audit_line", text.as_str()),
     ]
+}
+
+/// Now, in seconds since 1970.
+pub(crate) fn epoch_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+        })
 }
 
 /// The audit trail, read.

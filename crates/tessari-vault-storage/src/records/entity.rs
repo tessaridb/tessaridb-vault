@@ -1,0 +1,154 @@
+//! A record row, a revision's sealed parts, and what they read as.
+
+use tessari_vault_constants::{
+    MAX_RECORD_BODY_BYTES, MAX_RECORD_WRAP_BYTES, RECORD_SIGNATURE_BYTES,
+};
+use tessari_vault_infrastructure::tessaridb::{FromRecord, MappingFault, Row};
+use tessari_vault_types::{AccountId, KeyId, RecordId, RecordType};
+
+use crate::{Error, Result};
+
+/// One `records` row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecordEntity {
+    pub(crate) id: String,
+    pub(crate) record_type: String,
+    pub(crate) revision: i64,
+    pub(crate) key_id: String,
+    pub(crate) author: String,
+    pub(crate) created: i64,
+    pub(crate) updated: i64,
+}
+
+impl FromRecord for RecordEntity {
+    fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
+        Ok(Self {
+            id: row.take("record_id")?,
+            record_type: row.take("record_type")?,
+            revision: row.take("revision")?,
+            key_id: row.take("key_id")?,
+            author: row.take("author")?,
+            created: row.take("created")?,
+            updated: row.take("updated")?,
+        })
+    }
+}
+
+/// A record as its author sees it: everything but its sealed parts, which the server cannot read either.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Record {
+    /// Its id.
+    pub id: RecordId,
+    /// Its type.
+    pub record_type: RecordType,
+    /// Its latest revision, from 1.
+    pub revision: i64,
+    /// The id of the record key the latest revision is sealed under.
+    pub key_id: KeyId,
+    /// Who wrote it.
+    pub author: AccountId,
+    /// When it was created, in seconds since 1970.
+    pub created: i64,
+    /// When its latest revision was written, in seconds since 1970.
+    pub updated: i64,
+}
+
+fn unreadable(what: &str) -> Error {
+    Error::Unreadable {
+        record: "record",
+        reason: format!("{what} did not read back as written"),
+    }
+}
+
+impl RecordEntity {
+    pub(crate) fn into_model(self) -> Result<Record> {
+        Ok(Record {
+            id: RecordId::parse(&self.id).map_err(|_| unreadable("id"))?,
+            record_type: RecordType::parse(&self.record_type).map_err(|_| unreadable("type"))?,
+            revision: self.revision,
+            key_id: KeyId::parse(&self.key_id).map_err(|_| unreadable("key id"))?,
+            author: AccountId::parse(&self.author).map_err(|_| unreadable("author"))?,
+            created: self.created,
+            updated: self.updated,
+        })
+    }
+}
+
+/// Why sealed parts are refused before anything is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("a sealed body, a 64-byte signature and a wrapped record key within their ceilings")]
+pub struct SealedError;
+
+/// One revision's sealed parts, as the browser made them: the body sealed under the record key, the author's
+/// signature over it, and the record key wrapped to the author's agreement key. None of it is readable here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sealed {
+    pub(crate) body: Vec<u8>,
+    pub(crate) signature: Vec<u8>,
+    pub(crate) author_key: KeyId,
+    pub(crate) wrap: Vec<u8>,
+}
+
+impl Sealed {
+    /// The parts, each within its ceiling.
+    ///
+    /// # Errors
+    ///
+    /// [`SealedError`] for an empty or oversized body, a signature that is not 64 bytes, or an empty or oversized
+    /// wrap.
+    pub fn new(
+        body: Vec<u8>,
+        signature: Vec<u8>,
+        author_key: KeyId,
+        wrap: Vec<u8>,
+    ) -> std::result::Result<Self, SealedError> {
+        let fits = !body.is_empty()
+            && body.len() <= MAX_RECORD_BODY_BYTES
+            && signature.len() == RECORD_SIGNATURE_BYTES
+            && !wrap.is_empty()
+            && wrap.len() <= MAX_RECORD_WRAP_BYTES;
+        if fits {
+            Ok(Self {
+                body,
+                signature,
+                author_key,
+                wrap,
+            })
+        } else {
+            Err(SealedError)
+        }
+    }
+
+    /// The sealed body.
+    #[must_use]
+    pub fn body(&self) -> &[u8] {
+        &self.body
+    }
+
+    /// The author's signature over the revision.
+    #[must_use]
+    pub fn signature(&self) -> &[u8] {
+        &self.signature
+    }
+
+    /// The id of the agreement key the record key is wrapped to.
+    #[must_use]
+    pub const fn author_key(&self) -> &KeyId {
+        &self.author_key
+    }
+
+    /// The record key, wrapped to the author's agreement key.
+    #[must_use]
+    pub fn wrap(&self) -> &[u8] {
+        &self.wrap
+    }
+}
+
+/// A record and its latest revision's sealed parts, as its author opens it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenedRecord {
+    /// The record.
+    pub record: Record,
+    /// Its latest revision's sealed parts.
+    pub sealed: Sealed,
+}

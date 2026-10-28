@@ -50,6 +50,12 @@ pub enum Action {
     RemoveFromGroup,
     /// Read the company's audit trail.
     ReadAudit,
+    /// Keep a new record in the company's vault.
+    CreateRecord,
+    /// Read a record; which records is decided on the record.
+    ReadRecord,
+    /// Write a new revision of a record; which records is decided on the record.
+    ReviseRecord,
 }
 
 /// Why an action was refused.
@@ -80,7 +86,11 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         return Decision::Refused(Refusal::NotVisible);
     };
     let needed = match action {
-        Action::ReadMembers | Action::ReadGroups => Role::Member,
+        Action::ReadMembers
+        | Action::ReadGroups
+        | Action::CreateRecord
+        | Action::ReadRecord
+        | Action::ReviseRecord => Role::Member,
         Action::AddMember { role: Role::Owner }
         | Action::RemoveMember { role: Role::Owner }
         | Action::ChangeMember {

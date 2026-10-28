@@ -57,6 +57,9 @@ pub enum Conflict {
     /// The caller's standing changed between the decision and the write; nothing was written.
     #[error("the caller's standing changed; try again")]
     StandingChanged,
+    /// The record has a newer revision than the one the caller read; nothing was written.
+    #[error("the record changed since it was read")]
+    StaleRevision,
 }
 
 /// The result of a `tessari-vault-storage` call.

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use tessari_vault_infrastructure::custody::{Passwords, SigninKeys, TotpSeal};
+use tessari_vault_infrastructure::custody::{Passwords, SigninKeys, TotpSeal, VaultKeys};
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 
 use crate::accounts::{AccountService, TessaridbAccountRepository};
@@ -12,6 +12,7 @@ use crate::enrolments::EnrolmentService;
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::identities::IdentityService;
 use crate::passkeys::PasskeyService;
+use crate::records::{RecordService, RecordVaults, TessaridbRecordRepository};
 use crate::sessions::SessionService;
 use crate::signin::{SignInParts, SignInService};
 use crate::throttle::ThrottleService;
@@ -24,6 +25,8 @@ pub struct Custody {
     pub seal: Arc<TotpSeal>,
     /// The names sign-in attempts are counted under.
     pub signin_keys: SigninKeys,
+    /// The keys that open each company's records vault.
+    pub vault_keys: Arc<VaultKeys>,
 }
 
 /// The services the server reaches its records through.
@@ -43,6 +46,8 @@ pub struct Storage {
     pub identities: Arc<IdentityService>,
     /// Passkeys and their ceremonies.
     pub passkeys: Arc<PasskeyService>,
+    /// Records and their revisions.
+    pub records: Arc<RecordService>,
     /// Sessions.
     pub sessions: Arc<SessionService>,
     /// Own sign-in.
@@ -59,7 +64,9 @@ impl Storage {
             passwords,
             seal,
             signin_keys,
+            vault_keys,
         } = custody;
+        let vaults = Arc::new(RecordVaults::new(database.clone(), vault_keys));
         let accounts = Arc::new(AccountService::new(
             Arc::new(TessaridbAccountRepository::new(database.clone())),
             place.clone(),
@@ -81,6 +88,7 @@ impl Storage {
             Arc::new(TessaridbCompanyRepository::new(database.clone())),
             Arc::clone(&accounts),
             Arc::clone(&enrolments),
+            Arc::clone(&vaults),
             database.clone(),
             place.clone(),
         ));
@@ -101,6 +109,12 @@ impl Storage {
             place.clone(),
             Arc::clone(&accounts),
             Arc::clone(&sessions),
+        ));
+        let records = Arc::new(RecordService::new(
+            Arc::new(TessaridbRecordRepository::new(database.clone())),
+            Arc::clone(&vaults),
+            database.clone(),
+            place.clone(),
         ));
         let throttle = Arc::new(ThrottleService::new(database.clone(), place.clone()));
         let sign_in = Arc::new(SignInService::new(
@@ -123,6 +137,7 @@ impl Storage {
             groups,
             identities,
             passkeys,
+            records,
             sessions,
             sign_in,
             throttle,

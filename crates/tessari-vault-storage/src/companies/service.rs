@@ -17,6 +17,7 @@ use crate::access::{self, Actor, recorded};
 use crate::accounts::AccountService;
 use crate::audit;
 use crate::enrolments::{EnrolmentService, EnrolmentToken};
+use crate::records::RecordVaults;
 use crate::{Error, Result};
 
 /// Companies and memberships.
@@ -24,6 +25,7 @@ pub struct CompanyService {
     repository: Arc<dyn CompanyRepository>,
     accounts: Arc<AccountService>,
     enrolments: Arc<EnrolmentService>,
+    vaults: Arc<RecordVaults>,
     database: Database,
     place: Place,
 }
@@ -33,6 +35,7 @@ impl CompanyService {
         repository: Arc<dyn CompanyRepository>,
         accounts: Arc<AccountService>,
         enrolments: Arc<EnrolmentService>,
+        vaults: Arc<RecordVaults>,
         database: Database,
         place: Place,
     ) -> Self {
@@ -40,6 +43,7 @@ impl CompanyService {
             repository,
             accounts,
             enrolments,
+            vaults,
             database,
             place,
         }
@@ -66,6 +70,7 @@ impl CompanyService {
             action: "company.create",
             target: id.as_str(),
         };
+        self.vaults.declare(&self.place, &id).await?;
         self.repository
             .create(
                 &self.place,

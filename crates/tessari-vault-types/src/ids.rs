@@ -85,6 +85,14 @@ identifier!(
     /// A department or a team inside a company.
     GroupId
 );
+identifier!(
+    /// A record in a company's vault.
+    RecordId
+);
+identifier!(
+    /// A key's 16-byte id as the browser names it: a record key's, or a member's agreement key's.
+    KeyId
+);
 
 impl CompanyId {
     /// The company's own group, which holds every member and the company's role edges.

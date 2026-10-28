@@ -11,6 +11,7 @@ mod error;
 pub mod groups;
 pub mod identities;
 pub mod passkeys;
+pub mod records;
 mod schema;
 pub mod sessions;
 pub mod signin;

@@ -5,9 +5,11 @@ use std::collections::BTreeMap;
 
 use axum::Router;
 use axum::http::Method;
-use axum::routing::{MethodRouter, delete, get, patch, post};
+use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
-use crate::handlers::{audit, companies, enrolment, groups, members, oidc, passkeys, sign_in};
+use crate::handlers::{
+    audit, companies, enrolment, groups, members, oidc, passkeys, records, sign_in,
+};
 use crate::state::AppState;
 
 /// One route: its method, its path pattern, and its handler.
@@ -146,6 +148,26 @@ pub fn routes() -> Vec<Route> {
             Method::DELETE,
             "/api/companies/{company}/groups/{group}/members/{account}",
             delete(groups::remove_member),
+        ),
+        route(
+            Method::GET,
+            "/api/companies/{company}/records",
+            get(records::list),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/records",
+            post(records::create),
+        ),
+        route(
+            Method::GET,
+            "/api/companies/{company}/records/{record}",
+            get(records::read),
+        ),
+        route(
+            Method::PUT,
+            "/api/companies/{company}/records/{record}",
+            put(records::revise),
         ),
     ]
 }

@@ -15,7 +15,7 @@ use tessari_vault_constants::{
 };
 use tessari_vault_infrastructure::config::NodeConfig;
 use tessari_vault_infrastructure::custody::{
-    PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal,
+    PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal, VaultKeys,
 };
 use tessari_vault_infrastructure::oidc::OidcProvider;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
@@ -76,22 +76,17 @@ async fn run() -> Result<&'static str, StartError> {
         PASSWORD_HASH_ITERATIONS_FLOOR,
         PASSWORD_HASH_PARALLELISM_FLOOR,
     )?;
-    let passwords = Passwords::new(&service_key, cost, PASSWORD_CONCURRENCY_DEFAULT)?;
-    let seal = Arc::new(TotpSeal::new(&service_key)?);
-    let signin_keys = SigninKeys::new(&service_key)?;
+    let custody = Custody {
+        passwords: Passwords::new(&service_key, cost, PASSWORD_CONCURRENCY_DEFAULT)?,
+        seal: Arc::new(TotpSeal::new(&service_key)?),
+        signin_keys: SigninKeys::new(&service_key)?,
+        vault_keys: Arc::new(VaultKeys::new(&service_key)?),
+    };
     drop(service_key);
     let place = Place::new(config.namespace.as_str(), config.database.as_str())?;
     let database = Database::new(config.store.clone(), STORE_CONNECTIONS)?;
     migrate(&database, &place).await?;
-    let storage = Storage::new(
-        &database,
-        &place,
-        Custody {
-            passwords,
-            seal,
-            signin_keys,
-        },
-    );
+    let storage = Storage::new(&database, &place, custody);
     let mut platform_admin = None;
     if let Some((email, name)) = &config.platform_admin {
         let email = Email::parse(email).map_err(|_| StartError::PlatformAdmin("address"))?;
