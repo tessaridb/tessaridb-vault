@@ -13,6 +13,8 @@ autotests = false
 doctest = false
 
 [dependencies]
+tessari-vault-constants.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

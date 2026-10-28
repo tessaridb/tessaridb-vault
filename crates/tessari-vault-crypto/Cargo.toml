@@ -11,9 +11,15 @@ autotests = false
 
 [lib]
 doctest = false
+# `cdylib` is the WebAssembly module the panel loads; `rlib` is what the server's tests link.
+crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+tessari-vault-constants.workspace = true
+tessari-vault-types.workspace = true
+argon2.workspace = true
 thiserror.workspace = true
+zeroize.workspace = true
 
 [lints]
 workspace = true
