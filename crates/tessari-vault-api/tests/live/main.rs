@@ -11,6 +11,7 @@ mod authenticator;
 mod binary;
 mod enrolment;
 mod files;
+mod group_keys;
 mod issuer;
 mod keyed_vault;
 mod keys;
@@ -182,6 +183,20 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             manage,
             hidden,
         ),
+        // Admins key a group and fill its wraps; every member reads a group's key and their own wrap of it.
+        ("PUT", "/api/companies/{company}/groups/{group}/key") => row(
+            Some(
+                json!({ "key_id": "c0".repeat(16), "public": crate::records::encoded(&[0; 32]),
+                         "wraps": [] }),
+            ),
+            manage,
+            hidden,
+        ),
+        ("GET", "/api/companies/{company}/groups/{group}/key") => row(None, None, hidden),
+        ("GET", "/api/companies/{company}/groups/{group}/key/pending") => row(None, manage, hidden),
+        ("POST", "/api/companies/{company}/groups/{group}/key/wraps") => {
+            row(Some(json!({ "wraps": [] })), manage, hidden)
+        }
         // Every member keeps their own key set and reads the company's directory and chain.
         ("PUT", "/api/companies/{company}/keys/me") => row(
             Some(crate::keys::key_set(&"aa".repeat(16), 10)),

@@ -24,7 +24,8 @@ const RECORDS: [Action; 3] = [
     Action::ReviseRecord,
 ];
 
-const MANAGING: [Action; 13] = [
+const MANAGING: [Action; 14] = [
+    Action::KeyGroup,
     Action::Vouch { genesis: false },
     Action::DefineRecordType,
     Action::CreateRecord {
@@ -232,6 +233,7 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
         Action::ReadKeys,
         Action::Vouch { genesis: false },
         Action::Vouch { genesis: true },
+        Action::KeyGroup,
     ];
     for role in roles {
         actions.push(Action::AddMember { role });
@@ -261,6 +263,6 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
             }
         }
     }
-    // 27 actions (12 without a role, 5 per role) under 12 standings.
-    assert_eq!(compared, 27 * 12);
+    // 28 actions (13 without a role, 5 per role) under 12 standings.
+    assert_eq!(compared, 28 * 12);
 }

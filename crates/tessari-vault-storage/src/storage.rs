@@ -11,6 +11,7 @@ use crate::chain::{ChainService, TessaridbChainRepository};
 use crate::companies::{CompanyService, TessaridbCompanyRepository};
 use crate::enrolments::EnrolmentService;
 use crate::files::{FileService, TessaridbFiles};
+use crate::group_keys::{GroupKeyService, TessaridbGroupKeyRepository};
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::identities::IdentityService;
 use crate::keys::{KeyService, TessaridbKeyRepository};
@@ -48,6 +49,8 @@ pub struct Storage {
     pub enrolments: Arc<EnrolmentService>,
     /// Encrypted files on records.
     pub files: Arc<FileService>,
+    /// Group keys and their wraps.
+    pub group_keys: Arc<GroupKeyService>,
     /// Departments and teams.
     pub groups: Arc<GroupService>,
     /// Identities at an OpenID Connect issuer, and requests in flight to one.
@@ -146,6 +149,12 @@ impl Storage {
             database.clone(),
             place.clone(),
         ));
+        let group_keys = Arc::new(GroupKeyService::new(
+            Arc::new(TessaridbGroupKeyRepository::new(database.clone())),
+            Arc::clone(&vaults),
+            database.clone(),
+            place.clone(),
+        ));
         let chain = Arc::new(ChainService::new(
             Arc::new(TessaridbChainRepository::new(database.clone())),
             database.clone(),
@@ -171,6 +180,7 @@ impl Storage {
             companies,
             enrolments,
             files,
+            group_keys,
             groups,
             identities,
             keys,

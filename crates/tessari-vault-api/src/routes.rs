@@ -9,8 +9,8 @@ use axum::http::Method;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handlers::{
-    audit, companies, enrolment, files, groups, keys, members, oidc, passkeys, record_types,
-    records, sign_in,
+    audit, companies, enrolment, files, group_keys, groups, keys, members, oidc, passkeys,
+    record_types, records, sign_in,
 };
 use crate::state::AppState;
 use tessari_vault_constants::FILE_PART_MAX_BYTES;
@@ -181,6 +181,26 @@ pub fn routes() -> Vec<Route> {
             Method::POST,
             "/api/companies/{company}/record-types",
             post(record_types::define),
+        ),
+        route(
+            Method::PUT,
+            "/api/companies/{company}/groups/{group}/key",
+            put(group_keys::keep),
+        ),
+        route(
+            Method::GET,
+            "/api/companies/{company}/groups/{group}/key",
+            get(group_keys::read),
+        ),
+        route(
+            Method::GET,
+            "/api/companies/{company}/groups/{group}/key/pending",
+            get(group_keys::pending),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/groups/{group}/key/wraps",
+            post(group_keys::add_wraps),
         ),
         route(
             Method::PUT,

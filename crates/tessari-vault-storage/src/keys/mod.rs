@@ -6,6 +6,7 @@ mod repository;
 mod service;
 mod tessaridb;
 
+pub(crate) use entity::KeyEntity;
 pub use entity::{Kdf, KeySet, NewKeys, PublicKeys};
 pub use service::KeyService;
 pub(crate) use tessaridb::TessaridbKeyRepository;

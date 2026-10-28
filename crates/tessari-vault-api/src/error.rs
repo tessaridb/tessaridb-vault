@@ -188,6 +188,10 @@ const fn conflicted(conflict: Conflict) -> ApiError {
             "stale_chain",
             "the statement is not the next one in the chain; read the chain again",
         ),
+        Conflict::OutsideReach => (
+            "outside_reach",
+            "a wrap names a key set outside the group's reach, or one that holds a wrap already",
+        ),
         Conflict::UnknownKey => (
             "unknown_key",
             "the key id is not the key set you keep in this company",

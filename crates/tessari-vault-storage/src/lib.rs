@@ -10,6 +10,7 @@ pub mod companies;
 pub mod enrolments;
 mod error;
 pub mod files;
+pub mod group_keys;
 pub mod groups;
 pub mod identities;
 pub mod keys;

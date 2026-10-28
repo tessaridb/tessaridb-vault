@@ -65,6 +65,8 @@ pub enum Action {
     KeepKeys,
     /// Read the company's key directory and vouching chain.
     ReadKeys,
+    /// Key a group, or wrap its key to members of its reach.
+    KeyGroup,
     /// Extend the company's vouching chain; the `genesis` statement begins it.
     Vouch {
         /// Whether this statement begins the chain.
@@ -135,6 +137,7 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::RemoveFromGroup
         | Action::DefineRecordType
         | Action::Vouch { genesis: false }
+        | Action::KeyGroup
         | Action::ReadAudit => Role::Admin,
     };
     if reaches(held.role, needed) {

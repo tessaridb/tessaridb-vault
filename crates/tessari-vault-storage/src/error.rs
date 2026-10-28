@@ -76,6 +76,9 @@ pub enum Conflict {
     /// The statement is not the next one in the chain; nothing was written.
     #[error("the statement is not the next one in the chain")]
     StaleChain,
+    /// A wrap names a key set outside the group's reach, or one that holds a wrap already; nothing was written.
+    #[error("a wrap names a key set outside the group's reach or one already wrapped")]
+    OutsideReach,
     /// The key id is not the caller's registered key in the company.
     #[error("the key is not the caller's registered key")]
     UnknownKey,

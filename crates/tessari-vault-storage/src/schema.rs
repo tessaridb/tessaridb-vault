@@ -70,7 +70,10 @@ DEFINE INDEX IF NOT EXISTS by_key ON member_keys FIELDS company, key_id UNIQUE; 
 DEFINE TABLE IF NOT EXISTS chains (company string, owner_signing string, length int, created int); \
 DEFINE TABLE IF NOT EXISTS statements (company string, seq int, bytes string, signature string, author string, \
 created int); \
-DEFINE INDEX IF NOT EXISTS by_company ON statements FIELDS company;";
+DEFINE INDEX IF NOT EXISTS by_company ON statements FIELDS company; \
+DEFINE TABLE IF NOT EXISTS group_keys (company string, group_id string, key_id string, group_public string, \
+created datetime); \
+DEFINE INDEX IF NOT EXISTS by_key ON group_keys FIELDS company, key_id UNIQUE;";
 
 /// Declare the namespace and database of `place` and everything in them that is missing.
 ///
