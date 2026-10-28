@@ -89,9 +89,14 @@ impl World {
 
     /// A world whose server signs people in through the stub issuer at `issuer`.
     pub async fn with_issuer(issuer: &str) -> Self {
-        let provider = OidcProvider::discover(issuer, CLIENT_ID, REDIRECT)
+        Self::registered_at(issuer, CLIENT_ID, REDIRECT).await
+    }
+
+    /// A world whose server signs people in through `issuer` as the client `client_id` returning to `redirect`.
+    pub async fn registered_at(issuer: &str, client_id: &str, redirect: &str) -> Self {
+        let provider = OidcProvider::discover(issuer, client_id, redirect)
             .await
-            .expect("the stub is discovered");
+            .expect("the issuer is discovered");
         Self::build(Some(std::sync::Arc::new(provider))).await
     }
 

@@ -11,8 +11,13 @@ use crate::world::{Cast, World, add_member};
 
 const PASSWORD: &str = "a passphrase of my own";
 
-/// An enrolled member of company A: their address and their authenticator's secret.
+/// An enrolled member of company A: their authenticator's secret.
 async fn enrolled(world: &World, cast: &Cast, email: &str) -> String {
+    enrolled_using(world, cast, email).await.0
+}
+
+/// An enrolled member of company A: their authenticator's secret and the code the enrolment spent.
+async fn enrolled_using(world: &World, cast: &Cast, email: &str) -> (String, String) {
     let account = add_member(world, &cast.company_a, &cast.admin_a, email, "member").await;
     let token = issue(world, &cast.admin_a, &cast.company_a, &account)
         .await
@@ -24,9 +29,10 @@ async fn enrolled(world: &World, cast: &Cast, email: &str) -> String {
         .as_str()
         .expect("a secret")
         .to_owned();
-    let (status, body) = complete(world, &token, PASSWORD, &code(&secret, 0)).await;
+    let spent = code(&secret, 0);
+    let (status, body) = complete(world, &token, PASSWORD, &spent).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    secret
+    (secret, spent)
 }
 
 /// The code of `secret` for the step `ahead` steps after the current one.
@@ -76,15 +82,17 @@ fn challenge(answer: &(StatusCode, Value)) -> String {
 async fn the_password_then_one_code_signs_in_and_signing_out_ends_the_session() {
     let world = World::new().await;
     let cast = Cast::new(&world).await;
-    let secret = enrolled(&world, &cast, "signer@alpha.test").await;
+    let (secret, spent) = enrolled_using(&world, &cast, "signer@alpha.test").await;
     let first = challenge(&password(&world, "Signer@Alpha.test ", PASSWORD).await);
-    let (status, body) = submit(&world, &first, &code(&secret, 0)).await;
+    let (status, body) = submit(&world, &first, &spent).await;
     assert_eq!(
         (status, body["error_code"].as_str()),
         (StatusCode::BAD_REQUEST, Some("wrong_code")),
         "the enrolment already used this step"
     );
-    let (status, body) = submit(&world, &first, &code(&secret, 1)).await;
+    // One code, computed once: recomputing it later could name the step after, which nobody has used.
+    let next = code(&secret, 1);
+    let (status, body) = submit(&world, &first, &next).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let session = body["session"].as_str().expect("a session").to_owned();
     assert_eq!(
@@ -95,12 +103,12 @@ async fn the_password_then_one_code_signs_in_and_signing_out_ends_the_session() 
         StatusCode::OK
     );
     assert_eq!(
-        submit(&world, &first, &code(&secret, 1)).await.0,
+        submit(&world, &first, &next).await.0,
         StatusCode::UNAUTHORIZED,
         "a challenge is used once"
     );
     let second = challenge(&password(&world, "signer@alpha.test", PASSWORD).await);
-    let (status, body) = submit(&world, &second, &code(&secret, 1)).await;
+    let (status, body) = submit(&world, &second, &next).await;
     assert_eq!(
         (status, body["error_code"].as_str()),
         (StatusCode::BAD_REQUEST, Some("wrong_code")),

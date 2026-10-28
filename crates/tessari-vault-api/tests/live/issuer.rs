@@ -44,7 +44,7 @@ pub struct Issuer {
 }
 
 /// `bytes` in unpadded base64url.
-fn b64(bytes: &[u8]) -> String {
+pub fn b64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let sextet = |bits: u32| char::from(ALPHABET[usize::try_from(bits & 0x3f).expect("six bits")]);
     let (mut text, mut buffer, mut held) = (String::new(), 0_u32, 0_u32);
