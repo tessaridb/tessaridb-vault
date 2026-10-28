@@ -6,11 +6,14 @@ use axum::extract::{ConnectInfo, FromRequest, FromRequestParts, Request};
 use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
 use serde::de::DeserializeOwned;
-use tessari_vault_constants::{RATE_PER_ACCOUNT, RATE_PER_ADDRESS};
+use tessari_vault_constants::{RATE_PER_ACCOUNT, RATE_PER_ADDRESS, REASON_MAX_CHARS};
 use tessari_vault_storage::access::Actor;
 
 use crate::ApiError;
 use crate::state::AppState;
+
+/// The header a caller states their reason in.
+const REASON: &str = "vault-reason";
 
 /// The caller a request's bearer token belongs to. A handler that takes one cannot run for an unsigned request.
 pub struct Caller(pub Actor);
@@ -43,8 +46,21 @@ impl FromRequestParts<AppState> for Caller {
             RATE_PER_ACCOUNT,
         )
         .await?;
-        Ok(Self(actor))
+        Ok(Self(actor.with_reason(reason(parts)?)))
     }
+}
+
+/// Why the caller says they act, from the `vault-reason` header: text a person wrote, so at most 500 characters and
+/// no control characters; empty when absent.
+fn reason(parts: &Parts) -> Result<String, ApiError> {
+    let Some(value) = parts.headers.get(REASON) else {
+        return Ok(String::new());
+    };
+    let text = value.to_str().map_err(|_| ApiError::INVALID)?;
+    if text.chars().count() > REASON_MAX_CHARS || text.chars().any(char::is_control) {
+        return Err(ApiError::INVALID);
+    }
+    Ok(text.to_owned())
 }
 
 /// A request with no session, counted against its network address, which it carries: the unsigned routes take this

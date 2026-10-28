@@ -6,6 +6,7 @@
 
 #![cfg(test)]
 
+mod audit;
 mod authenticator;
 mod binary;
 mod enrolment;
@@ -90,6 +91,9 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             row(None, None, hidden)
         }
         ("GET", "/api/companies/{company}/groups/{group}/members") => row(None, None, hidden),
+        ("GET", "/api/companies/{company}/audit" | "/api/companies/{company}/audit/verify") => {
+            row(None, manage, hidden)
+        }
         ("POST", "/api/companies/{company}/members") => row(
             Some(json!({ "email": "new@alpha.test", "name": "New", "role": "member" })),
             manage,

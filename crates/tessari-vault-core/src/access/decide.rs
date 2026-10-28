@@ -48,6 +48,8 @@ pub enum Action {
     AddToGroup,
     /// Take a member out of a department or a team.
     RemoveFromGroup,
+    /// Read the company's audit trail.
+    ReadAudit,
 }
 
 /// Why an action was refused.
@@ -94,7 +96,8 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::RenameGroup
         | Action::DeleteGroup
         | Action::AddToGroup
-        | Action::RemoveFromGroup => Role::Admin,
+        | Action::RemoveFromGroup
+        | Action::ReadAudit => Role::Admin,
     };
     if reaches(held.role, needed) {
         Decision::Permitted

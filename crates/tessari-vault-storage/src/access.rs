@@ -18,6 +18,7 @@ use crate::{Conflict, Error, Result};
 pub struct Actor {
     account: AccountId,
     platform_admin: bool,
+    reason: String,
 }
 
 impl Actor {
@@ -25,7 +26,20 @@ impl Actor {
         Self {
             account,
             platform_admin,
+            reason: String::new(),
         }
+    }
+
+    /// The same caller, saying why they act: the audit trail records it with every change they make.
+    #[must_use]
+    pub fn with_reason(self, reason: String) -> Self {
+        Self { reason, ..self }
+    }
+
+    /// Why the caller says they act; empty when they gave no reason.
+    #[must_use]
+    pub fn reason(&self) -> &str {
+        &self.reason
     }
 
     /// The caller's account.
@@ -114,6 +128,27 @@ pub(crate) async fn standing(
 pub(crate) const GUARD: &str = "\
 THROW 'standing changed' IF (GET memberships:$guard_m).member_role != $guard_role \
 OR (GET memberships:$guard_m).state != 'active' OR (GET groups:$guard_c).state != 'active';";
+
+/// The values [`GUARD`] binds and the audit event's: every guarded change is recorded on the company's trail in the
+/// same transaction, as `action` done to `target`.
+pub(crate) fn recorded(
+    actor: &Actor,
+    company: &CompanyId,
+    standing: &Standing,
+    action: &'static str,
+    target: &str,
+) -> Vec<(String, Value)> {
+    let mut values = guard_values(actor, company, standing);
+    values.extend(crate::audit::binds(
+        actor,
+        &crate::audit::Event {
+            company: company.as_str(),
+            action,
+            target,
+        },
+    ));
+    values
+}
 
 /// The values [`GUARD`] binds, for `standing` as `actor` holds it in `company`.
 pub(crate) fn guard_values(

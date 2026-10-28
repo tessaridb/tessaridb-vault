@@ -19,6 +19,7 @@ use tessari_vault_types::{AccountId, Password, PasswordError};
 
 use crate::access::{bind, thrown};
 use crate::accounts::AccountService;
+use crate::audit::RECORD;
 use crate::sessions::{SessionToken, digest_key, hex};
 use crate::{Error, Result};
 use record::{field, now_secs, unhex};
@@ -94,12 +95,30 @@ impl EnrolmentService {
         }
     }
 
-    /// A new link for `account`, replacing any earlier one. The caller has decided it may be issued.
+    /// A new link for `account`, replacing any earlier one, issued by the operator command: no company's trail holds
+    /// it. The caller has decided it may be issued.
     ///
     /// # Errors
     ///
     /// [`Error::Conflict`] when the account already has a credential; [`Error::Store`] when the store fails.
     pub async fn system_issue(&self, account: &AccountId) -> Result<EnrolmentToken> {
+        self.issue(account, None).await
+    }
+
+    /// A new link for `account`, recorded on a company's trail by the event `audit` binds, in the same transaction.
+    pub(crate) async fn issue_recorded(
+        &self,
+        account: &AccountId,
+        audit: Vec<(String, Value)>,
+    ) -> Result<EnrolmentToken> {
+        self.issue(account, Some(audit)).await
+    }
+
+    async fn issue(
+        &self,
+        account: &AccountId,
+        audit: Option<Vec<(String, Value)>>,
+    ) -> Result<EnrolmentToken> {
         let token = hex(&random::bytes::<ENROLMENT_TOKEN_BYTES>()?);
         let key = digest_key(&token).ok_or(Error::Unreadable {
             record: "enrolment",
@@ -121,26 +140,28 @@ impl EnrolmentService {
             )
             .await?;
         let old = field(earlier.into_iter().next(), "key").unwrap_or_else(|| "none".to_owned());
+        let record = if audit.is_some() { RECORD } else { "" };
+        let mut parameters = audit.unwrap_or_default();
+        parameters.extend([
+            bind("account", account.as_str()),
+            bind("key", key.as_str()),
+            bind("pointer", pointer.as_str()),
+            bind("old", old.as_str()),
+            ("lifetime".to_owned(), lifetime),
+        ]);
+        let script = format!(
+            "BEGIN; \
+             LET $held = SELECT account_id FROM credentials WHERE account_id = $account LIMIT 1; \
+             THROW 'already enrolled' IF array::len($held) > 0; \
+             LET $now = GET enrolments:$pointer; \
+             THROW 'standing changed' IF ($now.key ?? 'none') != $old; \
+             DELETE enrolments:$old; \
+             SET enrolments:$key = {{ account: $account }} EXPIRE $lifetime; \
+             SET enrolments:$pointer = {{ key: $key }} EXPIRE $lifetime; \
+             {record} COMMIT;"
+        );
         self.database
-            .run_at(
-                &self.place,
-                "BEGIN; \
-                 LET $held = SELECT account_id FROM credentials WHERE account_id = $account LIMIT 1; \
-                 THROW 'already enrolled' IF array::len($held) > 0; \
-                 LET $now = GET enrolments:$pointer; \
-                 THROW 'standing changed' IF ($now.key ?? 'none') != $old; \
-                 DELETE enrolments:$old; \
-                 SET enrolments:$key = { account: $account } EXPIRE $lifetime; \
-                 SET enrolments:$pointer = { key: $key } EXPIRE $lifetime; \
-                 COMMIT;",
-                vec![
-                    bind("account", account.as_str()),
-                    bind("key", key.as_str()),
-                    bind("pointer", pointer.as_str()),
-                    bind("old", old.as_str()),
-                    ("lifetime".to_owned(), lifetime),
-                ],
-            )
+            .run_at(&self.place, &script, parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(EnrolmentToken(token))

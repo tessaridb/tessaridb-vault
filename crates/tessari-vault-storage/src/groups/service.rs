@@ -10,7 +10,7 @@ use tessari_vault_types::{AccountId, CompanyId, GroupId, GroupKind, Name};
 
 use super::entity::{Group, GroupEntity};
 use super::repository::{GroupRepository, NewGroup};
-use crate::access::{self, Actor, guard_values};
+use crate::access::{self, Actor, recorded};
 use crate::accounts::{Account, AccountService};
 use crate::{Conflict, Error, Result};
 
@@ -129,7 +129,7 @@ impl GroupService {
         self.repository
             .create(
                 &self.place,
-                guard_values(actor, company, &standing),
+                recorded(actor, company, &standing, "group.create", group.id.as_str()),
                 company,
                 &group,
             )
@@ -165,7 +165,7 @@ impl GroupService {
         self.repository
             .rename(
                 &self.place,
-                guard_values(actor, company, &standing),
+                recorded(actor, company, &standing, "group.rename", group.as_str()),
                 company,
                 group,
                 name,
@@ -202,7 +202,7 @@ impl GroupService {
         self.repository
             .delete(
                 &self.place,
-                guard_values(actor, company, &standing),
+                recorded(actor, company, &standing, "group.delete", group.as_str()),
                 company,
                 &found,
                 &members,
@@ -234,7 +234,13 @@ impl GroupService {
         self.repository
             .add_member(
                 &self.place,
-                guard_values(actor, company, &standing),
+                recorded(
+                    actor,
+                    company,
+                    &standing,
+                    "group.member.add",
+                    &format!("{group}:{account}"),
+                ),
                 company,
                 group,
                 account,
@@ -265,7 +271,13 @@ impl GroupService {
         self.repository
             .remove_member(
                 &self.place,
-                guard_values(actor, company, &standing),
+                recorded(
+                    actor,
+                    company,
+                    &standing,
+                    "group.member.remove",
+                    &format!("{group}:{account}"),
+                ),
                 company,
                 group,
                 account,

@@ -6,6 +6,7 @@ use tessari_vault_infrastructure::custody::{Passwords, SigninKeys, TotpSeal};
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 
 use crate::accounts::{AccountService, TessaridbAccountRepository};
+use crate::audit::AuditService;
 use crate::companies::{CompanyService, TessaridbCompanyRepository};
 use crate::enrolments::EnrolmentService;
 use crate::groups::{GroupService, TessaridbGroupRepository};
@@ -30,6 +31,8 @@ pub struct Custody {
 pub struct Storage {
     /// Accounts.
     pub accounts: Arc<AccountService>,
+    /// The company audit trails.
+    pub audit: Arc<AuditService>,
     /// Companies and memberships.
     pub companies: Arc<CompanyService>,
     /// Enrolment links and the credentials they create.
@@ -114,6 +117,7 @@ impl Storage {
         ));
         Self {
             accounts,
+            audit: Arc::new(AuditService::new(database.clone(), place.clone())),
             companies,
             enrolments,
             groups,

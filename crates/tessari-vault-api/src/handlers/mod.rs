@@ -1,5 +1,6 @@
 //! The handlers: each parses what it was sent into typed values and calls one storage service, which decides.
 
+pub(crate) mod audit;
 pub(crate) mod companies;
 pub(crate) mod enrolment;
 pub(crate) mod groups;

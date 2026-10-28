@@ -4,6 +4,7 @@
 pub mod access;
 pub mod accounts;
 mod answers;
+pub mod audit;
 pub mod companies;
 pub mod enrolments;
 mod error;

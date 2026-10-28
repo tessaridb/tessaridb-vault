@@ -42,6 +42,7 @@ pub(crate) trait CompanyRepository: Send + Sync {
     async fn create(
         &self,
         place: &Place,
+        audit: Vec<(String, Value)>,
         company: &CompanyId,
         name: &Name,
         owner: &Joining,
@@ -61,6 +62,7 @@ pub(crate) trait CompanyRepository: Send + Sync {
     async fn set_state(
         &self,
         place: &Place,
+        audit: Vec<(String, Value)>,
         company: &CompanyId,
         state: CompanyState,
     ) -> Result<()>;

@@ -12,7 +12,7 @@ fn standing(role: Role) -> Standing {
 
 const READS: [Action; 2] = [Action::ReadMembers, Action::ReadGroups];
 
-const MANAGING: [Action; 9] = [
+const MANAGING: [Action; 10] = [
     Action::AddMember { role: Role::Member },
     Action::AddMember { role: Role::Admin },
     Action::ChangeMember {
@@ -25,6 +25,7 @@ const MANAGING: [Action; 9] = [
     Action::DeleteGroup,
     Action::AddToGroup,
     Action::RemoveFromGroup,
+    Action::ReadAudit,
 ];
 
 const OWNER_ONLY: [Action; 5] = [
@@ -166,6 +167,7 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
         Action::DeleteGroup,
         Action::AddToGroup,
         Action::RemoveFromGroup,
+        Action::ReadAudit,
     ];
     for role in roles {
         actions.push(Action::AddMember { role });
@@ -195,6 +197,6 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
             }
         }
     }
-    // 22 actions (7 without a role, 5 per role) under 12 standings.
-    assert_eq!(compared, 22 * 12);
+    // 23 actions (8 without a role, 5 per role) under 12 standings.
+    assert_eq!(compared, 23 * 12);
 }

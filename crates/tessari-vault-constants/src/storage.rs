@@ -32,5 +32,8 @@ pub const RATE_PER_ADDRESS: u32 = 300;
 /// Requests one account may make in one window.
 pub const RATE_PER_ACCOUNT: u32 = 600;
 
+/// The longest reason a caller may state for a change, in characters: a sentence or two, recorded on the audit trail.
+pub const REASON_MAX_CHARS: usize = 500;
+
 /// The length of a rate window, in seconds.
 pub const RATE_WINDOW_SECONDS: u64 = 60;

@@ -12,6 +12,7 @@ use tessari_vault_types::{AccountId, CompanyId, CompanyState, GroupId, Name, Rol
 use super::entity::{CompanyEntity, Membership, MembershipEntity};
 use super::repository::{Change, CompanyRepository, Joining};
 use crate::access::{GUARD, bind, membership_id, thrown};
+use crate::audit::RECORD;
 use crate::{Result, answers};
 
 /// The statement that refuses a change taking away the company's last active owner. Binds `$company`.
@@ -76,22 +77,24 @@ impl CompanyRepository for TessaridbCompanyRepository {
     async fn create(
         &self,
         place: &Place,
+        audit: Vec<(String, Value)>,
         company: &CompanyId,
         name: &Name,
         owner: &Joining,
     ) -> Result<()> {
-        let mut parameters = vec![
+        let mut parameters = audit;
+        parameters.extend([
             bind("company", company.as_str()),
             bind("name", name.as_str()),
             bind("membership", membership_id(company, owner.id()).as_str()),
             bind("account", owner.id().as_str()),
             bind("role", Role::Owner.word()),
-        ];
+        ]);
         let account = joining_statement(owner, &mut parameters);
         let script = format!(
             "BEGIN; {account} \
              CREATE groups:$company = {{ group_id: $company, company: $company, kind: 'company', name: $name, \
-             state: 'active', created: time::now() }}; {NEW_MEMBERSHIP} COMMIT;"
+             state: 'active', created: time::now() }}; {NEW_MEMBERSHIP} {RECORD} COMMIT;"
         );
         self.database
             .run_at(place, &script, parameters)
@@ -154,19 +157,21 @@ impl CompanyRepository for TessaridbCompanyRepository {
     async fn set_state(
         &self,
         place: &Place,
+        audit: Vec<(String, Value)>,
         company: &CompanyId,
         state: CompanyState,
     ) -> Result<()> {
+        let mut parameters = audit;
+        parameters.extend([
+            bind("company", company.as_str()),
+            bind("state", state.word()),
+        ]);
+        let script = format!(
+            "BEGIN; THROW 'not found' IF (GET groups:$company).kind != 'company'; \
+             UPDATE groups:$company SET state = $state; {RECORD} COMMIT;"
+        );
         self.database
-            .run_at(
-                place,
-                "BEGIN; THROW 'not found' IF (GET groups:$company).kind != 'company'; \
-                 UPDATE groups:$company SET state = $state; COMMIT;",
-                vec![
-                    bind("company", company.as_str()),
-                    bind("state", state.word()),
-                ],
-            )
+            .run_at(place, &script, parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -218,7 +223,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
         let account = joining_statement(joining, &mut parameters);
         let script = format!(
             "BEGIN; {GUARD} THROW 'already a member' IF (GET memberships:$membership).company = $company; \
-             {account} {NEW_MEMBERSHIP} COMMIT;"
+             {account} {NEW_MEMBERSHIP} {RECORD} COMMIT;"
         );
         self.database
             .run_at(place, &script, parameters)
@@ -246,7 +251,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
         };
         let script = format!(
             "BEGIN; {GUARD} {TARGET_UNCHANGED} {owners} \
-             UPDATE memberships:$target SET member_role = $role, state = $state; COMMIT;"
+             UPDATE memberships:$target SET member_role = $role, state = $state; {RECORD} COMMIT;"
         );
         self.database
             .run_at(place, &script, parameters)
@@ -275,7 +280,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
         }
         let owners = if loses_owner { KEEPS_AN_OWNER } else { "" };
         let script = format!(
-            "BEGIN; {GUARD} {TARGET_UNCHANGED} {owners} {edges} DELETE memberships:$target; COMMIT;"
+            "BEGIN; {GUARD} {TARGET_UNCHANGED} {owners} {edges} DELETE memberships:$target; {RECORD} COMMIT;"
         );
         self.database
             .run_at(place, &script, parameters)

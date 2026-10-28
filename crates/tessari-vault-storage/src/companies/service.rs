@@ -13,8 +13,9 @@ use tessari_vault_types::{
 
 use super::entity::{Company, CompanyView, Member, Membership};
 use super::repository::{Change, CompanyRepository, Joining};
-use crate::access::{self, Actor, guard_values};
+use crate::access::{self, Actor, recorded};
 use crate::accounts::AccountService;
+use crate::audit;
 use crate::enrolments::{EnrolmentService, EnrolmentToken};
 use crate::{Error, Result};
 
@@ -60,8 +61,19 @@ impl CompanyService {
         actor.platform()?;
         let joining = self.joining(owner_email, owner_name).await?;
         let id = CompanyId::from_random(random::bytes()?);
+        let event = audit::Event {
+            company: id.as_str(),
+            action: "company.create",
+            target: id.as_str(),
+        };
         self.repository
-            .create(&self.place, &id, name, &joining)
+            .create(
+                &self.place,
+                audit::binds(actor, &event),
+                &id,
+                name,
+                &joining,
+            )
             .await?;
         let owner = joining.id().clone();
         Ok((
@@ -120,7 +132,18 @@ impl CompanyService {
         state: CompanyState,
     ) -> Result<()> {
         actor.platform()?;
-        self.repository.set_state(&self.place, company, state).await
+        let event = audit::Event {
+            company: company.as_str(),
+            action: if state == CompanyState::Active {
+                "company.resume"
+            } else {
+                "company.suspend"
+            },
+            target: company.as_str(),
+        };
+        self.repository
+            .set_state(&self.place, audit::binds(actor, &event), company, state)
+            .await
     }
 
     /// The company's members (R2, read).
@@ -196,7 +219,13 @@ impl CompanyService {
         self.repository
             .add_member(
                 &self.place,
-                guard_values(actor, company, &standing),
+                recorded(
+                    actor,
+                    company,
+                    &standing,
+                    "member.add",
+                    joining.id().as_str(),
+                ),
                 company,
                 &joining,
                 role,
@@ -243,7 +272,7 @@ impl CompanyService {
         self.repository
             .change_member(
                 &self.place,
-                guard_values(actor, company, &standing),
+                recorded(actor, company, &standing, "member.change", account.as_str()),
                 &target,
                 change,
             )
@@ -286,7 +315,7 @@ impl CompanyService {
         self.repository
             .remove_member(
                 &self.place,
-                guard_values(actor, company, &standing),
+                recorded(actor, company, &standing, "member.remove", account.as_str()),
                 &target,
                 &groups,
                 loses_owner,
@@ -319,7 +348,19 @@ impl CompanyService {
             },
         )
         .await?;
-        self.enrolments.system_issue(account).await
+        self.enrolments
+            .issue_recorded(
+                account,
+                audit::binds(
+                    actor,
+                    &audit::Event {
+                        company: company.as_str(),
+                        action: "enrolment.issue",
+                        target: account.as_str(),
+                    },
+                ),
+            )
+            .await
     }
 
     /// The membership of `account` in `company`, after the caller has been shown the company at all, so a caller

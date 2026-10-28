@@ -7,6 +7,7 @@ use tessari_vault_types::{AccountId, CompanyId, GroupId, Name};
 use super::entity::{GroupEntity, MemberRow};
 use super::repository::{GroupRepository, NewGroup};
 use crate::access::{GUARD, bind, membership_id, thrown};
+use crate::audit::RECORD;
 use crate::{Result, answers};
 
 /// Refuses unless `$group` is a department or team of `$company`, the answer a group of another company gets.
@@ -106,7 +107,7 @@ impl GroupRepository for TessaridbGroupRepository {
             "BEGIN; {GUARD} {parent_check} \
              CREATE groups:$group = {{ group_id: $group, company: $company, kind: $kind, name: $name, \
              parent: $parent, state: 'active', created: time::now() }}; \
-             RELATE groups:$group->part_of->groups:$parent; COMMIT;"
+             RELATE groups:$group->part_of->groups:$parent; {RECORD} COMMIT;"
         );
         self.write(place, &script, parameters).await
     }
@@ -125,7 +126,7 @@ impl GroupRepository for TessaridbGroupRepository {
             bind("name", name.as_str()),
         ]);
         let script = format!(
-            "BEGIN; {GUARD} {GROUP_OF_COMPANY} UPDATE groups:$group SET name = $name; COMMIT;"
+            "BEGIN; {GUARD} {GROUP_OF_COMPANY} UPDATE groups:$group SET name = $name; {RECORD} COMMIT;"
         );
         self.write(place, &script, parameters).await
     }
@@ -155,7 +156,7 @@ impl GroupRepository for TessaridbGroupRepository {
             "BEGIN; {GUARD} {GROUP_OF_COMPANY} \
              LET $inside = SELECT group_id FROM groups:$group<-part_of<-groups LIMIT 1; \
              THROW 'group not empty' IF array::len($inside) > 0; \
-             {edges} DELETE groups:$group->part_of->groups:$parent; DELETE groups:$group; COMMIT;"
+             {edges} DELETE groups:$group->part_of->groups:$parent; DELETE groups:$group; {RECORD} COMMIT;"
         );
         self.write(place, &script, parameters).await
     }
@@ -177,7 +178,7 @@ impl GroupRepository for TessaridbGroupRepository {
         let script = format!(
             "BEGIN; {GUARD} {GROUP_OF_COMPANY} \
              THROW 'not a member' IF (GET memberships:$membership).state != 'active'; \
-             RELATE accounts:$account->in_group->groups:$group; COMMIT;"
+             RELATE accounts:$account->in_group->groups:$group; {RECORD} COMMIT;"
         );
         self.write(place, &script, parameters).await
     }
@@ -196,7 +197,7 @@ impl GroupRepository for TessaridbGroupRepository {
             bind("account", account.as_str()),
         ]);
         let script = format!(
-            "BEGIN; {GUARD} {GROUP_OF_COMPANY} DELETE accounts:$account->in_group->groups:$group; COMMIT;"
+            "BEGIN; {GUARD} {GROUP_OF_COMPANY} DELETE accounts:$account->in_group->groups:$group; {RECORD} COMMIT;"
         );
         self.write(place, &script, parameters).await
     }

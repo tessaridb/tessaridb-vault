@@ -84,6 +84,9 @@ impl Node {
 pub struct World {
     pub app: Router,
     pub storage: Storage,
+    /// The store and the place the server keeps everything in, for the rows that act behind the server's back.
+    pub database: Database,
+    pub place: Place,
     _node: Node,
 }
 
@@ -161,6 +164,8 @@ impl World {
                 }),
             }),
             storage,
+            database,
+            place,
             _node: node,
         }
     }
