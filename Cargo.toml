@@ -28,6 +28,8 @@ thiserror = "2"
 argon2 = { version = "=0.5.3", default-features = false, features = ["alloc", "zeroize"] }
 # Key material is cleared from memory when its holder drops.
 zeroize = "1"
+# Sign-in passwords are put in Normalization Form C before they are hashed (NIST SP 800-63B-4 §3.1.1.2).
+unicode-normalization = "0.1"
 # The store and its client: the published Rust client, at the release that speaks protocol minor 7 (keyed vaults).
 tessaridb-client = "=0.13.1"
 # Randomness for identifiers and session tokens, and the digest a session is stored under.

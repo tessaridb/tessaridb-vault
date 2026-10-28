@@ -16,9 +16,16 @@ doctest = false
 tessari-vault-constants.workspace = true
 tessaridb-client.workspace = true
 ring.workspace = true
-tokio = { workspace = true, features = ["sync", "time"] }
+# The server's verifier needs the PHC string form the browser build leaves out.
+argon2 = { workspace = true, features = ["password-hash"] }
+unicode-normalization.workspace = true
+zeroize.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true

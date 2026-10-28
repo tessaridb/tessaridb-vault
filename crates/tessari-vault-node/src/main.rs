@@ -7,6 +7,7 @@ use std::process::ExitCode;
 use tessari_vault_api::{AppState, router};
 use tessari_vault_constants::STORE_CONNECTIONS;
 use tessari_vault_infrastructure::config::NodeConfig;
+use tessari_vault_infrastructure::custody::ServiceKey;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_observability::init_tracing;
 use tessari_vault_storage::{Storage, migrate};
@@ -49,6 +50,8 @@ enum StartError {
 
 async fn run() -> Result<&'static str, StartError> {
     let config = NodeConfig::from_lookup(|key| std::env::var(key).ok())?;
+    // Read before anything else is reached: a missing or open key file refuses the start, naming the variable.
+    let _service_key = ServiceKey::load(&config.service_key_file)?;
     let place = Place::new(config.namespace.as_str(), config.database.as_str())?;
     let database = Database::new(config.store.clone(), STORE_CONNECTIONS)?;
     migrate(&database, &place).await?;

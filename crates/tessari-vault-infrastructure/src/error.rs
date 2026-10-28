@@ -36,6 +36,12 @@ pub enum Error {
     /// The operating system's random source failed.
     #[error("no randomness is available")]
     Randomness,
+    /// A key could not be derived or a password could not be hashed or checked.
+    #[error("key custody failed: {reason}")]
+    Custody {
+        /// What failed; never key or password material.
+        reason: &'static str,
+    },
 }
 
 impl Error {

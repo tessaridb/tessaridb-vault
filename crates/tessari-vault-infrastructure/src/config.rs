@@ -1,6 +1,7 @@
 //! The node's settings, read from the environment once at start-up.
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use crate::tessaridb::StoreConfig;
 use crate::{Error, Result};
@@ -18,13 +19,15 @@ pub struct NodeConfig {
     pub listen: SocketAddr,
     /// The address and name of the platform admin to ensure at start-up, when set.
     pub platform_admin: Option<(String, String)>,
+    /// The file holding the service key (K_svc), read once at start-up.
+    pub service_key_file: PathBuf,
 }
 
 impl NodeConfig {
     /// The settings the variables `lookup` answers hold.
     ///
-    /// `TESSARIDB_VAULT_STORE` (wire `host:port`), `TESSARIDB_VAULT_STORE_USER` and `TESSARIDB_VAULT_STORE_PASSWORD`
-    /// are required; `TESSARIDB_VAULT_STORE_AUTHORITY` is a PEM file for a store reached over TLS;
+    /// `TESSARIDB_VAULT_STORE` (wire `host:port`), `TESSARIDB_VAULT_STORE_USER`, `TESSARIDB_VAULT_STORE_PASSWORD` and
+    /// `TESSARIDB_VAULT_SERVICE_KEY_FILE` are required; `TESSARIDB_VAULT_STORE_AUTHORITY` is a PEM file for a store reached over TLS;
     /// `TESSARIDB_VAULT_NAMESPACE` (default `vault`), `TESSARIDB_VAULT_DATABASE` (default `main`),
     /// `TESSARIDB_VAULT_LISTEN` (default `127.0.0.1:8080`); `TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL` with
     /// `TESSARIDB_VAULT_PLATFORM_ADMIN_NAME`, both or neither.
@@ -81,6 +84,7 @@ impl NodeConfig {
             database: lookup("TESSARIDB_VAULT_DATABASE").unwrap_or_else(|| "main".to_owned()),
             listen,
             platform_admin,
+            service_key_file: required("TESSARIDB_VAULT_SERVICE_KEY_FILE")?.into(),
         })
     }
 }
