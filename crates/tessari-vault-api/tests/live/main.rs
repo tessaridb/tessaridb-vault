@@ -1,10 +1,12 @@
 //! The live suite: the server's router over a real TessariDB node, called directly with no interface in the loop.
 //!
-//! Run with `TESSARIDB_BIN=<engine binary> cargo test -p tessari-vault-api --test live -- --ignored --skip oauth_e2e`;
+//! Run with `TESSARIDB_BIN=<engine binary> TESSARIDB_VAULT_BIN=target/debug/tessaridb-vault cargo test -p
+//! tessari-vault-api --test live -- --ignored --skip oauth_e2e` after `cargo build -p tessari-vault-node`;
 //! `oauth_e2e` also needs a running TessariDB OAuth server and runs on its own (see that module).
 
 #![cfg(test)]
 
+mod binary;
 mod enrolment;
 mod issuer;
 mod oauth_e2e;

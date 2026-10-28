@@ -20,8 +20,8 @@ use tower::ServiceExt;
 
 use crate::issuer::{CLIENT_ID, REDIRECT};
 
-const STORE_USER: &str = "vault_test";
-const STORE_PASSWORD: &str = "a-test-password-for-the-live-suite";
+pub(crate) const STORE_USER: &str = "vault_test";
+pub(crate) const STORE_PASSWORD: &str = "a-test-password-for-the-live-suite";
 
 static TURN: AtomicU32 = AtomicU32::new(0);
 
