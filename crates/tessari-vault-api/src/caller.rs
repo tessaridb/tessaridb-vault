@@ -47,8 +47,9 @@ impl FromRequestParts<AppState> for Caller {
     }
 }
 
-/// A request with no session, counted against its address: the unsigned routes take this instead of [`Caller`].
-pub struct Unsigned;
+/// A request with no session, counted against its network address, which it carries: the unsigned routes take this
+/// instead of [`Caller`].
+pub struct Unsigned(pub String);
 
 impl FromRequestParts<AppState> for Unsigned {
     type Rejection = ApiError;
@@ -57,12 +58,11 @@ impl FromRequestParts<AppState> for Unsigned {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        count_address(parts, state).await?;
-        Ok(Self)
+        Ok(Self(count_address(parts, state).await?))
     }
 }
 
-async fn count_address(parts: &Parts, state: &AppState) -> Result<(), ApiError> {
+async fn count_address(parts: &Parts, state: &AppState) -> Result<String, ApiError> {
     let address = parts
         .extensions
         .get::<ConnectInfo<SocketAddr>>()
@@ -70,7 +70,8 @@ async fn count_address(parts: &Parts, state: &AppState) -> Result<(), ApiError> 
             || "unknown".to_owned(),
             |ConnectInfo(peer)| peer.ip().to_string(),
         );
-    within(state, &format!("address:{address}"), RATE_PER_ADDRESS).await
+    within(state, &format!("address:{address}"), RATE_PER_ADDRESS).await?;
+    Ok(address)
 }
 
 /// Count one request against `key`. A store that cannot count refuses the request: an unbounded endpoint is the

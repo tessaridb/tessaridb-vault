@@ -16,6 +16,9 @@ const PEPPER_HEX: &str = "54f9546a33ae886c6b4013b86f2949f053c4a5800d56a5365206ca
 /// The same under `tessaridb-vault/v1/totp`, computed the same independent way.
 const TOTP_KEY_HEX: &str = "64149a1d501c3b4cc680a3a78bb73ca5bc6e22787485c1a35bb50380f95d5ac4";
 
+/// The same under `tessaridb-vault/v1/sign-in`.
+const SIGNIN_KEY_HEX: &str = "bd881b8421cc435299bb81e607f688754021c592755d59d546924765eb09180b";
+
 /// A key file holding `text` with `mode`, in a path nobody else uses.
 pub(in crate::custody) fn file(text: &str, mode: u32) -> PathBuf {
     let turn = FILES.fetch_add(1, Ordering::Relaxed);
@@ -44,6 +47,10 @@ fn each_derived_key_is_the_independent_hkdf_of_the_key_under_its_label() {
         assert_eq!(
             hex(key.totp_key().expect("derived").as_slice()),
             TOTP_KEY_HEX
+        );
+        assert_eq!(
+            hex(key.signin_key().expect("derived").as_slice()),
+            SIGNIN_KEY_HEX
         );
     }
     let other = ServiceKey::load(&file(&"ff".repeat(32), 0o400)).expect("a key file");

@@ -6,7 +6,7 @@
 //! expiry (dogfood DB-V12). Completing it creates the credential and consumes the link in one transaction, so a link
 //! works once and an account is enrolled once.
 
-mod record;
+pub(crate) mod record;
 
 use std::sync::Arc;
 

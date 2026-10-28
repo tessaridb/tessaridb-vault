@@ -6,6 +6,7 @@
 
 mod enrolment;
 mod rules;
+mod sign_in;
 mod world;
 
 use axum::http::{Method, StatusCode};
@@ -51,11 +52,11 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         })
     };
     // The unsigned routes: the token in the body is the credential, so a token that is not one is the refusal.
-    let by_token = |body: Value| {
+    let by_token = |body: Value, unsigned: StatusCode| {
         Some(Probe {
             path: path.clone(),
             body: Some(body),
-            unsigned: StatusCode::NOT_FOUND,
+            unsigned,
             low: None,
             cross: None,
         })
@@ -87,9 +88,21 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ("POST", "/api/companies/{company}/members/{account}/enrolment") => {
             row(None, manage, hidden)
         }
-        ("POST", "/api/enrolment/begin") => by_token(json!({ "token": "cd".repeat(32) })),
+        ("POST", "/api/sign-in") => by_token(
+            json!({ "email": "nobody@alpha.test", "password": "a long enough password" }),
+            StatusCode::UNAUTHORIZED,
+        ),
+        ("POST", "/api/sign-in/code") => by_token(
+            json!({ "challenge": "cd".repeat(32), "code": "000000" }),
+            StatusCode::UNAUTHORIZED,
+        ),
+        ("DELETE", "/api/session") => row(None, None, None),
+        ("POST", "/api/enrolment/begin") => {
+            by_token(json!({ "token": "cd".repeat(32) }), StatusCode::NOT_FOUND)
+        }
         ("POST", "/api/enrolment/complete") => by_token(
             json!({ "token": "cd".repeat(32), "password": "a long enough password", "code": "000000" }),
+            StatusCode::NOT_FOUND,
         ),
         ("POST", "/api/companies/{company}/groups") => row(
             Some(json!({ "kind": "department", "name": "Sales" })),

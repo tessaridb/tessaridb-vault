@@ -1,17 +1,17 @@
-//! Reading an enrolment record back: its string fields, the hex its sealed seed is kept in, and the clock.
+//! Reading a stored record back: its string fields, the hex a sealed seed is kept in, and the clock.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tessari_vault_infrastructure::tessaridb::{Answer, Value};
 
 /// Seconds since the Unix epoch, for the TOTP step; a clock before 1970 reads as 0 and no code matches.
-pub(super) fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs())
 }
 
-pub(super) fn unhex(text: &str) -> Option<Vec<u8>> {
+pub(crate) fn unhex(text: &str) -> Option<Vec<u8>> {
     let digit = |byte: u8| {
         char::from(byte)
             .to_digit(16)

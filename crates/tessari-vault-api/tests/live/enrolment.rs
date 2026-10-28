@@ -9,7 +9,7 @@ use tessari_vault_core::totp;
 use crate::world::{Cast, World, add_member};
 
 /// `text` decoded from unpadded RFC 4648 base32.
-fn base32(text: &str) -> Vec<u8> {
+pub(crate) fn base32(text: &str) -> Vec<u8> {
     let (mut bytes, mut buffer, mut held) = (Vec::new(), 0_u32, 0_u32);
     for character in text.bytes() {
         let value = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
@@ -28,7 +28,7 @@ fn base32(text: &str) -> Vec<u8> {
 }
 
 /// The authenticator's code for `secret` now, and a code that is not it.
-fn codes(secret: &str) -> (String, String) {
+pub(crate) fn codes(secret: &str) -> (String, String) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("after 1970")
@@ -40,7 +40,12 @@ fn codes(secret: &str) -> (String, String) {
     )
 }
 
-async fn issue(world: &World, by: &str, company: &str, account: &str) -> (StatusCode, Value) {
+pub(crate) async fn issue(
+    world: &World,
+    by: &str,
+    company: &str,
+    account: &str,
+) -> (StatusCode, Value) {
     world
         .call(
             Method::POST,
@@ -51,7 +56,7 @@ async fn issue(world: &World, by: &str, company: &str, account: &str) -> (Status
         .await
 }
 
-async fn begin(world: &World, token: &str) -> (StatusCode, Value) {
+pub(crate) async fn begin(world: &World, token: &str) -> (StatusCode, Value) {
     world
         .call(
             Method::POST,
@@ -62,7 +67,12 @@ async fn begin(world: &World, token: &str) -> (StatusCode, Value) {
         .await
 }
 
-async fn complete(world: &World, token: &str, password: &str, code: &str) -> (StatusCode, Value) {
+pub(crate) async fn complete(
+    world: &World,
+    token: &str,
+    password: &str,
+    code: &str,
+) -> (StatusCode, Value) {
     world
         .call(
             Method::POST,

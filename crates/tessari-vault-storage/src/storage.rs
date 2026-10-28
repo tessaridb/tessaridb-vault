@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use tessari_vault_infrastructure::custody::{Passwords, TotpSeal};
+use tessari_vault_infrastructure::custody::{Passwords, SigninKeys, TotpSeal};
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 
 use crate::accounts::{AccountService, TessaridbAccountRepository};
@@ -10,7 +10,18 @@ use crate::companies::{CompanyService, TessaridbCompanyRepository};
 use crate::enrolments::EnrolmentService;
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::sessions::SessionService;
+use crate::signin::{SignInParts, SignInService};
 use crate::throttle::ThrottleService;
+
+/// The keys the service key made, which the storage services sign people in and enrol them with.
+pub struct Custody {
+    /// The sign-in password verifier.
+    pub passwords: Arc<Passwords>,
+    /// The seal TOTP seeds are kept under.
+    pub seal: Arc<TotpSeal>,
+    /// The names sign-in attempts are counted under.
+    pub signin_keys: SigninKeys,
+}
 
 /// The services the server reaches its records through.
 #[derive(Clone)]
@@ -25,19 +36,21 @@ pub struct Storage {
     pub groups: Arc<GroupService>,
     /// Sessions.
     pub sessions: Arc<SessionService>,
+    /// Own sign-in.
+    pub sign_in: Arc<SignInService>,
     /// Request counters.
     pub throttle: Arc<ThrottleService>,
 }
 
 impl Storage {
-    /// Every service, over `database`, working at `place`, with the verifier and the seal the service key made.
+    /// Every service, over `database`, working at `place`, with the keys the service key made.
     #[must_use]
-    pub fn new(
-        database: &Database,
-        place: &Place,
-        passwords: Arc<Passwords>,
-        seal: Arc<TotpSeal>,
-    ) -> Self {
+    pub fn new(database: &Database, place: &Place, custody: Custody) -> Self {
+        let Custody {
+            passwords,
+            seal,
+            signin_keys,
+        } = custody;
         let accounts = Arc::new(AccountService::new(
             Arc::new(TessaridbAccountRepository::new(database.clone())),
             place.clone(),
@@ -51,8 +64,8 @@ impl Storage {
             database.clone(),
             place.clone(),
             Arc::clone(&accounts),
-            passwords,
-            seal,
+            Arc::clone(&passwords),
+            Arc::clone(&seal),
             Arc::clone(&sessions),
         ));
         let companies = Arc::new(CompanyService::new(
@@ -69,12 +82,25 @@ impl Storage {
             place.clone(),
         ));
         let throttle = Arc::new(ThrottleService::new(database.clone(), place.clone()));
+        let sign_in = Arc::new(SignInService::new(
+            database.clone(),
+            place.clone(),
+            SignInParts {
+                accounts: Arc::clone(&accounts),
+                passwords,
+                seal,
+                keys: signin_keys,
+                sessions: Arc::clone(&sessions),
+                throttle: Arc::clone(&throttle),
+            },
+        ));
         Self {
             accounts,
             companies,
             enrolments,
             groups,
             sessions,
+            sign_in,
             throttle,
         }
     }

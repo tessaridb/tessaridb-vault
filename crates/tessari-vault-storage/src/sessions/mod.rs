@@ -94,6 +94,24 @@ impl SessionService {
         Ok(SessionToken(token))
     }
 
+    /// End the session `token` names; a token of the wrong shape or an unknown one ends nothing.
+    ///
+    /// # Errors
+    ///
+    /// When the store fails.
+    pub async fn end(&self, token: &str) -> Result<()> {
+        if let Some(key) = digest_key(token) {
+            self.database
+                .run_at(
+                    &self.place,
+                    "DELETE sessions:$key;",
+                    vec![bind("key", key.as_str())],
+                )
+                .await?;
+        }
+        Ok(())
+    }
+
     /// The caller a token belongs to: `None` for a token of the wrong shape, an unknown or expired one, or one
     /// whose account is gone or suspended. It is one answer, so a caller cannot tell which.
     ///

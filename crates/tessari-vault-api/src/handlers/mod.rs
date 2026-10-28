@@ -4,6 +4,7 @@ pub(crate) mod companies;
 pub(crate) mod enrolment;
 pub(crate) mod groups;
 pub(crate) mod members;
+pub(crate) mod sign_in;
 
 use serde::Serialize;
 use tessari_vault_storage::accounts::Account;

@@ -27,6 +27,9 @@ const PEPPER_LABEL: &[u8] = b"tessaridb-vault/v1/pepper";
 /// The label of the key TOTP seeds are sealed under at rest (KT).
 const TOTP_LABEL: &[u8] = b"tessaridb-vault/v1/totp";
 
+/// The label of the key sign-in counters are named under, so the counters hold no address and no password.
+const SIGNIN_LABEL: &[u8] = b"tessaridb-vault/v1/sign-in";
+
 /// The service key, held only in memory and cleared when dropped.
 pub struct ServiceKey(Zeroizing<[u8; SERVICE_KEY_BYTES]>);
 
@@ -100,6 +103,15 @@ impl ServiceKey {
     /// [`Error::Custody`] when the derivation fails.
     pub fn totp_key(&self) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {
         self.derive(TOTP_LABEL)
+    }
+
+    /// The sign-in key: the HMAC key sign-in throttle counters are named under.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Custody`] when the derivation fails.
+    pub fn signin_key(&self) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {
+        self.derive(SIGNIN_LABEL)
     }
 
     fn derive(&self, label: &[u8]) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {

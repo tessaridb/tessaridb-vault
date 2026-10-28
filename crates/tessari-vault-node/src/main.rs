@@ -14,10 +14,12 @@ use tessari_vault_constants::{
     PASSWORD_HASH_PARALLELISM_FLOOR, STORE_CONNECTIONS,
 };
 use tessari_vault_infrastructure::config::NodeConfig;
-use tessari_vault_infrastructure::custody::{PasswordCost, Passwords, ServiceKey, TotpSeal};
+use tessari_vault_infrastructure::custody::{
+    PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal,
+};
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_observability::init_tracing;
-use tessari_vault_storage::{Storage, migrate};
+use tessari_vault_storage::{Custody, Storage, migrate};
 use tessari_vault_types::{Email, Name};
 use tokio::signal::unix::{SignalKind, signal};
 
@@ -66,7 +68,7 @@ async fn run() -> Result<&'static str, StartError> {
     }
     let config = NodeConfig::from_lookup(|key| std::env::var(key).ok())?;
     // Read before anything else is reached: a missing or open key file refuses the start, naming the variable. The
-    // key is dropped, and cleared, once the two keys derived from it exist.
+    // key is dropped, and cleared, once the keys derived from it exist.
     let service_key = ServiceKey::load(&config.service_key_file)?;
     let cost = PasswordCost::new(
         PASSWORD_HASH_MEMORY_KIB_FLOOR,
@@ -75,11 +77,20 @@ async fn run() -> Result<&'static str, StartError> {
     )?;
     let passwords = Passwords::new(&service_key, cost, PASSWORD_CONCURRENCY_DEFAULT)?;
     let seal = Arc::new(TotpSeal::new(&service_key)?);
+    let signin_keys = SigninKeys::new(&service_key)?;
     drop(service_key);
     let place = Place::new(config.namespace.as_str(), config.database.as_str())?;
     let database = Database::new(config.store.clone(), STORE_CONNECTIONS)?;
     migrate(&database, &place).await?;
-    let storage = Storage::new(&database, &place, passwords, seal);
+    let storage = Storage::new(
+        &database,
+        &place,
+        Custody {
+            passwords,
+            seal,
+            signin_keys,
+        },
+    );
     let mut platform_admin = None;
     if let Some((email, name)) = &config.platform_admin {
         let email = Email::parse(email).map_err(|_| StartError::PlatformAdmin("address"))?;

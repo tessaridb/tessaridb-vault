@@ -10,9 +10,10 @@ mod error;
 pub mod groups;
 mod schema;
 pub mod sessions;
+pub mod signin;
 mod storage;
 pub mod throttle;
 
 pub use error::{Conflict, Error, Result};
 pub use schema::migrate;
-pub use storage::Storage;
+pub use storage::{Custody, Storage};

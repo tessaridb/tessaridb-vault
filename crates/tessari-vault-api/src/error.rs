@@ -51,6 +51,12 @@ impl ApiError {
         "invalid_request",
         "the request is malformed",
     );
+    /// Sign-in did not succeed; the answer is the same whatever the reason, so it says nothing about the account.
+    pub const SIGN_IN_FAILED: Self = Self::new(
+        StatusCode::UNAUTHORIZED,
+        "sign_in_failed",
+        "the address or the password is not right",
+    );
     /// The one-time code is not the authenticator's current code.
     pub const WRONG_CODE: Self = Self::new(
         StatusCode::BAD_REQUEST,

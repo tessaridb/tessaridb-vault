@@ -9,9 +9,11 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use serde_json::{Value, json};
 use tessari_vault_api::{AppState, router};
-use tessari_vault_infrastructure::custody::{PasswordCost, Passwords, ServiceKey, TotpSeal};
+use tessari_vault_infrastructure::custody::{
+    PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal,
+};
 use tessari_vault_infrastructure::tessaridb::{Database, Place, StoreConfig};
-use tessari_vault_storage::{Storage, migrate};
+use tessari_vault_storage::{Custody, Storage, migrate};
 use tessari_vault_types::{AccountId, Email, Name};
 use tower::ServiceExt;
 
@@ -114,7 +116,16 @@ impl World {
         migrate(&database, &place)
             .await
             .expect("the schema applies a second time unchanged");
-        let storage = Storage::new(&database, &place, passwords, seal);
+        let signin_keys = SigninKeys::new(&service_key).expect("the sign-in keys");
+        let storage = Storage::new(
+            &database,
+            &place,
+            Custody {
+                passwords,
+                seal,
+                signin_keys,
+            },
+        );
         Self {
             app: router(AppState {
                 storage: storage.clone(),

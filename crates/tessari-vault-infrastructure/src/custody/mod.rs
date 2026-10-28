@@ -3,8 +3,10 @@
 
 mod passwords;
 mod service_key;
+mod signin_keys;
 mod totp_seal;
 
 pub use passwords::{PasswordCost, Passwords, Verdict};
 pub use service_key::ServiceKey;
+pub use signin_keys::SigninKeys;
 pub use totp_seal::TotpSeal;

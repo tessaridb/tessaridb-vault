@@ -46,3 +46,18 @@ pub const ENROLMENT_LIFETIME_HOURS: u32 = 24;
 
 /// The length of an enrolment token in bytes: 256 bits, so its digest needs no salt and no slow hash.
 pub const ENROLMENT_TOKEN_BYTES: usize = 32;
+
+/// How long a sign-in challenge waits for its code, in minutes, after the password was right.
+pub const SIGN_IN_CHALLENGE_MINUTES: u32 = 5;
+
+/// Wrong codes a challenge takes before it ends; the person then starts again with the password.
+pub const SIGN_IN_CODE_MISSES: u32 = 5;
+
+/// Sign-in attempts per window for one address (the account key), known or not.
+pub const SIGN_IN_PER_ACCOUNT: u32 = 10;
+
+/// Sign-in attempts per window from one network address.
+pub const SIGN_IN_PER_ADDRESS: u32 = 20;
+
+/// Attempts per window with one address-and-password pair: a breached pair tried again and again.
+pub const SIGN_IN_PER_PAIR: u32 = 3;
