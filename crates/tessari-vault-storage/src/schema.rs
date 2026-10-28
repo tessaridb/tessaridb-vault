@@ -53,7 +53,11 @@ DEFINE INDEX IF NOT EXISTS by_id ON records FIELDS record_id UNIQUE; \
 DEFINE INDEX IF NOT EXISTS by_author ON records FIELDS company, author; \
 DEFINE TABLE IF NOT EXISTS revisions (record string, revision int, author string, author_key string, signature string, \
 size int, created int); \
-DEFINE INDEX IF NOT EXISTS by_record ON revisions FIELDS record;";
+DEFINE INDEX IF NOT EXISTS by_record ON revisions FIELDS record; \
+DEFINE TABLE IF NOT EXISTS record_types (type_id string, company string, allowed_roles array, definition string, \
+created int); \
+DEFINE INDEX IF NOT EXISTS by_id ON record_types FIELDS type_id UNIQUE; \
+DEFINE INDEX IF NOT EXISTS by_company ON record_types FIELDS company;";
 
 /// Declare the namespace and database of `place` and everything in them that is missing.
 ///

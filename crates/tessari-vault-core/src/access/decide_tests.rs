@@ -1,4 +1,4 @@
-use tessari_vault_types::{CompanyState, MemberState, Role};
+use tessari_vault_types::{CompanyState, MemberState, Role, Roles};
 
 use super::{Action, Decision, Refusal, Standing, decide};
 
@@ -14,12 +14,18 @@ const READS: [Action; 2] = [Action::ReadMembers, Action::ReadGroups];
 
 /// What every active member may do with records; which records is decided on the record itself.
 const RECORDS: [Action; 3] = [
-    Action::CreateRecord,
+    Action::CreateRecord {
+        allowed: Roles::ALL,
+    },
     Action::ReadRecord,
     Action::ReviseRecord,
 ];
 
-const MANAGING: [Action; 10] = [
+const MANAGING: [Action; 12] = [
+    Action::DefineRecordType,
+    Action::CreateRecord {
+        allowed: Roles::MANAGERS,
+    },
     Action::AddMember { role: Role::Member },
     Action::AddMember { role: Role::Admin },
     Action::ChangeMember {
@@ -109,6 +115,24 @@ fn every_active_member_keeps_records() {
             assert_eq!(decide(Some(&standing(role)), action), Decision::Permitted);
         }
     }
+}
+
+#[test]
+fn a_record_of_a_restricted_type_is_created_only_by_the_roles_that_reach_it() {
+    // A role reaches what every role below it may do, so a type allowed to admins is allowed to owners too.
+    let admins = Roles::parse(["admin"]).expect("a set");
+    let action = Action::CreateRecord { allowed: admins };
+    for role in [Role::Owner, Role::Admin] {
+        assert_eq!(
+            decide(Some(&standing(role)), action),
+            Decision::Permitted,
+            "{role:?}"
+        );
+    }
+    assert_eq!(
+        decide(Some(&standing(Role::Member)), action),
+        Decision::Refused(Refusal::Forbidden)
+    );
 }
 
 #[test]

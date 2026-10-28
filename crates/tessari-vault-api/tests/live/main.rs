@@ -15,6 +15,7 @@ mod keyed_vault;
 mod oauth_e2e;
 mod oidc;
 mod passkeys;
+mod record_types;
 mod records;
 mod rules;
 mod sign_in;
@@ -172,6 +173,12 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             row(Some(world::sealed_record()), None, hidden)
         }
         ("GET", "/api/companies/{company}/records/{record}") => row(None, not_author, hidden),
+        ("GET", "/api/companies/{company}/record-types") => row(None, None, hidden),
+        ("POST", "/api/companies/{company}/record-types") => row(
+            Some(json!({ "allowed_roles": ["member"], "definition": cast.record_a })),
+            manage,
+            hidden,
+        ),
         ("PUT", "/api/companies/{company}/records/{record}") => {
             let mut body = world::sealed_record();
             body["revision"] = json!(1);

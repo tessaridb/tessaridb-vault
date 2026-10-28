@@ -7,19 +7,21 @@ use std::sync::Arc;
 use tessari_vault_core::access::Action;
 use tessari_vault_infrastructure::random;
 use tessari_vault_infrastructure::tessaridb::{Database, Place, RefusalClass};
-use tessari_vault_types::{CompanyId, KeyId, RecordId, RecordType};
+use tessari_vault_types::{CompanyId, KeyId, RecordId, RecordType, Roles};
 
 use super::entity::{OpenedRecord, Record, RecordEntity, Sealed};
 use super::repository::{RecordRepository, Write};
 use super::vault::RecordVaults;
 use crate::access::{self, Actor, recorded};
 use crate::audit::epoch_seconds;
+use crate::record_types::RecordTypeService;
 use crate::{Conflict, Error, Result};
 
 /// Records and their revisions.
 pub struct RecordService {
     repository: Arc<dyn RecordRepository>,
     vaults: Arc<RecordVaults>,
+    types: Arc<RecordTypeService>,
     database: Database,
     place: Place,
 }
@@ -28,12 +30,14 @@ impl RecordService {
     pub(crate) fn new(
         repository: Arc<dyn RecordRepository>,
         vaults: Arc<RecordVaults>,
+        types: Arc<RecordTypeService>,
         database: Database,
         place: Place,
     ) -> Self {
         Self {
             repository,
             vaults,
+            types,
             database,
             place,
         }
@@ -74,14 +78,39 @@ impl RecordService {
         key_id: &KeyId,
         sealed: &Sealed,
     ) -> Result<Record> {
+        let (allowed, company_type) = match record_type {
+            // Built-in types always carry their roles; the narrower set is the fallback that refuses.
+            RecordType::BuiltIn(_) => (
+                record_type.built_in_roles().unwrap_or(Roles::MANAGERS),
+                None,
+            ),
+            RecordType::Company(id) => {
+                // Visibility first, so a caller outside the company learns nothing about its types.
+                access::authorize(
+                    &self.database,
+                    &self.place,
+                    actor,
+                    company,
+                    Action::ReadRecord,
+                )
+                .await?;
+                let roles = self
+                    .types
+                    .roles(company, id)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                (roles, Some((id, roles)))
+            }
+        };
         let standing = access::authorize(
             &self.database,
             &self.place,
             actor,
             company,
-            Action::CreateRecord,
+            Action::CreateRecord { allowed },
         )
         .await?;
+        let type_text = record_type.to_string();
         let id = RecordId::from_random(random::bytes()?);
         let now = epoch_seconds();
         self.repository
@@ -92,12 +121,13 @@ impl RecordService {
                     company,
                     record: &id,
                     revision: 1,
-                    record_type: record_type.as_str(),
+                    record_type: &type_text,
                     key_id,
                     author: actor.account(),
                     sealed,
                     now,
                     vault_key: self.vaults.key(company)?,
+                    company_type,
                 },
             )
             .await?;
@@ -192,6 +222,7 @@ impl RecordService {
                     sealed,
                     now,
                     vault_key: self.vaults.key(company)?,
+                    company_type: None,
                 },
                 expected,
             )

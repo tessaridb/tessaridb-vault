@@ -13,6 +13,7 @@ use super::repository::{RecordRepository, Write};
 use super::vault::RecordVaults;
 use crate::access::{GUARD, bind, thrown};
 use crate::audit::RECORD;
+use crate::record_types::role_words;
 use crate::{Error, Result, answers};
 
 /// Refuses unless `$record` is `$company`'s and `$author` wrote it, the answer a record that does not exist gets.
@@ -142,8 +143,21 @@ impl RecordRepository for TessaridbRecordRepository {
         write: Write<'_>,
     ) -> Result<()> {
         let revision = revision_statements(&RecordVaults::name(write.company));
+        let mut guard = guard;
+        // A company type narrowed after the decision refuses the write, as a changed standing does.
+        let type_unchanged = match write.company_type {
+            Some((id, roles)) => {
+                guard.extend([
+                    bind("type_id", id.as_str()),
+                    ("type_roles".to_owned(), role_words(roles.words())),
+                ]);
+                "THROW 'standing changed' IF (GET record_types:$type_id).allowed_roles != $type_roles \
+                 OR (GET record_types:$type_id).company != $company;"
+            }
+            None => "",
+        };
         let script = format!(
-            "BEGIN; {GUARD} \
+            "BEGIN; {GUARD} {type_unchanged} \
              CREATE records:$record = {{ record_id: $record, company: $company, record_type: $type, \
              revision: $revision, key_id: $key_id, author: $author, state: 'active', created: $now, \
              updated: $now }}; {revision} {RECORD} COMMIT;"

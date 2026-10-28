@@ -12,6 +12,7 @@ use crate::enrolments::EnrolmentService;
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::identities::IdentityService;
 use crate::passkeys::PasskeyService;
+use crate::record_types::{RecordTypeService, TessaridbRecordTypeRepository};
 use crate::records::{RecordService, RecordVaults, TessaridbRecordRepository};
 use crate::sessions::SessionService;
 use crate::signin::{SignInParts, SignInService};
@@ -46,6 +47,8 @@ pub struct Storage {
     pub identities: Arc<IdentityService>,
     /// Passkeys and their ceremonies.
     pub passkeys: Arc<PasskeyService>,
+    /// Record types the company defined.
+    pub record_types: Arc<RecordTypeService>,
     /// Records and their revisions.
     pub records: Arc<RecordService>,
     /// Sessions.
@@ -110,9 +113,15 @@ impl Storage {
             Arc::clone(&accounts),
             Arc::clone(&sessions),
         ));
+        let record_types = Arc::new(RecordTypeService::new(
+            Arc::new(TessaridbRecordTypeRepository::new(database.clone())),
+            database.clone(),
+            place.clone(),
+        ));
         let records = Arc::new(RecordService::new(
             Arc::new(TessaridbRecordRepository::new(database.clone())),
             Arc::clone(&vaults),
+            Arc::clone(&record_types),
             database.clone(),
             place.clone(),
         ));
@@ -137,6 +146,7 @@ impl Storage {
             groups,
             identities,
             passkeys,
+            record_types,
             records,
             sessions,
             sign_in,

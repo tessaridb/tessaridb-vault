@@ -90,6 +90,10 @@ identifier!(
     RecordId
 );
 identifier!(
+    /// A record type a company defined.
+    RecordTypeId
+);
+identifier!(
     /// A key's 16-byte id as the browser names it: a record key's, or a member's agreement key's.
     KeyId
 );

@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use tessari_vault_infrastructure::tessaridb::{Place, Value, VaultKey};
-use tessari_vault_types::{AccountId, CompanyId, KeyId, RecordId};
+use tessari_vault_types::{AccountId, CompanyId, KeyId, RecordId, RecordTypeId, Roles};
 
 use super::entity::{RecordEntity, Sealed};
 use crate::Result;
@@ -18,6 +18,8 @@ pub(crate) struct Write<'a> {
     pub(crate) sealed: &'a Sealed,
     pub(crate) now: i64,
     pub(crate) vault_key: VaultKey,
+    /// For a record of a company type: the type and the roles the decision admitted, which the write checks again.
+    pub(crate) company_type: Option<(&'a RecordTypeId, Roles)>,
 }
 
 #[async_trait]

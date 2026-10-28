@@ -15,7 +15,7 @@ use crate::state::AppState;
 #[derive(Serialize)]
 pub(crate) struct RecordItem {
     id: String,
-    record_type: &'static str,
+    record_type: String,
     revision: i64,
     key_id: String,
     author: String,
@@ -27,7 +27,7 @@ impl From<&Record> for RecordItem {
     fn from(record: &Record) -> Self {
         Self {
             id: record.id.to_string(),
-            record_type: record.record_type.as_str(),
+            record_type: record.record_type.to_string(),
             revision: record.revision,
             key_id: record.key_id.to_string(),
             author: record.author.to_string(),

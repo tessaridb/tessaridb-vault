@@ -8,7 +8,7 @@ use axum::http::Method;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handlers::{
-    audit, companies, enrolment, groups, members, oidc, passkeys, records, sign_in,
+    audit, companies, enrolment, groups, members, oidc, passkeys, record_types, records, sign_in,
 };
 use crate::state::AppState;
 
@@ -168,6 +168,16 @@ pub fn routes() -> Vec<Route> {
             Method::PUT,
             "/api/companies/{company}/records/{record}",
             put(records::revise),
+        ),
+        route(
+            Method::GET,
+            "/api/companies/{company}/record-types",
+            get(record_types::list),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/record-types",
+            post(record_types::define),
         ),
     ]
 }

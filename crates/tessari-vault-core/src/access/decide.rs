@@ -1,6 +1,6 @@
 //! The decision for one action in one company.
 
-use tessari_vault_types::{CompanyState, MemberState, Role};
+use tessari_vault_types::{CompanyState, MemberState, Role, Roles};
 
 /// A caller's place in one company, as the store held it when the work began.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,8 +50,13 @@ pub enum Action {
     RemoveFromGroup,
     /// Read the company's audit trail.
     ReadAudit,
-    /// Keep a new record in the company's vault.
-    CreateRecord,
+    /// Keep a new record of a type whose records `allowed` may create.
+    CreateRecord {
+        /// The roles the record's type admits; a role reaching one of them is admitted too.
+        allowed: Roles,
+    },
+    /// Define a record type of the company's own.
+    DefineRecordType,
     /// Read a record; which records is decided on the record.
     ReadRecord,
     /// Write a new revision of a record; which records is decided on the record.
@@ -86,11 +91,19 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         return Decision::Refused(Refusal::NotVisible);
     };
     let needed = match action {
-        Action::ReadMembers
-        | Action::ReadGroups
-        | Action::CreateRecord
-        | Action::ReadRecord
-        | Action::ReviseRecord => Role::Member,
+        Action::CreateRecord { allowed } => {
+            let admitted = [Role::Owner, Role::Admin, Role::Member]
+                .into_iter()
+                .any(|role| allowed.contains(role) && reaches(held.role, role));
+            return if admitted {
+                Decision::Permitted
+            } else {
+                Decision::Refused(Refusal::Forbidden)
+            };
+        }
+        Action::ReadMembers | Action::ReadGroups | Action::ReadRecord | Action::ReviseRecord => {
+            Role::Member
+        }
         Action::AddMember { role: Role::Owner }
         | Action::RemoveMember { role: Role::Owner }
         | Action::ChangeMember {
@@ -107,6 +120,7 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::DeleteGroup
         | Action::AddToGroup
         | Action::RemoveFromGroup
+        | Action::DefineRecordType
         | Action::ReadAudit => Role::Admin,
     };
     if reaches(held.role, needed) {
