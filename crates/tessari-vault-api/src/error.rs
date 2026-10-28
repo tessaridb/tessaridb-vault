@@ -176,6 +176,12 @@ const fn conflicted(conflict: Conflict) -> ApiError {
             "stale_revision",
             "the record changed since it was read; read it again",
         ),
+        Conflict::OutOfOrder => (
+            "out_of_order",
+            "a file part must start where the written bytes end, be a whole part unless it ends the file, and stay \
+             within the file's size",
+        ),
+        Conflict::Incomplete => ("incomplete", "the file is not yet written to its size"),
     };
     ApiError::new(StatusCode::CONFLICT, code, message)
 }

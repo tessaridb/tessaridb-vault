@@ -9,7 +9,7 @@ mod roles;
 mod standing;
 mod text;
 
-pub use ids::{AccountId, CompanyId, GroupId, IdError, KeyId, RecordId, RecordTypeId};
+pub use ids::{AccountId, CompanyId, FileId, GroupId, IdError, KeyId, RecordId, RecordTypeId};
 pub use kdf::{KdfParams, KdfParamsError};
 pub use password::{Password, PasswordError};
 pub use record_type::{RecordType, RecordTypeError};

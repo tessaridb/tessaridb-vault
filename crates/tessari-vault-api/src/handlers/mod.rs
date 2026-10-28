@@ -3,6 +3,7 @@
 pub(crate) mod audit;
 pub(crate) mod companies;
 pub(crate) mod enrolment;
+pub(crate) mod files;
 pub(crate) mod groups;
 pub(crate) mod members;
 pub(crate) mod oidc;

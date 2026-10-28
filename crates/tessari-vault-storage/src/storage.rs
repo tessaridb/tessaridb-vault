@@ -9,6 +9,7 @@ use crate::accounts::{AccountService, TessaridbAccountRepository};
 use crate::audit::AuditService;
 use crate::companies::{CompanyService, TessaridbCompanyRepository};
 use crate::enrolments::EnrolmentService;
+use crate::files::{FileService, TessaridbFiles};
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::identities::IdentityService;
 use crate::passkeys::PasskeyService;
@@ -41,6 +42,8 @@ pub struct Storage {
     pub companies: Arc<CompanyService>,
     /// Enrolment links and the credentials they create.
     pub enrolments: Arc<EnrolmentService>,
+    /// Encrypted files on records.
+    pub files: Arc<FileService>,
     /// Departments and teams.
     pub groups: Arc<GroupService>,
     /// Identities at an OpenID Connect issuer, and requests in flight to one.
@@ -125,6 +128,12 @@ impl Storage {
             database.clone(),
             place.clone(),
         ));
+        let files = Arc::new(FileService::new(
+            Arc::new(TessaridbFiles::new(database.clone())),
+            Arc::clone(&vaults),
+            database.clone(),
+            place.clone(),
+        ));
         let throttle = Arc::new(ThrottleService::new(database.clone(), place.clone()));
         let sign_in = Arc::new(SignInService::new(
             database.clone(),
@@ -143,6 +152,7 @@ impl Storage {
             audit: Arc::new(AuditService::new(database.clone(), place.clone())),
             companies,
             enrolments,
+            files,
             groups,
             identities,
             passkeys,

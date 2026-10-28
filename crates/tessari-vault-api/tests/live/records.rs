@@ -67,7 +67,7 @@ async fn each_company_gets_a_records_vault_that_only_its_own_key_opens() {
     );
 }
 
-fn encoded(bytes: &[u8]) -> String {
+pub(crate) fn encoded(bytes: &[u8]) -> String {
     tessari_vault_types::base64url::encode(bytes)
 }
 
@@ -245,14 +245,14 @@ async fn a_revision_is_written_only_over_the_revision_it_read() {
 }
 
 /// How many times `needle` appears in `haystack`.
-fn count(haystack: &[u8], needle: &[u8]) -> usize {
+pub(crate) fn count(haystack: &[u8], needle: &[u8]) -> usize {
     haystack
         .windows(needle.len())
         .filter(|window| *window == needle)
         .count()
 }
 
-fn files_under(directory: &std::path::Path) -> Vec<Vec<u8>> {
+pub(crate) fn files_under(directory: &std::path::Path) -> Vec<Vec<u8>> {
     let mut found = Vec::new();
     for entry in std::fs::read_dir(directory).expect("the store directory") {
         let path = entry.expect("an entry").path();

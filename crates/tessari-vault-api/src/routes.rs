@@ -4,13 +4,16 @@
 use std::collections::BTreeMap;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::Method;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handlers::{
-    audit, companies, enrolment, groups, members, oidc, passkeys, record_types, records, sign_in,
+    audit, companies, enrolment, files, groups, members, oidc, passkeys, record_types, records,
+    sign_in,
 };
 use crate::state::AppState;
+use tessari_vault_constants::FILE_PART_MAX_BYTES;
 
 /// One route: its method, its path pattern, and its handler.
 pub struct Route {
@@ -179,7 +182,27 @@ pub fn routes() -> Vec<Route> {
             "/api/companies/{company}/record-types",
             post(record_types::define),
         ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/records/{record}/files",
+            post(files::create),
+        ),
+        route(
+            Method::PUT,
+            "/api/companies/{company}/records/{record}/files/{file}",
+            put(files::write).layer(DefaultBodyLimit::max(part_limit())),
+        ),
+        route(
+            Method::GET,
+            "/api/companies/{company}/records/{record}/files/{file}",
+            get(files::read),
+        ),
     ]
+}
+
+/// The largest file part a request body may carry.
+fn part_limit() -> usize {
+    usize::try_from(FILE_PART_MAX_BYTES).unwrap_or(usize::MAX)
 }
 
 /// The API's router, built from [`routes`].

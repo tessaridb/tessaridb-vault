@@ -8,6 +8,7 @@ pub mod audit;
 pub mod companies;
 pub mod enrolments;
 mod error;
+pub mod files;
 pub mod groups;
 pub mod identities;
 pub mod passkeys;

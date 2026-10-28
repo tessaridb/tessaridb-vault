@@ -90,6 +90,10 @@ identifier!(
     RecordId
 );
 identifier!(
+    /// An encrypted file attached to a record.
+    FileId
+);
+identifier!(
     /// A record type a company defined.
     RecordTypeId
 );

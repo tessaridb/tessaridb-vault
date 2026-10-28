@@ -10,6 +10,7 @@ mod audit;
 mod authenticator;
 mod binary;
 mod enrolment;
+mod files;
 mod issuer;
 mod keyed_vault;
 mod oauth_e2e;
@@ -56,7 +57,8 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         .replace("{company}", a)
         .replace("{group}", &cast.team_a)
         .replace("{account}", &cast.member_a_id)
-        .replace("{record}", &cast.record_a);
+        .replace("{record}", &cast.record_a)
+        .replace("{file}", &cast.file_a);
     let manage = Some((Who::Member, StatusCode::FORBIDDEN));
     let hidden = Some((Who::OtherAdmin, StatusCode::NOT_FOUND));
     let not_author = Some((Who::Owner, StatusCode::NOT_FOUND));
@@ -179,6 +181,24 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             manage,
             hidden,
         ),
+        // A file is reached only through its record's author, so the owner and another company find nothing.
+        ("POST", "/api/companies/{company}/records/{record}/files") => {
+            row(Some(json!({ "size": 10 })), not_author, hidden)
+        }
+        ("PUT", "/api/companies/{company}/records/{record}/files/{file}") => Some(Probe {
+            path: format!("{path}?offset=0"),
+            body: None,
+            unsigned: StatusCode::UNAUTHORIZED,
+            low: not_author,
+            cross: hidden,
+        }),
+        ("GET", "/api/companies/{company}/records/{record}/files/{file}") => Some(Probe {
+            path: format!("{path}?offset=0&limit=1"),
+            body: None,
+            unsigned: StatusCode::UNAUTHORIZED,
+            low: not_author,
+            cross: hidden,
+        }),
         ("PUT", "/api/companies/{company}/records/{record}") => {
             let mut body = world::sealed_record();
             body["revision"] = json!(1);

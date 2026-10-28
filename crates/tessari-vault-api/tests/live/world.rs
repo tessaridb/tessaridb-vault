@@ -267,6 +267,28 @@ impl World {
         };
         (status, answered, value)
     }
+
+    /// Raw octets to `path`, as the browser uploads one part of a file.
+    pub async fn put_octets(&self, path: &str, token: &str, bytes: Vec<u8>) -> (StatusCode, Value) {
+        let request = Request::builder()
+            .method(Method::PUT)
+            .uri(path)
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/octet-stream")
+            .body(Body::from(bytes))
+            .expect("a request");
+        let response = self.app.clone().oneshot(request).await.expect("an answer");
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .expect("a body");
+        let value = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).expect("a JSON body")
+        };
+        (status, value)
+    }
 }
 
 /// Two companies with their people and groups, built through the API itself.
@@ -286,6 +308,8 @@ pub struct Cast {
     pub team_a: String,
     /// A record member A wrote.
     pub record_a: String,
+    /// A small file member A wrote on that record.
+    pub file_a: String,
 }
 
 async fn company(world: &World, platform: &str, name: &str, owner: &str) -> (String, String) {
@@ -377,6 +401,25 @@ impl Cast {
             .await;
         assert_eq!(status, StatusCode::CREATED, "{record}");
         let record_a = record["id"].as_str().expect("an id").to_owned();
+        let files = format!("/api/companies/{company_a}/records/{record_a}/files");
+        let (status, file) = world
+            .call(
+                Method::POST,
+                &files,
+                Some(&member_a),
+                Some(json!({ "size": 6 })),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{file}");
+        let file_a = file["id"].as_str().expect("an id").to_owned();
+        let (status, written) = world
+            .put_octets(
+                &format!("{files}/{file_a}?offset=0"),
+                &member_a,
+                b"sealed".to_vec(),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "{written}");
         Self {
             platform,
             company_a,
@@ -392,6 +435,7 @@ impl Cast {
             department_a,
             team_a,
             record_a,
+            file_a,
         }
     }
 }

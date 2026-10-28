@@ -60,6 +60,13 @@ pub enum Conflict {
     /// The record has a newer revision than the one the caller read; nothing was written.
     #[error("the record changed since it was read")]
     StaleRevision,
+    /// A file part did not start where the written bytes end, was not a whole part short of the end, or ran past
+    /// the file's size; nothing was written.
+    #[error("a file part out of order")]
+    OutOfOrder,
+    /// The file is not yet written to its size.
+    #[error("the file is not yet complete")]
+    Incomplete,
 }
 
 /// The result of a `tessari-vault-storage` call.

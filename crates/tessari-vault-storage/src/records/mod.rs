@@ -8,5 +8,5 @@ mod vault;
 
 pub use entity::{OpenedRecord, Record, Sealed, SealedError};
 pub use service::RecordService;
-pub(crate) use tessaridb::TessaridbRecordRepository;
+pub(crate) use tessaridb::{AUTHORS_RECORD, TessaridbRecordRepository};
 pub(crate) use vault::RecordVaults;

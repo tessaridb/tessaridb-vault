@@ -57,7 +57,12 @@ DEFINE INDEX IF NOT EXISTS by_record ON revisions FIELDS record; \
 DEFINE TABLE IF NOT EXISTS record_types (type_id string, company string, allowed_roles array, definition string, \
 created int); \
 DEFINE INDEX IF NOT EXISTS by_id ON record_types FIELDS type_id UNIQUE; \
-DEFINE INDEX IF NOT EXISTS by_company ON record_types FIELDS company;";
+DEFINE INDEX IF NOT EXISTS by_company ON record_types FIELDS company; \
+DEFINE TABLE IF NOT EXISTS files (file_id string, company string, record string, author string, size int, kept string, \
+written int, created int); \
+DEFINE INDEX IF NOT EXISTS by_id ON files FIELDS file_id UNIQUE; \
+DEFINE INDEX IF NOT EXISTS by_record ON files FIELDS record; \
+DEFINE BUCKET IF NOT EXISTS record_files MAX 4194304;";
 
 /// Declare the namespace and database of `place` and everything in them that is missing.
 ///

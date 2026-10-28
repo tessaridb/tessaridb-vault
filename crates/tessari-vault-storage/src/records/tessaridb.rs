@@ -17,7 +17,7 @@ use crate::record_types::role_words;
 use crate::{Error, Result, answers};
 
 /// Refuses unless `$record` is `$company`'s and `$author` wrote it, the answer a record that does not exist gets.
-const AUTHORS_RECORD: &str = "\
+pub(crate) const AUTHORS_RECORD: &str = "\
 THROW 'not found' IF (GET records:$record).company != $company OR (GET records:$record).author != $author;";
 
 /// The statements that store one revision: its row, its sealed body, and the author's wrapped key beside it.
