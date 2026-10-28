@@ -13,6 +13,12 @@ autotests = false
 doctest = false
 
 [dependencies]
+tessari-vault-constants.workspace = true
+tessari-vault-types.workspace = true
+tessari-vault-core.workspace = true
+tessari-vault-infrastructure.workspace = true
+async-trait.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 
 [lints]

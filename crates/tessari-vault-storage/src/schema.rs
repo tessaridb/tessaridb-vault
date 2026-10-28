@@ -1,0 +1,48 @@
+//! The store's shape, declared by one script that can run on every start.
+//!
+//! Every definition carries `IF NOT EXISTS`, so running it on a store that already holds the shape changes nothing.
+//! A company is its own `company` group; a member's role in the company lives on the `memberships` row, which is
+//! queried like a row (by company, by account, by role), while department and team membership is the `in_group`
+//! edge of the declared graph `access`, which is what sharing walks (authorization worksheet §13).
+
+use tessari_vault_infrastructure::tessaridb::{Database, Place};
+
+use crate::Result;
+
+/// The definitions, in dependency order.
+pub(crate) const SCHEMA: &str = "\
+DEFINE GRAPH IF NOT EXISTS access; \
+DEFINE TABLE IF NOT EXISTS accounts (account_id string, email string, name string, state string, platform_admin bool, \
+created datetime) IN access; \
+DEFINE INDEX IF NOT EXISTS by_id ON accounts FIELDS account_id UNIQUE; \
+DEFINE INDEX IF NOT EXISTS by_email ON accounts FIELDS email UNIQUE; \
+DEFINE TABLE IF NOT EXISTS groups (group_id string, company string, kind string, name string, parent string, state string, \
+created datetime) IN access; \
+DEFINE INDEX IF NOT EXISTS by_id ON groups FIELDS group_id UNIQUE; \
+DEFINE INDEX IF NOT EXISTS by_company ON groups FIELDS company; \
+DEFINE INDEX IF NOT EXISTS by_kind ON groups FIELDS kind; \
+DEFINE TABLE IF NOT EXISTS memberships (company string, account string, member_role string, state string, \
+joined datetime); \
+DEFINE INDEX IF NOT EXISTS by_company ON memberships FIELDS company; \
+DEFINE INDEX IF NOT EXISTS by_account ON memberships FIELDS account; \
+DEFINE EDGE IF NOT EXISTS in_group IN access FROM accounts TO groups; \
+DEFINE EDGE IF NOT EXISTS part_of IN access FROM groups TO groups; \
+DEFINE SPACE IF NOT EXISTS sessions; \
+DEFINE SPACE IF NOT EXISTS throttles;";
+
+/// Declare the namespace and database of `place` and everything in them that is missing.
+///
+/// # Errors
+///
+/// When the store refuses a definition or cannot be reached.
+pub async fn migrate(database: &Database, place: &Place) -> Result<()> {
+    let namespace = place.namespace();
+    let name = place.database();
+    // The two names were proven plain when the place was built; they are grammar and cannot be bound.
+    let script = format!(
+        "DEFINE NAMESPACE IF NOT EXISTS {namespace}; USE NAMESPACE {namespace}; \
+         DEFINE DATABASE IF NOT EXISTS {name}; USE DATABASE {name}; {SCHEMA}"
+    );
+    database.run_unplaced(&script, Vec::new()).await?;
+    Ok(())
+}

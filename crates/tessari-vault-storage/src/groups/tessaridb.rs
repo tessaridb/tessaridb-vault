@@ -1,0 +1,203 @@
+//! Departments and teams on TessariDB: `groups` rows, their `part_of` edge, and members' `in_group` edges.
+
+use async_trait::async_trait;
+use tessari_vault_infrastructure::tessaridb::{Database, Place, Value};
+use tessari_vault_types::{AccountId, CompanyId, GroupId, Name};
+
+use super::entity::{GroupEntity, MemberRow};
+use super::repository::{GroupRepository, NewGroup};
+use crate::access::{GUARD, bind, membership_id, thrown};
+use crate::{Result, answers};
+
+/// Refuses unless `$group` is a department or team of `$company`, the answer a group of another company gets.
+const GROUP_OF_COMPANY: &str = "\
+THROW 'not found' IF (GET groups:$group).company != $company OR (GET groups:$group).kind = 'company';";
+
+pub(crate) struct TessaridbGroupRepository {
+    database: Database,
+}
+
+impl TessaridbGroupRepository {
+    pub(crate) const fn new(database: Database) -> Self {
+        Self { database }
+    }
+
+    async fn write(
+        &self,
+        place: &Place,
+        script: &str,
+        parameters: Vec<(String, Value)>,
+    ) -> Result<()> {
+        self.database
+            .run_at(place, script, parameters)
+            .await
+            .map_err(|error| thrown(error.into()))?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl GroupRepository for TessaridbGroupRepository {
+    async fn list(&self, place: &Place, company: &CompanyId) -> Result<Vec<GroupEntity>> {
+        let answers = self
+            .database
+            .run_at(
+                place,
+                "SELECT * FROM groups WHERE company = $company AND kind != 'company' USING INDEX by_company;",
+                vec![bind("company", company.as_str())],
+            )
+            .await?;
+        answers::records(answers, "group")
+    }
+
+    async fn get(
+        &self,
+        place: &Place,
+        company: &CompanyId,
+        group: &GroupId,
+    ) -> Result<Option<GroupEntity>> {
+        let answers = self
+            .database
+            .run_at(
+                place,
+                "SELECT * FROM groups WHERE group_id = $group AND company = $company AND kind != 'company' \
+                 USING INDEX by_id;",
+                vec![bind("group", group.as_str()), bind("company", company.as_str())],
+            )
+            .await?;
+        answers::single(answers, "group")
+    }
+
+    async fn members(&self, place: &Place, group: &GroupId) -> Result<Vec<MemberRow>> {
+        let answers = self
+            .database
+            .run_at(
+                place,
+                "SELECT account_id FROM groups:$group<-in_group<-accounts;",
+                vec![bind("group", group.as_str())],
+            )
+            .await?;
+        answers::records(answers, "group member")
+    }
+
+    async fn create(
+        &self,
+        place: &Place,
+        mut parameters: Vec<(String, Value)>,
+        company: &CompanyId,
+        group: &NewGroup,
+    ) -> Result<()> {
+        let parent = &group.parent;
+        parameters.extend([
+            bind("company", company.as_str()),
+            bind("group", group.id.as_str()),
+            bind("kind", group.kind.word()),
+            bind("name", group.name.as_str()),
+            bind("parent", parent.as_str()),
+        ]);
+        // A department sits in the company; a team in the company or in one of its departments.
+        let parent_check = if parent.as_str() == company.as_str() {
+            ""
+        } else {
+            "THROW 'wrong parent' IF (GET groups:$parent).company != $company \
+             OR (GET groups:$parent).kind != 'department';"
+        };
+        let script = format!(
+            "BEGIN; {GUARD} {parent_check} \
+             CREATE groups:$group = {{ group_id: $group, company: $company, kind: $kind, name: $name, \
+             parent: $parent, state: 'active', created: time::now() }}; \
+             RELATE groups:$group->part_of->groups:$parent; COMMIT;"
+        );
+        self.write(place, &script, parameters).await
+    }
+
+    async fn rename(
+        &self,
+        place: &Place,
+        mut parameters: Vec<(String, Value)>,
+        company: &CompanyId,
+        group: &GroupId,
+        name: &Name,
+    ) -> Result<()> {
+        parameters.extend([
+            bind("company", company.as_str()),
+            bind("group", group.as_str()),
+            bind("name", name.as_str()),
+        ]);
+        let script = format!(
+            "BEGIN; {GUARD} {GROUP_OF_COMPANY} UPDATE groups:$group SET name = $name; COMMIT;"
+        );
+        self.write(place, &script, parameters).await
+    }
+
+    async fn delete(
+        &self,
+        place: &Place,
+        mut parameters: Vec<(String, Value)>,
+        company: &CompanyId,
+        group: &GroupEntity,
+        members: &[AccountId],
+    ) -> Result<()> {
+        parameters.extend([
+            bind("company", company.as_str()),
+            bind("group", group.id.as_str()),
+            bind("parent", group.parent.as_str()),
+        ]);
+        let mut edges = String::new();
+        for (index, account) in members.iter().enumerate() {
+            let name = format!("a{index}");
+            edges.push_str(&format!(
+                "DELETE accounts:${name}->in_group->groups:$group; "
+            ));
+            parameters.push(bind(&name, account.as_str()));
+        }
+        let script = format!(
+            "BEGIN; {GUARD} {GROUP_OF_COMPANY} \
+             LET $inside = SELECT group_id FROM groups:$group<-part_of<-groups LIMIT 1; \
+             THROW 'group not empty' IF array::len($inside) > 0; \
+             {edges} DELETE groups:$group->part_of->groups:$parent; DELETE groups:$group; COMMIT;"
+        );
+        self.write(place, &script, parameters).await
+    }
+
+    async fn add_member(
+        &self,
+        place: &Place,
+        mut parameters: Vec<(String, Value)>,
+        company: &CompanyId,
+        group: &GroupId,
+        account: &AccountId,
+    ) -> Result<()> {
+        parameters.extend([
+            bind("company", company.as_str()),
+            bind("group", group.as_str()),
+            bind("account", account.as_str()),
+            bind("membership", membership_id(company, account).as_str()),
+        ]);
+        let script = format!(
+            "BEGIN; {GUARD} {GROUP_OF_COMPANY} \
+             THROW 'not a member' IF (GET memberships:$membership).state != 'active'; \
+             RELATE accounts:$account->in_group->groups:$group; COMMIT;"
+        );
+        self.write(place, &script, parameters).await
+    }
+
+    async fn remove_member(
+        &self,
+        place: &Place,
+        mut parameters: Vec<(String, Value)>,
+        company: &CompanyId,
+        group: &GroupId,
+        account: &AccountId,
+    ) -> Result<()> {
+        parameters.extend([
+            bind("company", company.as_str()),
+            bind("group", group.as_str()),
+            bind("account", account.as_str()),
+        ]);
+        let script = format!(
+            "BEGIN; {GUARD} {GROUP_OF_COMPANY} DELETE accounts:$account->in_group->groups:$group; COMMIT;"
+        );
+        self.write(place, &script, parameters).await
+    }
+}

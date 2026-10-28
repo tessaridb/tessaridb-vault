@@ -13,7 +13,23 @@ autotests = false
 doctest = false
 
 [dependencies]
-thiserror.workspace = true
+tessari-vault-constants.workspace = true
+tessari-vault-types.workspace = true
+tessari-vault-core.workspace = true
+tessari-vault-storage.workspace = true
+axum.workspace = true
+serde.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "live"
+path = "tests/live/main.rs"
+
+[dev-dependencies]
+tessari-vault-infrastructure.workspace = true
+serde_json.workspace = true
+tower.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time"] }

@@ -87,9 +87,9 @@ exist.
 | | |
 |---|---|
 | Release | none yet; the first will be `0.0.1` |
-| Built and tested | the workspace; the unlock-key derivation — Argon2id with bounds checked before any work (memory at least 47 104 KiB, passes 1–10, lanes 1–8), built for the browser as WebAssembly and checked against an independent vector |
-| In the engine, not yet released | a TessariDB vault opened by a key presented with each request (the second layer), on the engine's `dev` branch for its next third-digit release |
-| Designed, not yet built | the browser encryption and sharing, the server, sign-in, the web application, recovery, files and the audit trail |
+| Built and tested | the workspace; the unlock-key derivation — Argon2id with bounds checked before any work (memory at least 47 104 KiB, passes 1–10, lanes 1–8), built for the browser as WebAssembly and checked against an independent vector; the server's companies, members, departments and teams, every route behind one access decision on the caller's standing, with sessions and rate limits held in TessariDB and a live suite that calls each route unsigned, as a lower role and as another company |
+| In the engine, not yet used | a TessariDB vault opened by a key presented with each request (the second layer), released in TessariDB 0.39.3 |
+| Designed, not yet built | the browser encryption and sharing, sign-in, the web application, recovery, files and the audit trail |
 | Licence | BUSL-1.1 (see [Licence](#licence)) |
 
 ## Building and checking
@@ -102,6 +102,13 @@ cargo test --workspace --tests
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all --check
 cargo deny check   # licences, advisories, sources
+```
+
+The live suite runs the server against a real TessariDB node it starts itself, from an engine binary at 0.39.3
+or later:
+
+```sh
+TESSARIDB_BIN=/path/to/tessaridb cargo test -p tessari-vault-api --test live -- --ignored
 ```
 
 ## Branches

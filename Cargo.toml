@@ -28,6 +28,16 @@ thiserror = "2"
 argon2 = { version = "=0.5.3", default-features = false, features = ["alloc", "zeroize"] }
 # Key material is cleared from memory when its holder drops.
 zeroize = "1"
+# The store and its client: the published Rust client, at the release that speaks protocol minor 7 (keyed vaults).
+tessaridb-client = "=0.13.1"
+# Randomness for identifiers and session tokens, and the digest a session is stored under.
+ring = "0.17"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+tower = { version = "0.5", features = ["util"] }
+async-trait = "0.1"
 tokio = { version = "1", default-features = false }
 tracing = "0.1"
 # The binary's subscriber: JSON events, a filter from `RUST_LOG`, and a writer on its own thread.

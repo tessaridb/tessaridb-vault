@@ -15,9 +15,16 @@ path = "src/main.rs"
 test = false
 
 [dependencies]
+tessari-vault-constants.workspace = true
+tessari-vault-types.workspace = true
+tessari-vault-infrastructure.workspace = true
+tessari-vault-storage.workspace = true
+tessari-vault-api.workspace = true
 tessari-vault-observability.workspace = true
+axum.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros", "net", "sync"] }
 
 [lints]
 workspace = true

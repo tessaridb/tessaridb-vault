@@ -1,5 +1,11 @@
-//! The HTTP surface of TessariDB Vault and the embedded panel.
+//! The HTTP API: the route table, the caller taken from a session, and the error shape every refusal answers with.
 
+mod caller;
 mod error;
+mod handlers;
+mod routes;
+mod state;
 
-pub use error::{Error, Result};
+pub use error::ApiError;
+pub use routes::{Route, router, routes};
+pub use state::AppState;

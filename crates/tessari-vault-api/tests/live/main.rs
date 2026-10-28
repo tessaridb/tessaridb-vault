@@ -1,0 +1,228 @@
+//! The live suite: the server's router over a real TessariDB node, called directly with no interface in the loop.
+//!
+//! Run with `TESSARIDB_BIN=<engine binary> cargo test -p tessari-vault-api --test live -- --ignored`.
+
+#![cfg(test)]
+
+mod rules;
+mod world;
+
+use axum::http::{Method, StatusCode};
+use serde_json::{Value, json};
+use tessari_vault_api::routes;
+use world::{Cast, World};
+
+/// Who a probe is sent as.
+#[derive(Clone, Copy, Debug)]
+enum Who {
+    Owner,
+    Member,
+    OtherAdmin,
+}
+
+/// One route's negative rows: what the low-privilege identity gets, and what another company's admin gets.
+struct Probe {
+    path: String,
+    body: Option<Value>,
+    low: Option<(Who, StatusCode)>,
+    cross: Option<(Who, StatusCode)>,
+}
+
+fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
+    let a = &cast.company_a;
+    let path = pattern
+        .replace("{company}", a)
+        .replace("{group}", &cast.team_a)
+        .replace("{account}", &cast.member_a_id);
+    let manage = Some((Who::Member, StatusCode::FORBIDDEN));
+    let hidden = Some((Who::OtherAdmin, StatusCode::NOT_FOUND));
+    let platform = Some((Who::Owner, StatusCode::FORBIDDEN));
+    let other_platform = Some((Who::OtherAdmin, StatusCode::FORBIDDEN));
+    let row = |body: Option<Value>, low, cross| {
+        Some(Probe {
+            path: path.clone(),
+            body,
+            low,
+            cross,
+        })
+    };
+    match (method.as_str(), pattern) {
+        // Self routes: nothing lower than signed in; the cross-company row is the listing test below.
+        ("GET", "/api/me" | "/api/companies") => row(None, None, None),
+        ("POST", "/api/companies") => row(
+            Some(json!({ "name": "Gamma", "owner_email": "o@gamma.test", "owner_name": "O" })),
+            platform,
+            other_platform,
+        ),
+        ("POST", "/api/companies/{company}/suspend" | "/api/companies/{company}/resume") => {
+            row(None, platform, other_platform)
+        }
+        ("GET", "/api/companies/{company}/members" | "/api/companies/{company}/groups") => {
+            row(None, None, hidden)
+        }
+        ("GET", "/api/companies/{company}/groups/{group}/members") => row(None, None, hidden),
+        ("POST", "/api/companies/{company}/members") => row(
+            Some(json!({ "email": "new@alpha.test", "name": "New", "role": "member" })),
+            manage,
+            hidden,
+        ),
+        ("PATCH", "/api/companies/{company}/members/{account}") => {
+            row(Some(json!({ "role": "admin" })), manage, hidden)
+        }
+        ("DELETE", "/api/companies/{company}/members/{account}") => row(None, manage, hidden),
+        ("POST", "/api/companies/{company}/groups") => row(
+            Some(json!({ "kind": "department", "name": "Sales" })),
+            manage,
+            hidden,
+        ),
+        ("PATCH", "/api/companies/{company}/groups/{group}") => {
+            row(Some(json!({ "name": "Renamed" })), manage, hidden)
+        }
+        ("DELETE", "/api/companies/{company}/groups/{group}") => row(None, manage, hidden),
+        ("POST", "/api/companies/{company}/groups/{group}/members") => row(
+            Some(json!({ "account_id": cast.member_a_id })),
+            manage,
+            hidden,
+        ),
+        ("DELETE", "/api/companies/{company}/groups/{group}/members/{account}") => {
+            row(None, manage, hidden)
+        }
+        _ => None,
+    }
+}
+
+fn token(cast: &Cast, who: Who) -> &str {
+    match who {
+        Who::Owner => &cast.owner_a,
+        Who::Member => &cast.member_a,
+        Who::OtherAdmin => &cast.admin_b,
+    }
+}
+
+/// A refusal carries the error shape and nothing else; no record is leaked beside it.
+fn refusal_only(body: &Value) -> bool {
+    body.as_object().is_some_and(|fields| {
+        fields.len() == 2 && fields.contains_key("error_code") && fields.contains_key("message")
+    })
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn every_route_refuses_the_unsigned_the_lower_role_and_another_company() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let (mut source, mut enforced, mut verified) = (0_u32, 0_u32, 0_u32);
+    let mut missing = Vec::new();
+    for route in routes() {
+        source = source.saturating_add(1);
+        let Some(probe) = probe(&cast, &route.method, route.path) else {
+            missing.push(format!("{} {}", route.method, route.path));
+            continue;
+        };
+        enforced = enforced.saturating_add(1);
+        let (status, body) = world
+            .call(route.method.clone(), &probe.path, None, probe.body.clone())
+            .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "{} {} unsigned: {body}",
+            route.method,
+            route.path
+        );
+        assert!(refusal_only(&body), "{body}");
+        let (status, body) = world
+            .call(
+                route.method.clone(),
+                &probe.path,
+                Some("ab".repeat(32).as_str()),
+                probe.body.clone(),
+            )
+            .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "{} {} unknown token: {body}",
+            route.method,
+            route.path
+        );
+        for (who, expected) in [probe.low, probe.cross].into_iter().flatten() {
+            let (status, body) = world
+                .call(
+                    route.method.clone(),
+                    &probe.path,
+                    Some(token(&cast, who)),
+                    probe.body.clone(),
+                )
+                .await;
+            assert_eq!(
+                status, expected,
+                "{} {} as {who:?}: {body}",
+                route.method, route.path
+            );
+            assert!(
+                refusal_only(&body),
+                "{} {} as {who:?} leaked {body}",
+                route.method,
+                route.path
+            );
+        }
+        verified = verified.saturating_add(1);
+    }
+    println!("paths: source={source} | enforced={enforced} | verified={verified} | exempt=[]");
+    assert!(missing.is_empty(), "routes with no probe: {missing:?}");
+    assert_eq!((source, enforced, verified), (source, source, source));
+    // The refused calls changed nothing: the member is still a member, the team still exists.
+    let (status, body) = world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{}/members", cast.company_a),
+            Some(&cast.owner_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["members"].as_array().map(Vec::len), Some(3), "{body}");
+    let (status, body) = world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{}/groups", cast.company_a),
+            Some(&cast.owner_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["groups"].as_array().map(Vec::len), Some(2), "{body}");
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_caller_lists_only_the_companies_they_belong_to() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let (status, body) = world
+        .call(Method::GET, "/api/companies", Some(&cast.admin_b), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let ids: Vec<&str> = body["companies"]
+        .as_array()
+        .expect("a list")
+        .iter()
+        .filter_map(|c| c["id"].as_str())
+        .collect();
+    assert_eq!(ids, vec![cast.company_b.as_str()], "{body}");
+    let (_, body) = world
+        .call(Method::GET, "/api/companies", Some(&cast.platform), None)
+        .await;
+    assert_eq!(
+        body["companies"].as_array().map(Vec::len),
+        Some(2),
+        "{body}"
+    );
+    let (status, body) = world
+        .call(Method::GET, "/api/me", Some(&cast.member_a), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["account"]["email"], "member@alpha.test");
+    assert_eq!(body["platform_admin"], false);
+}
