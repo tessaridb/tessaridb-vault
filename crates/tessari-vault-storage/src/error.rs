@@ -79,9 +79,19 @@ pub enum Conflict {
     /// A wrap names a key set outside the group's reach, or one that holds a wrap already; nothing was written.
     #[error("a wrap names a key set outside the group's reach or one already wrapped")]
     OutsideReach,
-    /// The key id is not the caller's registered key in the company.
-    #[error("the key is not the caller's registered key")]
+    /// The key id is not the caller's registered key in the company, or not the key its target holds.
+    #[error("the key is not the registered key")]
     UnknownKey,
+    /// The group or member a record is shared with holds no key to wrap the record key to.
+    #[error("the share's target holds no key")]
+    NoKey,
+    /// The record is shared with that group or member already.
+    #[error("the record is shared with them already")]
+    AlreadyShared,
+    /// A revision's wraps are not exactly the ones the record's author and shares need, or a share landed since
+    /// the record was read; nothing was written.
+    #[error("the revision's wraps do not match the record's shares")]
+    StaleShares,
 }
 
 /// The result of a `tessari-vault-storage` call.

@@ -194,7 +194,13 @@ const fn conflicted(conflict: Conflict) -> ApiError {
         ),
         Conflict::UnknownKey => (
             "unknown_key",
-            "the key id is not the key set you keep in this company",
+            "the key id is not the registered key of the one it names",
+        ),
+        Conflict::NoKey => ("no_key", "the group or member holds no key to share with"),
+        Conflict::AlreadyShared => ("already_shared", "the record is shared with them already"),
+        Conflict::StaleShares => (
+            "stale_shares",
+            "the revision must carry a wrap for exactly the record's author and shares; read it again",
         ),
     };
     ApiError::new(StatusCode::CONFLICT, code, message)

@@ -4,7 +4,8 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
-use tessari_vault_storage::records::{OpenedRecord, Record, Sealed};
+use tessari_vault_constants::MAX_RECORD_WRAP_BYTES;
+use tessari_vault_storage::records::{OpenedRecord, Record, Revision, Sealed};
 use tessari_vault_types::{KeyId, RecordId, RecordType, base64url};
 
 use super::company_id;
@@ -48,6 +49,7 @@ pub(crate) struct Opened {
     body: String,
     signature: String,
     author_key: String,
+    recipient: String,
     wrap: String,
 }
 
@@ -59,6 +61,7 @@ impl From<&OpenedRecord> for Opened {
             body: base64url::encode(sealed.body()),
             signature: base64url::encode(sealed.signature()),
             author_key: sealed.author_key().to_string(),
+            recipient: opened.recipient.clone(),
             wrap: base64url::encode(sealed.wrap()),
         }
     }
@@ -85,13 +88,37 @@ pub(crate) struct NewRevision {
     signature: String,
     author_key: String,
     wrap: String,
+    /// The record key wrapped to every other recipient the record keeps.
+    #[serde(default)]
+    wraps: Vec<RecipientWrap>,
 }
 
-fn record_id(text: &str) -> Result<RecordId, ApiError> {
+/// The record key wrapped to one recipient, `member:<key id>` or `group:<key id>`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RecipientWrap {
+    recipient: String,
+    wrap: String,
+}
+
+/// A recipient name and its wrap, each within its shape and ceiling.
+fn recipient_wrap(given: &RecipientWrap) -> Result<(String, Vec<u8>), ApiError> {
+    let shaped = given
+        .recipient
+        .split_once(':')
+        .is_some_and(|(kind, key)| matches!(kind, "member" | "group") && KeyId::parse(key).is_ok());
+    let wrap = decoded(&given.wrap)?;
+    if !shaped || wrap.is_empty() || wrap.len() > MAX_RECORD_WRAP_BYTES {
+        return Err(ApiError::INVALID);
+    }
+    Ok((given.recipient.clone(), wrap))
+}
+
+pub(crate) fn record_id(text: &str) -> Result<RecordId, ApiError> {
     RecordId::parse(text).map_err(|_| ApiError::NOT_FOUND)
 }
 
-fn decoded(text: &str) -> Result<Vec<u8>, ApiError> {
+pub(crate) fn decoded(text: &str) -> Result<Vec<u8>, ApiError> {
     base64url::decode(text).map_err(|_| ApiError::INVALID)
 }
 
@@ -180,10 +207,25 @@ pub(crate) async fn revise(
         &body.author_key,
         &body.wrap,
     )?;
+    let wraps = body
+        .wraps
+        .iter()
+        .map(recipient_wrap)
+        .collect::<Result<Vec<_>, _>>()?;
     let revised = state
         .storage
         .records
-        .revise(&actor, &company, &record, body.revision, &key_id, &parts)
+        .revise(
+            &actor,
+            &company,
+            &record,
+            Revision {
+                expected: body.revision,
+                key_id: &key_id,
+                sealed: &parts,
+                wraps: &wraps,
+            },
+        )
         .await?;
     Ok(Json(RecordItem::from(&revised)))
 }

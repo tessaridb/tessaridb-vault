@@ -9,7 +9,7 @@ use tower::ServiceExt;
 use crate::world::{Cast, World};
 
 /// A file's bytes from `offset`, at most `limit` of them.
-async fn get_part(world: &World, path: &str, token: &str) -> (StatusCode, Vec<u8>) {
+pub(crate) async fn get_part(world: &World, path: &str, token: &str) -> (StatusCode, Vec<u8>) {
     let request = Request::builder()
         .method(Method::GET)
         .uri(path)

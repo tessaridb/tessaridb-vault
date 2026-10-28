@@ -21,6 +21,7 @@ mod passkeys;
 mod record_types;
 mod records;
 mod rules;
+mod shares;
 mod sign_in;
 mod world;
 
@@ -233,6 +234,14 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             low: not_author,
             cross: hidden,
         }),
+        ("POST", "/api/companies/{company}/records/{record}/shares") => row(
+            Some(
+                json!({ "member": cast.owner_a_id, "right": "read", "key_id": "44".repeat(16),
+                         "wrap": crate::records::encoded(&[1; 82]) }),
+            ),
+            not_author,
+            hidden,
+        ),
         ("PUT", "/api/companies/{company}/records/{record}") => {
             let mut body = world::sealed_record();
             body["revision"] = json!(1);

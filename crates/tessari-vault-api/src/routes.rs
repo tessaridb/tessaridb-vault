@@ -10,7 +10,7 @@ use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handlers::{
     audit, companies, enrolment, files, group_keys, groups, keys, members, oidc, passkeys,
-    record_types, records, sign_in,
+    record_types, records, shares, sign_in,
 };
 use crate::state::AppState;
 use tessari_vault_constants::FILE_PART_MAX_BYTES;
@@ -171,6 +171,11 @@ pub fn routes() -> Vec<Route> {
             Method::PUT,
             "/api/companies/{company}/records/{record}",
             put(records::revise),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/records/{record}/shares",
+            post(shares::create),
         ),
         route(
             Method::GET,

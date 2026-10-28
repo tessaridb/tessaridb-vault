@@ -1,5 +1,7 @@
 //! A record row, a revision's sealed parts, and what they read as.
 
+use std::collections::HashMap;
+
 use tessari_vault_constants::{
     MAX_RECORD_BODY_BYTES, MAX_RECORD_WRAP_BYTES, RECORD_SIGNATURE_BYTES,
 };
@@ -16,6 +18,7 @@ pub(crate) struct RecordEntity {
     pub(crate) revision: i64,
     pub(crate) key_id: String,
     pub(crate) author: String,
+    pub(crate) shares: i64,
     pub(crate) created: i64,
     pub(crate) updated: i64,
 }
@@ -28,6 +31,7 @@ impl FromRecord for RecordEntity {
             revision: row.take("revision")?,
             key_id: row.take("key_id")?,
             author: row.take("author")?,
+            shares: row.take("shares")?,
             created: row.take("created")?,
             updated: row.take("updated")?,
         })
@@ -144,11 +148,35 @@ impl Sealed {
     }
 }
 
-/// A record and its latest revision's sealed parts, as its author opens it.
+/// A record and its latest revision's sealed parts, as a member it reaches opens it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenedRecord {
     /// The record.
     pub record: Record,
-    /// Its latest revision's sealed parts.
+    /// Its latest revision's sealed parts, with the record key wrapped to a key the caller holds.
     pub sealed: Sealed,
+    /// The recipient that wrap is kept under: `member:<key id>` or `group:<key id>`.
+    pub recipient: String,
+}
+
+/// A revision as the store opened it: the sealed body, the signature, the reviser's key, and every recipient.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OpenedRevision {
+    pub(crate) body: Vec<u8>,
+    pub(crate) signature: Vec<u8>,
+    pub(crate) author_key: KeyId,
+    pub(crate) recipients: HashMap<String, Vec<u8>>,
+}
+
+/// A revision as the caller wrote it: over `expected`, sealed under the record key `key_id`, and wrapping that key
+/// to every recipient the record keeps but the caller.
+pub struct Revision<'a> {
+    /// The revision the caller read.
+    pub expected: i64,
+    /// The id of the record key the revision is sealed under.
+    pub key_id: &'a KeyId,
+    /// The sealed parts, with the caller's own wrap.
+    pub sealed: &'a Sealed,
+    /// The record key wrapped to each other recipient, by recipient name.
+    pub wraps: &'a [(String, Vec<u8>)],
 }

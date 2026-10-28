@@ -16,12 +16,13 @@ const READS: [Action; 2] = [Action::ReadMembers, Action::ReadGroups];
 const KEYS: [Action; 2] = [Action::KeepKeys, Action::ReadKeys];
 
 /// What every active member may do with records; which records is decided on the record itself.
-const RECORDS: [Action; 3] = [
+const RECORDS: [Action; 4] = [
     Action::CreateRecord {
         allowed: Roles::ALL,
     },
     Action::ReadRecord,
     Action::ReviseRecord,
+    Action::ShareRecord,
 ];
 
 const MANAGING: [Action; 14] = [

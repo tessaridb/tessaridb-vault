@@ -1,5 +1,6 @@
 //! Encrypted files on records (C5, LR-VA-004). Every call decides first, then reaches the file only through its
-//! record's author, so anyone else's file is answered as one that does not exist.
+//! record: a member the record reaches reads its files, one who edits it adds and writes them, and anyone else's
+//! file is answered as one that does not exist.
 
 use std::sync::Arc;
 
@@ -13,12 +14,13 @@ use super::entity::{FileEntity, FileMeta, Kept};
 use super::repository::{FileRef, FileRepository, Part};
 use crate::access::{self, Actor, guard_values, recorded};
 use crate::audit::epoch_seconds;
-use crate::records::RecordVaults;
+use crate::records::{RecordService, RecordVaults};
 use crate::{Conflict, Error, Result};
 
 /// Files.
 pub struct FileService {
     repository: Arc<dyn FileRepository>,
+    records: Arc<RecordService>,
     vaults: Arc<RecordVaults>,
     database: Database,
     place: Place,
@@ -31,23 +33,26 @@ fn count(value: u64) -> Result<i64> {
 impl FileService {
     pub(crate) fn new(
         repository: Arc<dyn FileRepository>,
+        records: Arc<RecordService>,
         vaults: Arc<RecordVaults>,
         database: Database,
         place: Place,
     ) -> Self {
         Self {
             repository,
+            records,
             vaults,
             database,
             place,
         }
     }
 
-    /// Start a file of `size` sealed bytes on a record the caller wrote.
+    /// Start a file of `size` sealed bytes on a record the caller edits.
     ///
     /// # Errors
     ///
-    /// [`Error::Refused`] per the decision; [`Error::NotFound`] for a record that is not the caller's.
+    /// [`Error::Refused`] per the decision and for a caller who only reads the record; [`Error::NotFound`] for a
+    /// record the caller does not reach.
     pub async fn create(
         &self,
         actor: &Actor,
@@ -63,6 +68,11 @@ impl FileService {
             Action::ReviseRecord,
         )
         .await?;
+        self.records
+            .reached(actor, company, record)
+            .await?
+            .1
+            .editing()?;
         let file = FileId::from_random(random::bytes()?);
         let kept = Kept::for_size(size);
         let at = FileRef {
@@ -113,6 +123,11 @@ impl FileService {
             Action::ReviseRecord,
         )
         .await?;
+        self.records
+            .reached(actor, company, record)
+            .await?
+            .1
+            .editing()?;
         let at = FileRef {
             company,
             record,
@@ -171,7 +186,7 @@ impl FileService {
     ///
     /// # Errors
     ///
-    /// [`Error::Refused`] per the decision; [`Error::NotFound`] for a file that is not the caller's;
+    /// [`Error::Refused`] per the decision; [`Error::NotFound`] for a file on a record the caller does not reach;
     /// [`Conflict::Incomplete`] for a file not yet written to its size.
     pub async fn read(
         &self,
@@ -190,6 +205,7 @@ impl FileService {
             Action::ReadRecord,
         )
         .await?;
+        self.records.reached(actor, company, record).await?;
         let at = FileRef {
             company,
             record,

@@ -19,6 +19,7 @@ use crate::passkeys::PasskeyService;
 use crate::record_types::{RecordTypeService, TessaridbRecordTypeRepository};
 use crate::records::{RecordService, RecordVaults, TessaridbRecordRepository};
 use crate::sessions::SessionService;
+use crate::shares::{Reach, ShareService, TessaridbShareRepository};
 use crate::signin::{SignInParts, SignInService};
 use crate::throttle::ThrottleService;
 
@@ -65,6 +66,8 @@ pub struct Storage {
     pub records: Arc<RecordService>,
     /// Sessions.
     pub sessions: Arc<SessionService>,
+    /// Records shared with groups and members.
+    pub shares: Arc<ShareService>,
     /// Own sign-in.
     pub sign_in: Arc<SignInService>,
     /// Request counters.
@@ -130,15 +133,25 @@ impl Storage {
             database.clone(),
             place.clone(),
         ));
+        let share_repository = Arc::new(TessaridbShareRepository::new(database.clone()));
         let records = Arc::new(RecordService::new(
             Arc::new(TessaridbRecordRepository::new(database.clone())),
             Arc::clone(&vaults),
             Arc::clone(&record_types),
+            Arc::new(Reach::new(share_repository.clone(), place.clone())),
+            database.clone(),
+            place.clone(),
+        ));
+        let shares = Arc::new(ShareService::new(
+            share_repository,
+            Arc::clone(&records),
+            Arc::clone(&vaults),
             database.clone(),
             place.clone(),
         ));
         let files = Arc::new(FileService::new(
             Arc::new(TessaridbFiles::new(database.clone())),
+            Arc::clone(&records),
             Arc::clone(&vaults),
             database.clone(),
             place.clone(),
@@ -187,6 +200,7 @@ impl Storage {
             passkeys,
             record_types,
             records,
+            shares,
             sessions,
             sign_in,
             throttle,

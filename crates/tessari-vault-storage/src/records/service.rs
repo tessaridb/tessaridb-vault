@@ -1,7 +1,8 @@
 //! Records (C5, layer 2). Every call decides first; which records a caller reaches is then decided on the record's
-//! stored author, inside the query, so another member's record is answered as one that does not exist. Sharing
-//! (T3.3) widens that predicate and nothing else.
+//! stored author and its shares, read from the store, so a record nobody shared with the caller is answered as one
+//! that does not exist.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use tessari_vault_core::access::Action;
@@ -9,12 +10,13 @@ use tessari_vault_infrastructure::random;
 use tessari_vault_infrastructure::tessaridb::{Database, Place, RefusalClass};
 use tessari_vault_types::{CompanyId, KeyId, RecordId, RecordType, Roles};
 
-use super::entity::{OpenedRecord, Record, RecordEntity, Sealed};
+use super::entity::{OpenedRecord, Record, RecordEntity, Revision, Sealed};
 use super::repository::{RecordRepository, Write};
 use super::vault::RecordVaults;
 use crate::access::{self, Actor, recorded};
 use crate::audit::epoch_seconds;
 use crate::record_types::RecordTypeService;
+use crate::shares::{Reach, Reached};
 use crate::{Conflict, Error, Result};
 
 /// Records and their revisions.
@@ -22,6 +24,7 @@ pub struct RecordService {
     repository: Arc<dyn RecordRepository>,
     vaults: Arc<RecordVaults>,
     types: Arc<RecordTypeService>,
+    reach: Arc<Reach>,
     database: Database,
     place: Place,
 }
@@ -31,6 +34,7 @@ impl RecordService {
         repository: Arc<dyn RecordRepository>,
         vaults: Arc<RecordVaults>,
         types: Arc<RecordTypeService>,
+        reach: Arc<Reach>,
         database: Database,
         place: Place,
     ) -> Self {
@@ -38,12 +42,13 @@ impl RecordService {
             repository,
             vaults,
             types,
+            reach,
             database,
             place,
         }
     }
 
-    /// The records the caller wrote in the company.
+    /// The records the caller wrote in the company, and those shared with them.
     ///
     /// # Errors
     ///
@@ -57,12 +62,21 @@ impl RecordService {
             Action::ReadRecord,
         )
         .await?;
-        self.repository
+        let mut records = self
+            .repository
             .list(&self.place, company, actor.account())
+            .await?;
+        let own: HashSet<String> = records.iter().map(|record| record.id.clone()).collect();
+        let targets = self.reach.targets(company, actor.account()).await?;
+        let shared: Vec<String> = self
+            .reach
+            .shared(company, &targets)
             .await?
             .into_iter()
-            .map(RecordEntity::into_model)
-            .collect()
+            .filter(|id| !own.contains(id))
+            .collect();
+        records.extend(self.repository.among(&self.place, company, shared).await?);
+        records.into_iter().map(RecordEntity::into_model).collect()
     }
 
     /// Keep a new record whose first revision is `sealed`, under the record key `key_id`.
@@ -128,6 +142,8 @@ impl RecordService {
                     now,
                     vault_key: self.vaults.key(company)?,
                     company_type,
+                    shares: 0,
+                    extra: &[],
                 },
             )
             .await?;
@@ -142,11 +158,12 @@ impl RecordService {
         })
     }
 
-    /// The record and its latest revision's sealed parts; the read is on the company's trail before it is opened.
+    /// The record and its latest revision's sealed parts, with the wrap of its key the caller can open; the read is
+    /// on the company's trail before it is opened.
     ///
     /// # Errors
     ///
-    /// [`Error::Refused`] per the decision; [`Error::NotFound`] for a record that is not the caller's.
+    /// [`Error::Refused`] per the decision; [`Error::NotFound`] for a record the caller does not reach.
     pub async fn open(
         &self,
         actor: &Actor,
@@ -161,8 +178,9 @@ impl RecordService {
             Action::ReadRecord,
         )
         .await?;
-        let entity = self.authors(actor, company, record).await?;
-        let sealed = self
+        let (entity, reached) = self.reached(actor, company, record).await?;
+        let own_key = self.reach.member_key(company, actor.account()).await?;
+        let opened = self
             .repository
             .open(
                 &self.place,
@@ -172,26 +190,28 @@ impl RecordService {
                 self.vaults.key(company)?,
             )
             .await?;
+        let (recipient, sealed) = opened.for_caller(&reached, own_key.as_deref())?;
         Ok(OpenedRecord {
             record: entity.into_model()?,
             sealed,
+            recipient,
         })
     }
 
-    /// Write a new revision `sealed`, under the record key `key_id`, over the revision `expected` the caller read.
+    /// Write a new revision `sealed`, under the record key `key_id`, over the revision `expected` the caller read;
+    /// `wraps` carries the record key to every recipient the record keeps but the caller's own.
     ///
     /// # Errors
     ///
-    /// As [`RecordService::open`], and [`Conflict::StaleRevision`] when the record has moved past `expected`,
-    /// including when another revision over it commits first.
+    /// As [`RecordService::open`], [`Error::Refused`] for a caller who only reads it, [`Conflict::StaleRevision`]
+    /// when the record has moved past `expected`, including when another revision over it commits first, and
+    /// [`Conflict::StaleShares`] unless `wraps` names exactly the author's key and the shares' recipients.
     pub async fn revise(
         &self,
         actor: &Actor,
         company: &CompanyId,
         record: &RecordId,
-        expected: i64,
-        key_id: &KeyId,
-        sealed: &Sealed,
+        revision: Revision<'_>,
     ) -> Result<Record> {
         let standing = access::authorize(
             &self.database,
@@ -201,10 +221,22 @@ impl RecordService {
             Action::ReviseRecord,
         )
         .await?;
-        let entity = self.authors(actor, company, record).await?;
-        let next = expected
+        let (entity, reached) = self.reached(actor, company, record).await?;
+        reached.editing()?;
+        self.reach
+            .revisable(
+                company,
+                actor.account(),
+                &entity.author,
+                &reached,
+                revision.sealed.author_key(),
+                revision.wraps,
+            )
+            .await?;
+        let next = revision
+            .expected
             .checked_add(1)
-            .filter(|_| entity.revision == expected)
+            .filter(|_| entity.revision == revision.expected)
             .ok_or(Error::Conflict(Conflict::StaleRevision))?;
         let now = epoch_seconds();
         let written = self
@@ -217,14 +249,16 @@ impl RecordService {
                     record,
                     revision: next,
                     record_type: &entity.record_type,
-                    key_id,
+                    key_id: revision.key_id,
                     author: actor.account(),
-                    sealed,
+                    sealed: revision.sealed,
                     now,
                     vault_key: self.vaults.key(company)?,
                     company_type: None,
+                    shares: entity.shares,
+                    extra: revision.wraps,
                 },
-                expected,
+                revision.expected,
             )
             .await;
         match written {
@@ -237,21 +271,28 @@ impl RecordService {
         }
         let mut revised = entity.into_model()?;
         revised.revision = next;
-        revised.key_id = key_id.clone();
+        revised.key_id = revision.key_id.clone();
         revised.updated = now;
         Ok(revised)
     }
 
-    /// The record, when it is the company's and the caller wrote it.
-    async fn authors(
+    /// The record and what the caller holds on it, when it is the company's and some path reaches the caller.
+    pub(crate) async fn reached(
         &self,
         actor: &Actor,
         company: &CompanyId,
         record: &RecordId,
-    ) -> Result<RecordEntity> {
-        self.repository
-            .get(&self.place, company, actor.account(), record)
+    ) -> Result<(RecordEntity, Reached)> {
+        let entity = self
+            .repository
+            .get(&self.place, company, record)
             .await?
-            .ok_or(Error::NotFound)
+            .ok_or(Error::NotFound)?;
+        let reached = self
+            .reach
+            .of(company, actor.account(), &entity.id, &entity.author)
+            .await?
+            .ok_or(Error::NotFound)?;
+        Ok((entity, reached))
     }
 }

@@ -249,6 +249,9 @@ pub(crate) fn thrown(error: Error) -> Error {
         ("keys exist", Conflict::KeysExist),
         ("stale chain", Conflict::StaleChain),
         ("unknown key", Conflict::UnknownKey),
+        ("no key", Conflict::NoKey),
+        ("already shared", Conflict::AlreadyShared),
+        ("stale shares", Conflict::StaleShares),
     ];
     if message.starts_with("not found") {
         return Error::NotFound;

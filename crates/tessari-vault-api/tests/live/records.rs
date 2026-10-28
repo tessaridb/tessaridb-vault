@@ -94,7 +94,7 @@ fn revision(expected: i64, body: &[u8]) -> serde_json::Value {
     })
 }
 
-async fn create(world: &World, company: &str, token: &str, body: &[u8]) -> String {
+pub(crate) async fn create(world: &World, company: &str, token: &str, body: &[u8]) -> String {
     let (status, answer) = world
         .call(
             Method::POST,

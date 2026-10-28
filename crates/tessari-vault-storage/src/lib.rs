@@ -19,6 +19,7 @@ pub mod record_types;
 pub mod records;
 mod schema;
 pub mod sessions;
+pub mod shares;
 pub mod signin;
 mod storage;
 pub mod throttle;

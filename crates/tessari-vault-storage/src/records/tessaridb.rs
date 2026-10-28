@@ -1,14 +1,13 @@
 //! Records on TessariDB: a `records` row per record, a `revisions` row per revision, and each revision's sealed body
 //! in the company's keyed vault under `<record>.<revision>`, with the author's wrapped record key as its recipient.
 
-use std::collections::BTreeMap;
-
 use async_trait::async_trait;
 use tessari_vault_constants::RECORD_LIST_MAX;
-use tessari_vault_infrastructure::tessaridb::{Answer, Database, Place, Value, VaultKey};
+use tessari_vault_infrastructure::tessaridb::{Database, Place, Value, VaultKey};
 use tessari_vault_types::{AccountId, CompanyId, KeyId, RecordId, base64url};
 
-use super::entity::{RecordEntity, Sealed};
+use super::entity::{OpenedRevision, RecordEntity};
+use super::opened::opened_from;
 use super::repository::{RecordRepository, Write};
 use super::vault::RecordVaults;
 use crate::access::{GUARD, bind, membership_id, thrown};
@@ -16,9 +15,10 @@ use crate::audit::RECORD;
 use crate::record_types::role_words;
 use crate::{Error, Result, answers};
 
-/// Refuses unless `$record` is `$company`'s and `$author` wrote it, the answer a record that does not exist gets.
-pub(crate) const AUTHORS_RECORD: &str = "\
-THROW 'not found' IF (GET records:$record).company != $company OR (GET records:$record).author != $author;";
+/// Refuses unless `$record` is `$company`'s, the answer a record that does not exist gets; who reaches it is decided
+/// before the write.
+pub(crate) const COMPANYS_RECORD: &str =
+    "THROW 'not found' IF (GET records:$record).company != $company;";
 
 /// Refuses unless `$author_key` is the key set `$author` keeps in `$company`, so a revision names no key but theirs.
 const OWN_KEY: &str = "THROW 'unknown key' IF (GET member_keys:$own_keys).key_id != $author_key;";
@@ -31,6 +31,20 @@ fn revision_statements(vault: &str) -> String {
          CREATE {vault}:$vid = {{ body: $body }}; \
          ADD RECIPIENT $recipient TO {vault}:$vid KEY $wrap;"
     )
+}
+
+/// The statements adding each extra wrap as a recipient of the revision, with their bound values.
+fn extra_recipients(vault: &str, extra: &[(String, Vec<u8>)]) -> (String, Vec<(String, Value)>) {
+    let mut script = String::new();
+    let mut parameters = Vec::new();
+    for (index, (name, wrap)) in extra.iter().enumerate() {
+        script.push_str(&format!(
+            " ADD RECIPIENT $extra_name{index} TO {vault}:$vid KEY $extra_wrap{index};"
+        ));
+        parameters.push(bind(&format!("extra_name{index}"), name.as_str()));
+        parameters.push(bind(&format!("extra_wrap{index}"), wrap.clone()));
+    }
+    (script, parameters)
 }
 
 /// The vault id of one revision of `record`.
@@ -124,23 +138,47 @@ impl RecordRepository for TessaridbRecordRepository {
         &self,
         place: &Place,
         company: &CompanyId,
-        author: &AccountId,
         record: &RecordId,
     ) -> Result<Option<RecordEntity>> {
         let answers = self
             .database
             .run_at(
                 place,
-                "SELECT * FROM records WHERE record_id = $record AND company = $company AND author = $author \
-                 USING INDEX by_id;",
+                "SELECT * FROM records WHERE record_id = $record AND company = $company USING INDEX by_id;",
                 vec![
                     bind("record", record.as_str()),
                     bind("company", company.as_str()),
-                    bind("author", author.as_str()),
                 ],
             )
             .await?;
         answers::single(answers, "record")
+    }
+
+    async fn among(
+        &self,
+        place: &Place,
+        company: &CompanyId,
+        ids: Vec<String>,
+    ) -> Result<Vec<RecordEntity>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let answers = self
+            .database
+            .run_at(
+                place,
+                "SELECT * FROM records WHERE record_id IN $ids AND company = $company LIMIT $limit;",
+                vec![
+                    bind(
+                        "ids",
+                        Value::Array(ids.into_iter().map(Value::from).collect()),
+                    ),
+                    bind("company", company.as_str()),
+                    bind("limit", RECORD_LIST_MAX),
+                ],
+            )
+            .await?;
+        answers::records(answers, "record")
     }
 
     async fn create(
@@ -166,7 +204,7 @@ impl RecordRepository for TessaridbRecordRepository {
         let script = format!(
             "BEGIN; {GUARD} {type_unchanged} {OWN_KEY} \
              CREATE records:$record = {{ record_id: $record, company: $company, record_type: $type, \
-             revision: $revision, key_id: $key_id, author: $author, state: 'active', created: $now, \
+             revision: $revision, key_id: $key_id, author: $author, state: 'active', shares: 0, created: $now, \
              updated: $now }}; {revision} {RECORD} COMMIT;"
         );
         self.write(place, &script, guard, write).await
@@ -179,13 +217,18 @@ impl RecordRepository for TessaridbRecordRepository {
         write: Write<'_>,
         expected: i64,
     ) -> Result<()> {
+        let vault = RecordVaults::name(write.company);
+        let (extra, extra_values) = extra_recipients(&vault, write.extra);
         guard.push(bind("expected", expected));
-        let revision = revision_statements(&RecordVaults::name(write.company));
+        guard.push(bind("shares", write.shares));
+        guard.extend(extra_values);
+        let revision = revision_statements(&vault);
         let script = format!(
-            "BEGIN; {GUARD} {AUTHORS_RECORD} {OWN_KEY} \
+            "BEGIN; {GUARD} {COMPANYS_RECORD} {OWN_KEY} \
              THROW 'stale revision' IF (GET records:$record).revision != $expected; \
+             THROW 'stale shares' IF (GET records:$record).shares != $shares; \
              UPDATE records:$record SET revision = $revision, key_id = $key_id, updated = $now; \
-             {revision} {RECORD} COMMIT;"
+             {revision}{extra} {RECORD} COMMIT;"
         );
         self.write(place, &script, guard, write).await
     }
@@ -197,17 +240,16 @@ impl RecordRepository for TessaridbRecordRepository {
         company: &CompanyId,
         entity: &RecordEntity,
         vault_key: VaultKey,
-    ) -> Result<Sealed> {
+    ) -> Result<OpenedRevision> {
         let vault = RecordVaults::name(company);
         guard.extend([
             bind("company", company.as_str()),
             bind("record", entity.id.as_str()),
-            bind("author", entity.author.as_str()),
             bind("vid", revision_id(&entity.id, entity.revision).as_str()),
         ]);
         // The read is on the trail before anything is opened: the transaction recording it commits first.
         let script = format!(
-            "BEGIN; {GUARD} {AUTHORS_RECORD} {RECORD} COMMIT; \
+            "BEGIN; {GUARD} {COMPANYS_RECORD} {RECORD} COMMIT; \
              REVEAL body FROM {vault}:$vid; \
              INFO FOR RECIPIENTS OF {vault}:$vid; \
              RETURN (GET revisions:$vid);"
@@ -217,57 +259,6 @@ impl RecordRepository for TessaridbRecordRepository {
             .run_presenting(place, &script, guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
-        sealed_from(answers)
-    }
-}
-
-fn unreadable(what: &str) -> Error {
-    Error::Unreadable {
-        record: "revision",
-        reason: format!("{what} did not read back as written"),
-    }
-}
-
-fn object(answer: Option<Answer>, what: &str) -> Result<BTreeMap<String, Value>> {
-    match answer {
-        Some(Answer::Value {
-            value: Value::Object(fields),
-            ..
-        }) => Ok(fields),
-        _ => Err(unreadable(what)),
-    }
-}
-
-fn text<'a>(fields: &'a BTreeMap<String, Value>, field: &str) -> Result<&'a str> {
-    match fields.get(field) {
-        Some(Value::String(text)) => Ok(text),
-        _ => Err(unreadable(field)),
-    }
-}
-
-/// The sealed parts from the last three answers: the revealed body, the recipient set, and the revision row.
-fn sealed_from(mut answers: Vec<Answer>) -> Result<Sealed> {
-    let row = object(answers.pop(), "revision row")?;
-    let recipients = answers.pop();
-    let revealed = object(answers.pop(), "revealed body")?;
-    let author_key =
-        KeyId::parse(text(&row, "author_key")?).map_err(|_| unreadable("author key"))?;
-    let named = recipient(&author_key);
-    let wrap = wrap_named(recipients, &named)?;
-    let body = base64url::decode(text(&revealed, "body")?).map_err(|_| unreadable("body"))?;
-    let signature =
-        base64url::decode(text(&row, "signature")?).map_err(|_| unreadable("signature"))?;
-    Sealed::new(body, signature, author_key, wrap).map_err(|_| unreadable("sealed parts"))
-}
-
-/// The material kept under `name` in a recipient set, which answers as `{ recipients: { <name>: <bytes> } }`.
-fn wrap_named(recipients: Option<Answer>, name: &str) -> Result<Vec<u8>> {
-    let mut answer = object(recipients, "recipients")?;
-    let Some(Value::Object(mut named)) = answer.remove("recipients") else {
-        return Err(unreadable("recipients"));
-    };
-    match named.remove(name) {
-        Some(Value::Bytes(material)) => Ok(material),
-        _ => Err(unreadable("the author's wrapped key")),
+        opened_from(answers)
     }
 }

@@ -10,7 +10,7 @@ use super::entity::{FileEntity, Kept};
 use super::repository::{FileRef, FileRepository, Part};
 use crate::access::{GUARD, bind, thrown};
 use crate::audit::RECORD;
-use crate::records::{AUTHORS_RECORD, RecordVaults};
+use crate::records::{COMPANYS_RECORD, RecordVaults};
 use crate::{Error, Result, answers};
 
 /// Refuses a part unless the file holds exactly the bytes before it.
@@ -67,7 +67,7 @@ impl FileRepository for TessaridbFiles {
             .run_at(
                 place,
                 "SELECT * FROM files WHERE file_id = $file AND record = $record AND company = $company \
-                 AND author = $author USING INDEX by_id;",
+                 USING INDEX by_id;",
                 located(at),
             )
             .await?;
@@ -90,7 +90,7 @@ impl FileRepository for TessaridbFiles {
             bind("now", now),
         ]);
         let script = format!(
-            "BEGIN; {GUARD} {AUTHORS_RECORD} \
+            "BEGIN; {GUARD} {COMPANYS_RECORD} \
              CREATE files:$file = {{ file_id: $file, company: $company, record: $record, author: $author, \
              size: $size, kept: $kept, written: 0, created: $now }}; {RECORD} COMMIT;"
         );

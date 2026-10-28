@@ -61,6 +61,8 @@ pub enum Action {
     ReadRecord,
     /// Write a new revision of a record; which records is decided on the record.
     ReviseRecord,
+    /// Share a record with a group or a member; which records is decided on the record.
+    ShareRecord,
     /// Keep one's own key set in the company, and read it back.
     KeepKeys,
     /// Read the company's key directory and vouching chain.
@@ -116,6 +118,7 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::ReadGroups
         | Action::ReadRecord
         | Action::ReviseRecord
+        | Action::ShareRecord
         | Action::KeepKeys
         | Action::ReadKeys => Role::Member,
         Action::AddMember { role: Role::Owner }

@@ -7,11 +7,12 @@ use tessari_vault_types::{AccountId, CompanyId, FileId, RecordId};
 use super::entity::{FileEntity, Kept};
 use crate::Result;
 
-/// Which file, on which record, for whom: every statement checks all of it.
+/// Which file, on which record, and who acts on it; the record's reach is decided before any statement runs.
 pub(crate) struct FileRef<'a> {
     pub(crate) company: &'a CompanyId,
     pub(crate) record: &'a RecordId,
     pub(crate) file: &'a FileId,
+    /// The caller; a file they start records them as its author.
     pub(crate) author: &'a AccountId,
 }
 
@@ -27,9 +28,9 @@ pub(crate) struct Part<'a> {
 
 #[async_trait]
 pub(crate) trait FileRepository: Send + Sync {
-    /// The file, when it is on `record`, the record is the company's, and `author` wrote it.
+    /// The file, when it is on `record` and the record is the company's.
     async fn get(&self, place: &Place, at: &FileRef<'_>) -> Result<Option<FileEntity>>;
-    /// Start a file of `size` sealed bytes on a record `author` wrote, refused as not found otherwise.
+    /// Start a file of `size` sealed bytes on the company's `record`, refused as not found otherwise.
     async fn create(
         &self,
         place: &Place,
