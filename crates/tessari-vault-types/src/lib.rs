@@ -1,5 +1,6 @@
 //! Identifiers and value objects shared across TessariDB Vault crates.
 
+pub mod base64url;
 mod ids;
 mod kdf;
 mod password;

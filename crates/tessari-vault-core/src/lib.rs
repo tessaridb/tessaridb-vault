@@ -3,5 +3,6 @@
 pub mod access;
 mod error;
 pub mod totp;
+pub mod webauthn;
 
 pub use error::{Error, Result};

@@ -37,6 +37,8 @@ tessaridb-oauth-client = { git = "https://github.com/tessaridb/tessaridb-oauth-c
 tessaridb-client = "=0.13.1"
 # Randomness for identifiers and session tokens, and the digest a session is stored under.
 ring = "0.17"
+# COSE keys and CBOR for passkeys (RFC 9052 / RFC 9053).
+coset = "=0.4.2"
 # Constant-time comparison of one-time codes.
 subtle = "2"
 sha2 = "0.10"

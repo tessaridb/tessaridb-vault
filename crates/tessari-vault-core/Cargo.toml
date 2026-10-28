@@ -16,6 +16,9 @@ doctest = false
 tessari-vault-constants.workspace = true
 tessari-vault-types.workspace = true
 ring.workspace = true
+coset.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
 
