@@ -33,3 +33,12 @@ export function flipped(bytes: Uint8Array<ArrayBuffer>, index: number): Uint8Arr
   copy[index] = (copy[index] ?? 0) ^ 0x01;
   return copy;
 }
+
+/** `size` random bytes for test data; `getRandomValues` fills at most 65 536 bytes a call. */
+export function noise(size: number): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(size);
+  for (let at = 0; at < size; at += 65_536) {
+    crypto.getRandomValues(out.subarray(at, Math.min(size, at + 65_536)));
+  }
+  return out;
+}

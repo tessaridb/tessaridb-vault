@@ -10,6 +10,10 @@ export const LABEL = {
   recordContent: `${PREFIX}record-content`,
   /** Associated-data prefix of a record body. */
   record: `${PREFIX}record`,
+  /** HKDF info for a file's key derived from its record key. */
+  file: `${PREFIX}file`,
+  /** Associated-data prefix of every chunk of a file. */
+  fileChunk: `${PREFIX}file-chunk`,
   /** Associated-data prefix of a membership private key wrapped under the unlock key. */
   memberKey: `${PREFIX}member-key`,
   /** HPKE `info` prefix of a key wrap. */
@@ -23,10 +27,11 @@ export const LABEL = {
 /** The format version every sealed value starts with. */
 export const FORMAT_VERSION = 1;
 
-/** The algorithm allow-list (key-hierarchy worksheet §3a); 0x05, file STREAM, arrives with file attachments. */
+/** The algorithm allow-list (key-hierarchy worksheet §3a). */
 export const ALGORITHM = {
   recordBody: 0x01,
   keyWrap: 0x02,
   memberKey: 0x03,
   signature: 0x04,
+  file: 0x05,
 } as const;

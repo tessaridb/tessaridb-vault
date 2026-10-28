@@ -13,7 +13,8 @@ export type Refusal =
   | "chain-broken"
   | "bad-signature"
   | "weak-shared-secret"
-  | "kdf-refused";
+  | "kdf-refused"
+  | "too-large";
 
 export class VaultCryptoError extends Error {
   readonly reason: Refusal;
