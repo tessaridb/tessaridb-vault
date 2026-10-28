@@ -23,6 +23,46 @@ pub struct NodeConfig {
     pub service_key_file: PathBuf,
     /// The OpenID Connect issuer people may sign in through, when one is configured.
     pub oidc: Option<OidcConfig>,
+    /// The passkey relying party, from the address people reach the server at, when one is configured.
+    pub passkeys: Option<PasskeyParty>,
+}
+
+/// The relying party passkeys are scoped to: the host people reach the server at, and that origin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PasskeyParty {
+    /// The relying-party id: the host.
+    pub rp_id: String,
+    /// The one origin a browser response may name.
+    pub origin: String,
+}
+
+/// The relying party of `public_url`: https, or http to a loopback address; a bare origin with no path or user.
+fn passkey_party(public_url: &str) -> Result<PasskeyParty> {
+    let refuse = |reason| Error::InvalidConfig {
+        field: "TESSARIDB_VAULT_PUBLIC_URL",
+        reason,
+    };
+    let url = url::Url::parse(public_url).map_err(|_| refuse("an absolute URL"))?;
+    let host = url.host_str().ok_or(refuse("a URL with a host"))?;
+    let loopback = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse::<std::net::IpAddr>()
+        .is_ok_and(|address| address.is_loopback());
+    if !(url.scheme() == "https" || (url.scheme() == "http" && loopback)) {
+        return Err(refuse("https, or http to a loopback address"));
+    }
+    if url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || !url.username().is_empty()
+    {
+        return Err(refuse("an origin with no path, query, fragment or user"));
+    }
+    Ok(PasskeyParty {
+        rp_id: host.to_owned(),
+        origin: url.origin().ascii_serialization(),
+    })
 }
 
 /// An OpenID Connect issuer and this server's registration there.
@@ -44,7 +84,8 @@ impl NodeConfig {
     /// `TESSARIDB_VAULT_NAMESPACE` (default `vault`), `TESSARIDB_VAULT_DATABASE` (default `main`),
     /// `TESSARIDB_VAULT_LISTEN` (default `127.0.0.1:8080`); `TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL` with
     /// `TESSARIDB_VAULT_PLATFORM_ADMIN_NAME`, both or neither; `TESSARIDB_VAULT_OIDC_ISSUER`,
-    /// `TESSARIDB_VAULT_OIDC_CLIENT_ID` and `TESSARIDB_VAULT_OIDC_REDIRECT`, all three or none.
+    /// `TESSARIDB_VAULT_OIDC_CLIENT_ID` and `TESSARIDB_VAULT_OIDC_REDIRECT`, all three or none;
+    /// `TESSARIDB_VAULT_PUBLIC_URL`, the address people reach the server at, for passkeys.
     ///
     /// # Errors
     ///
@@ -105,6 +146,9 @@ impl NodeConfig {
                 });
             }
         };
+        let passkeys = lookup("TESSARIDB_VAULT_PUBLIC_URL")
+            .map(|url| passkey_party(&url))
+            .transpose()?;
         Ok(Self {
             store: StoreConfig {
                 address: required("TESSARIDB_VAULT_STORE")?,
@@ -118,6 +162,7 @@ impl NodeConfig {
             platform_admin,
             service_key_file: required("TESSARIDB_VAULT_SERVICE_KEY_FILE")?.into(),
             oidc,
+            passkeys,
         })
     }
 }

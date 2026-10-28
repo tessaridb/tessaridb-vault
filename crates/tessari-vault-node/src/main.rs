@@ -124,8 +124,12 @@ async fn run() -> Result<&'static str, StartError> {
         .map_err(StartError::Listen)?;
     tracing::info!(version = env!("CARGO_PKG_VERSION"), listen = %config.listen, "tessaridb-vault serving");
     let (stopped, signalled) = tokio::sync::oneshot::channel();
-    let app =
-        router(AppState { storage, oidc }).into_make_service_with_connect_info::<SocketAddr>();
+    let app = router(AppState {
+        storage,
+        oidc,
+        passkeys: config.passkeys.clone(),
+    })
+    .into_make_service_with_connect_info::<SocketAddr>();
     let serving = axum::serve(listener, app).with_graceful_shutdown(async move {
         let name = shutdown_signal().await.unwrap_or("signal listener failed");
         let _ = stopped.send(name);

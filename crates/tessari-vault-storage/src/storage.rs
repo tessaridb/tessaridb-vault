@@ -10,6 +10,7 @@ use crate::companies::{CompanyService, TessaridbCompanyRepository};
 use crate::enrolments::EnrolmentService;
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::identities::IdentityService;
+use crate::passkeys::PasskeyService;
 use crate::sessions::SessionService;
 use crate::signin::{SignInParts, SignInService};
 use crate::throttle::ThrottleService;
@@ -37,6 +38,8 @@ pub struct Storage {
     pub groups: Arc<GroupService>,
     /// Identities at an OpenID Connect issuer, and requests in flight to one.
     pub identities: Arc<IdentityService>,
+    /// Passkeys and their ceremonies.
+    pub passkeys: Arc<PasskeyService>,
     /// Sessions.
     pub sessions: Arc<SessionService>,
     /// Own sign-in.
@@ -90,6 +93,12 @@ impl Storage {
             Arc::clone(&accounts),
             Arc::clone(&sessions),
         ));
+        let passkeys = Arc::new(PasskeyService::new(
+            database.clone(),
+            place.clone(),
+            Arc::clone(&accounts),
+            Arc::clone(&sessions),
+        ));
         let throttle = Arc::new(ThrottleService::new(database.clone(), place.clone()));
         let sign_in = Arc::new(SignInService::new(
             database.clone(),
@@ -109,6 +118,7 @@ impl Storage {
             enrolments,
             groups,
             identities,
+            passkeys,
             sessions,
             sign_in,
             throttle,

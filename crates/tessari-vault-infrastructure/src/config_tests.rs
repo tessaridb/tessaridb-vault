@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::{NodeConfig, OidcConfig};
+use super::{NodeConfig, OidcConfig, PasskeyParty};
 use crate::Error;
 
 fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
@@ -110,4 +110,59 @@ fn the_oidc_issuer_is_all_three_settings_or_none() {
             redirect: "https://vault.example.com/sign-in/return".to_owned(),
         })
     );
+}
+
+#[test]
+fn the_public_url_names_the_passkey_relying_party_and_must_be_https_or_loopback() {
+    let config = NodeConfig::from_lookup(lookup(&STORE)).expect("valid");
+    assert_eq!(config.passkeys, None);
+    for (url, rp_id, origin) in [
+        (
+            "https://vault.example.com",
+            "vault.example.com",
+            "https://vault.example.com",
+        ),
+        (
+            "https://vault.example.com:8443/",
+            "vault.example.com",
+            "https://vault.example.com:8443",
+        ),
+        (
+            "http://127.0.0.1:47999",
+            "127.0.0.1",
+            "http://127.0.0.1:47999",
+        ),
+    ] {
+        let mut pairs = STORE.to_vec();
+        pairs.push(("TESSARIDB_VAULT_PUBLIC_URL", url));
+        let config = NodeConfig::from_lookup(lookup(&pairs)).expect(url);
+        assert_eq!(
+            config.passkeys,
+            Some(PasskeyParty {
+                rp_id: rp_id.to_owned(),
+                origin: origin.to_owned(),
+            }),
+            "{url}"
+        );
+    }
+    for url in [
+        "http://vault.example.com",
+        "https://vault.example.com/vault",
+        "https://user@vault.example.com",
+        "not a url",
+    ] {
+        let mut pairs = STORE.to_vec();
+        pairs.push(("TESSARIDB_VAULT_PUBLIC_URL", url));
+        let error = NodeConfig::from_lookup(lookup(&pairs)).expect_err(url);
+        assert!(
+            matches!(
+                error,
+                Error::InvalidConfig {
+                    field: "TESSARIDB_VAULT_PUBLIC_URL",
+                    ..
+                }
+            ),
+            "{url}"
+        );
+    }
 }

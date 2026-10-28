@@ -6,11 +6,13 @@
 
 #![cfg(test)]
 
+mod authenticator;
 mod binary;
 mod enrolment;
 mod issuer;
 mod oauth_e2e;
 mod oidc;
+mod passkeys;
 mod rules;
 mod sign_in;
 mod world;
@@ -19,6 +21,12 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use tessari_vault_api::routes;
 use world::{Cast, World};
+
+/// Routes that refuse nobody by design, each with the reason; every other route has a probe.
+const EXEMPT: [(&str, &str); 1] = [(
+    "/api/sign-in/passkey/begin",
+    "a fresh challenge that names no account",
+)];
 
 /// Who a probe is sent as.
 #[derive(Clone, Copy, Debug)]
@@ -112,6 +120,17 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             cross: None,
         }),
         ("POST", "/api/me/identities/oidc") => row(None, None, None),
+        ("POST", "/api/me/passkeys/begin") => row(None, None, None),
+        ("POST", "/api/me/passkeys") => row(
+            Some(json!({ "client_data_json": "e30", "attestation_object": "oA" })),
+            None,
+            None,
+        ),
+        ("POST", "/api/sign-in/passkey") => by_token(
+            json!({ "credential_id": "AAAA", "client_data_json": "e30", "authenticator_data": "AA",
+                    "signature": "AA", "user_handle": "AA" }),
+            StatusCode::UNAUTHORIZED,
+        ),
         ("POST", "/api/me/identities/oidc/return") => {
             row(Some(json!({ "query": "state=cd&code=ef" })), None, None)
         }
@@ -165,8 +184,16 @@ async fn every_route_refuses_the_unsigned_the_lower_role_and_another_company() {
     let cast = Cast::new(&world).await;
     let (mut source, mut enforced, mut verified) = (0_u32, 0_u32, 0_u32);
     let mut missing = Vec::new();
+    let mut exempt = Vec::new();
     for route in routes() {
         source = source.saturating_add(1);
+        if let Some((_, reason)) = EXEMPT
+            .iter()
+            .find(|(path, _)| route.method == Method::POST && *path == route.path)
+        {
+            exempt.push(format!("{} {}: {reason}", route.method, route.path));
+            continue;
+        }
         let Some(probe) = probe(&cast, &route.method, route.path) else {
             missing.push(format!("{} {}", route.method, route.path));
             continue;
@@ -217,9 +244,15 @@ async fn every_route_refuses_the_unsigned_the_lower_role_and_another_company() {
         }
         verified = verified.saturating_add(1);
     }
-    println!("paths: source={source} | enforced={enforced} | verified={verified} | exempt=[]");
+    println!(
+        "paths: source={source} | enforced={enforced} | verified={verified} | exempt={exempt:?}"
+    );
     assert!(missing.is_empty(), "routes with no probe: {missing:?}");
-    assert_eq!((source, enforced, verified), (source, source, source));
+    let open = u32::try_from(exempt.len()).expect("a few");
+    assert_eq!(
+        (enforced, verified),
+        (source.saturating_sub(open), source.saturating_sub(open))
+    );
     // The refused calls changed nothing: the member is still a member, the team still exists.
     let (status, body) = world
         .call(

@@ -45,6 +45,9 @@ pub enum Conflict {
     /// The account is not an active member of the company, so it cannot join one of its groups.
     #[error("the account is not an active member of this company")]
     NotAMember,
+    /// The passkey is registered already.
+    #[error("the passkey is already registered")]
+    PasskeyRegistered,
     /// The identity at that issuer is already linked to an account.
     #[error("the identity is already linked to an account")]
     IdentityLinked,

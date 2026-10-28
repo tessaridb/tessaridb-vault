@@ -13,6 +13,7 @@ autotests = false
 doctest = false
 
 [dependencies]
+url.workspace = true
 tessari-vault-constants.workspace = true
 tessaridb-client.workspace = true
 ring.workspace = true

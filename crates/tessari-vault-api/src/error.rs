@@ -64,6 +64,13 @@ impl ApiError {
         "the code is not the authenticator's current code",
     );
 
+    /// The passkey response was refused: not this ceremony's, not this relying party's, or not verified.
+    pub const PASSKEY_REFUSED: Self = Self::new(
+        StatusCode::BAD_REQUEST,
+        "passkey_refused",
+        "the passkey response was not accepted",
+    );
+
     /// The new password breaks the policy named by `weak`.
     #[must_use]
     pub const fn weak_password(weak: PasswordError) -> Self {
@@ -156,6 +163,7 @@ const fn conflicted(conflict: Conflict) -> ApiError {
             "the account is not an active member of this company",
         ),
         Conflict::Enrolled => ("enrolled", "the account is already enrolled"),
+        Conflict::PasskeyRegistered => ("passkey_registered", "the passkey is already registered"),
         Conflict::IdentityLinked => (
             "identity_linked",
             "the identity is already linked to an account",

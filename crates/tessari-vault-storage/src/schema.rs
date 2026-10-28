@@ -35,6 +35,11 @@ DEFINE TABLE IF NOT EXISTS identities (issuer string, subject string, account st
 DEFINE INDEX IF NOT EXISTS by_identity ON identities FIELDS issuer, subject UNIQUE; \
 DEFINE INDEX IF NOT EXISTS by_account ON identities FIELDS account; \
 DEFINE SPACE IF NOT EXISTS oidc_pending; \
+DEFINE TABLE IF NOT EXISTS passkeys (account string, credential string, public_key string, sign_count int, \
+backup_eligible bool, created datetime); \
+DEFINE INDEX IF NOT EXISTS by_credential ON passkeys FIELDS credential UNIQUE; \
+DEFINE INDEX IF NOT EXISTS by_account ON passkeys FIELDS account; \
+DEFINE SPACE IF NOT EXISTS passkey_ceremonies; \
 DEFINE SPACE IF NOT EXISTS sessions; \
 DEFINE SPACE IF NOT EXISTS sign_ins; \
 DEFINE SPACE IF NOT EXISTS throttles;";

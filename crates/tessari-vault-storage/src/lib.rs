@@ -9,6 +9,7 @@ pub mod enrolments;
 mod error;
 pub mod groups;
 pub mod identities;
+pub mod passkeys;
 mod schema;
 pub mod sessions;
 pub mod signin;

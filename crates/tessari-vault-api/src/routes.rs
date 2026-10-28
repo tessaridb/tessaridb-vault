@@ -7,7 +7,7 @@ use axum::Router;
 use axum::http::Method;
 use axum::routing::{MethodRouter, delete, get, patch, post};
 
-use crate::handlers::{companies, enrolment, groups, members, oidc, sign_in};
+use crate::handlers::{companies, enrolment, groups, members, oidc, passkeys, sign_in};
 use crate::state::AppState;
 
 /// One route: its method, its path pattern, and its handler.
@@ -75,6 +75,22 @@ pub fn routes() -> Vec<Route> {
         route(Method::GET, "/api/sign-in/oidc", get(oidc::start)),
         route(Method::GET, "/api/sign-in/oidc/return", get(oidc::returned)),
         route(Method::POST, "/api/me/identities/oidc", post(oidc::link)),
+        route(
+            Method::POST,
+            "/api/me/passkeys/begin",
+            post(passkeys::begin_registration),
+        ),
+        route(Method::POST, "/api/me/passkeys", post(passkeys::register)),
+        route(
+            Method::POST,
+            "/api/sign-in/passkey/begin",
+            post(passkeys::begin_sign_in),
+        ),
+        route(
+            Method::POST,
+            "/api/sign-in/passkey",
+            post(passkeys::sign_in),
+        ),
         route(
             Method::POST,
             "/api/me/identities/oidc/return",

@@ -195,6 +195,13 @@ async fn the_binary_lets_the_first_person_in_and_stops_on_sigterm() {
             .expect("a cookie")
             .starts_with("__Host-vault-oidc=")
     );
+    // No public address is configured, so there is no passkey relying party and nothing to begin.
+    let passkey = http
+        .post(format!("{base}/api/sign-in/passkey/begin"))
+        .send()
+        .await
+        .expect("an answer");
+    assert_eq!(passkey.status(), StatusCode::NOT_FOUND);
     let pid = server.id().to_string();
     assert!(
         Command::new("kill")

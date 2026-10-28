@@ -9,6 +9,7 @@ use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, StatusCode};
 use serde_json::{Value, json};
 use tessari_vault_api::{AppState, router};
+use tessari_vault_infrastructure::config::PasskeyParty;
 use tessari_vault_infrastructure::custody::{
     PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal,
 };
@@ -19,6 +20,10 @@ use tessari_vault_types::{AccountId, Email, Name};
 use tower::ServiceExt;
 
 use crate::issuer::{CLIENT_ID, REDIRECT};
+
+/// The relying party and origin the live server's passkeys are scoped to.
+pub(crate) const PASSKEY_RP_ID: &str = "vault.test";
+pub(crate) const PASSKEY_ORIGIN: &str = "https://vault.test";
 
 pub(crate) const STORE_USER: &str = "vault_test";
 pub(crate) const STORE_PASSWORD: &str = "a-test-password-for-the-live-suite";
@@ -150,6 +155,10 @@ impl World {
             app: router(AppState {
                 storage: storage.clone(),
                 oidc,
+                passkeys: Some(PasskeyParty {
+                    rp_id: PASSKEY_RP_ID.to_owned(),
+                    origin: PASSKEY_ORIGIN.to_owned(),
+                }),
             }),
             storage,
             _node: node,
