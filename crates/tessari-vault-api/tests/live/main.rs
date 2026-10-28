@@ -11,6 +11,7 @@ mod authenticator;
 mod binary;
 mod enrolment;
 mod issuer;
+mod keyed_vault;
 mod oauth_e2e;
 mod oidc;
 mod passkeys;

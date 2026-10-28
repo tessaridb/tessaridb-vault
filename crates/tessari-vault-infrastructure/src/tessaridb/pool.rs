@@ -17,32 +17,12 @@ use tessari_vault_constants::{
     STORE_RETRY_FIRST_PAUSE_MS, STORE_RETRY_MAX_PAUSE_MS, STORE_SIGNIN_ATTEMPTS,
     STORE_SIGNIN_CONCURRENCY,
 };
-use tessaridb_client::{Answer, Client, RefusalClass, Secured, Tls, Value};
-use tokio::sync::Semaphore;
+use tessaridb_client::{Answer, Client, RefusalClass, Request, Tls, Value, VaultKey};
+use tokio::sync::{Semaphore, SemaphorePermit};
 
+use super::connection::{Connection, bound};
 use super::{Place, StoreConfig};
 use crate::{Error, Result};
-
-/// One signed-in session, over TLS, or in the clear to a loopback address only.
-enum Connection {
-    Plain(Client),
-    /// Boxed: a TLS session carries its whole record layer, many times the size of a plain one.
-    Secured(Box<Client<Secured>>),
-}
-
-impl Connection {
-    async fn run_with(
-        &mut self,
-        script: &str,
-        credentials: Option<(&str, &str)>,
-        parameters: Vec<(String, Value)>,
-    ) -> std::result::Result<Vec<Answer>, tessaridb_client::Error> {
-        match self {
-            Self::Plain(client) => client.run_with(script, credentials, parameters).await,
-            Self::Secured(client) => client.run_with(script, credentials, parameters).await,
-        }
-    }
-}
 
 /// A handle on the store; cheap to clone, shared by every caller.
 #[derive(Clone)]
@@ -102,8 +82,59 @@ impl Database {
         parameters: Vec<(String, Value)>,
     ) -> Result<Vec<Answer>> {
         let preamble = place.preamble();
-        self.exchange(format!("{preamble} {script}"), parameters, 2)
+        self.exchange(&bound(format!("{preamble} {script}"), parameters), 2)
             .await
+    }
+
+    /// As [`Database::run_at`], with `key` presented for the keyed vault `vault` at `place` for this request alone:
+    /// the node opens the vault with it and keeps nothing of it afterwards.
+    ///
+    /// # Errors
+    ///
+    /// As [`Database::run_at`]; the node refuses a key that does not open the vault.
+    pub async fn run_presenting(
+        &self,
+        place: &Place,
+        script: &str,
+        parameters: Vec<(String, Value)>,
+        vault: &str,
+        key: VaultKey,
+    ) -> Result<Vec<Answer>> {
+        let preamble = place.preamble();
+        let request = bound(format!("{preamble} {script}"), parameters)
+            .presenting((place.namespace(), place.database(), vault), key);
+        self.exchange(&request, 2).await
+    }
+
+    /// Declare the vault `vault` at `place` in key custody, its key wrapped under `key`, which is never stored.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidName`] when `vault` is not a plain name; [`Error::Refused`] when the node refuses, a name
+    /// already taken included; [`Error::Unavailable`] when the store cannot be reached.
+    pub async fn declare_keyed_vault(
+        &self,
+        place: &Place,
+        vault: &str,
+        key: &VaultKey,
+    ) -> Result<()> {
+        let (_slot, mut client, _) = self.converse(&Request::new(place.preamble())).await?;
+        match client
+            .declare_keyed((place.namespace(), place.database()), vault, key)
+            .await
+        {
+            Ok(()) => {
+                self.release(client);
+                Ok(())
+            }
+            Err(tessaridb_client::Error::Build(_)) => {
+                self.release(client);
+                Err(Error::InvalidName {
+                    name: vault.to_owned(),
+                })
+            }
+            Err(failure) => Err(self.failed(client, false, failure)),
+        }
     }
 
     /// Run `script` with no place selected, for provisioning, whose statements name their own places.
@@ -116,16 +147,23 @@ impl Database {
         script: &str,
         parameters: Vec<(String, Value)>,
     ) -> Result<Vec<Answer>> {
-        self.exchange(script.to_owned(), parameters, 0).await
+        self.exchange(&bound(script.to_owned(), parameters), 0)
+            .await
     }
 
-    async fn exchange(
+    async fn exchange(&self, request: &Request, preamble: usize) -> Result<Vec<Answer>> {
+        let (_slot, client, answers) = self.converse(request).await?;
+        self.release(client);
+        Ok(answers.into_iter().skip(preamble).collect())
+    }
+
+    /// Send `request` on a connection, signing a new one in with it, and hand the connection back with the
+    /// answers so the caller can send more on the same session before releasing it.
+    async fn converse(
         &self,
-        script: String,
-        parameters: Vec<(String, Value)>,
-        preamble: usize,
-    ) -> Result<Vec<Answer>> {
-        let _slot = self
+        request: &Request,
+    ) -> Result<(SemaphorePermit<'_>, Connection, Vec<Answer>)> {
+        let slot = self
             .inner
             .slots
             .acquire()
@@ -140,9 +178,8 @@ impl Database {
             .unwrap_or_else(PoisonError::into_inner)
             .pop();
         if let Some(client) = reused {
-            return self
-                .send(client, false, &script, parameters, preamble)
-                .await;
+            let (client, answers) = self.send(client, false, request).await?;
+            return Ok((slot, client, answers));
         }
         let mut pause = Duration::from_millis(STORE_RETRY_FIRST_PAUSE_MS);
         let longest = Duration::from_millis(STORE_RETRY_MAX_PAUSE_MS);
@@ -157,9 +194,7 @@ impl Database {
                     message: "the connection pool is closed".to_owned(),
                 })?;
             let client = self.connect().await?;
-            let outcome = self
-                .send(client, true, &script, parameters.clone(), preamble)
-                .await;
+            let outcome = self.send(client, true, request).await;
             drop(signing);
             let throttled = matches!(
                 &outcome,
@@ -169,7 +204,7 @@ impl Database {
                 })
             );
             if !throttled || made >= STORE_SIGNIN_ATTEMPTS {
-                return outcome;
+                return outcome.map(|(client, answers)| (slot, client, answers));
             }
             tokio::time::sleep(pause).await;
             pause = pause.saturating_mul(2).min(longest);
@@ -177,24 +212,31 @@ impl Database {
         }
     }
 
-    /// Send one request on `client`, signing in first when `signing_in`, and keep the connection only when its
-    /// session is certainly intact.
+    /// Send one request on `client`, signing in first when `signing_in`; on a refusal the connection is kept only
+    /// when its session is certainly intact.
     async fn send(
         &self,
         mut client: Connection,
         signing_in: bool,
-        script: &str,
-        parameters: Vec<(String, Value)>,
-        preamble: usize,
-    ) -> Result<Vec<Answer>> {
+        request: &Request,
+    ) -> Result<(Connection, Vec<Answer>)> {
         let config = &self.inner.config;
-        let credentials = signing_in.then_some((config.user.as_str(), config.password.as_str()));
-        match client.run_with(script, credentials, parameters).await {
-            Ok(answers) => {
-                self.release(client);
-                Ok(answers.into_iter().skip(preamble).collect())
-            }
-            Err(tessaridb_client::Error::Refused { message, class }) => {
+        let signed = signing_in.then(|| request.clone().as_user(&config.user, &config.password));
+        match client.send(signed.as_ref().unwrap_or(request)).await {
+            Ok(answers) => Ok((client, answers)),
+            Err(failure) => Err(self.failed(client, signing_in, failure)),
+        }
+    }
+
+    /// The error a failed exchange on `client` reports, keeping the connection only when its session is intact.
+    fn failed(
+        &self,
+        client: Connection,
+        signing_in: bool,
+        failure: tessaridb_client::Error,
+    ) -> Error {
+        match failure {
+            tessaridb_client::Error::Refused { message, class } => {
                 // A refused statement leaves the session intact, unless the refusal was about the session itself,
                 // or was a sign-in the node did not take, which leaves a connection that never signed in.
                 let session_lost = class == Some(RefusalClass::Unauthenticated)
@@ -202,11 +244,11 @@ impl Database {
                 if !session_lost {
                     self.release(client);
                 }
-                Err(Error::Refused { message, class })
+                Error::Refused { message, class }
             }
-            Err(failure) => Err(Error::Unavailable {
+            failure => Error::Unavailable {
                 message: failure.to_string(),
-            }),
+            },
         }
     }
 

@@ -30,6 +30,9 @@ const TOTP_LABEL: &[u8] = b"tessaridb-vault/v1/totp";
 /// The label of the key sign-in counters are named under, so the counters hold no address and no password.
 const SIGNIN_LABEL: &[u8] = b"tessaridb-vault/v1/sign-in";
 
+/// HKDF info prefix of a company's database-vault key; the company id follows it.
+const DB_VAULT_LABEL: &[u8] = b"tessaridb-vault/v1/db-vault";
+
 /// The service key, held only in memory and cleared when dropped.
 pub struct ServiceKey(Zeroizing<[u8; SERVICE_KEY_BYTES]>);
 
@@ -114,11 +117,25 @@ impl ServiceKey {
         self.derive(SIGNIN_LABEL)
     }
 
+    /// The company's database-vault key KV(c): what opens its keyed TessariDB vault, presented with each request and
+    /// never stored. The label is fixed-length, so the company id after it cannot move its boundary.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Custody`] when the derivation fails.
+    pub fn company_vault_key(&self, company: &str) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {
+        self.derive_with(&[DB_VAULT_LABEL, company.as_bytes()])
+    }
+
     fn derive(&self, label: &[u8]) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {
+        self.derive_with(&[label])
+    }
+
+    fn derive_with(&self, info: &[&[u8]]) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {
         let mut derived = Zeroizing::new([0_u8; SERVICE_KEY_BYTES]);
         hkdf::Salt::new(hkdf::HKDF_SHA256, &[])
             .extract(self.0.as_slice())
-            .expand(&[label], KeyLength)
+            .expand(info, KeyLength)
             .and_then(|okm| okm.fill(derived.as_mut_slice()))
             .map_err(|_| Error::Custody {
                 reason: "a key could not be derived from the service key",
