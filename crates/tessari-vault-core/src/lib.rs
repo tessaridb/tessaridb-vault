@@ -2,5 +2,6 @@
 
 pub mod access;
 mod error;
+pub mod totp;
 
 pub use error::{Error, Result};

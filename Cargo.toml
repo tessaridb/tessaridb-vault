@@ -34,6 +34,8 @@ unicode-normalization = "0.1"
 tessaridb-client = "=0.13.1"
 # Randomness for identifiers and session tokens, and the digest a session is stored under.
 ring = "0.17"
+# Constant-time comparison of one-time codes.
+subtle = "2"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

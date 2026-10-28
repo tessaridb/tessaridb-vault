@@ -689,6 +689,9 @@ version = "0.0.0"
 name = "tessari-vault-core"
 version = "0.0.0"
 dependencies = [
+ "ring",
+ "subtle",
+ "tessari-vault-constants",
  "tessari-vault-types",
  "thiserror",
 ]

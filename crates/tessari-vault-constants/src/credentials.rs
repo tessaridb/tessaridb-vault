@@ -21,3 +21,15 @@ pub const PASSWORD_SALT_BYTES: usize = 16;
 
 /// How many verifications run at once when the configuration says nothing: each holds the configured memory.
 pub const PASSWORD_CONCURRENCY_DEFAULT: usize = 4;
+
+/// The TOTP time step in seconds (RFC 6238 §4: the default 30 seconds every authenticator app uses).
+pub const TOTP_STEP_SECS: u64 = 30;
+
+/// The digits a TOTP code has (RFC 4226 §5.3: six).
+pub const TOTP_DIGITS: usize = 6;
+
+/// How many steps either side of the current one a code is accepted for: one, for a clock or a slow typist.
+pub const TOTP_SKEW_STEPS: u64 = 1;
+
+/// The length of a TOTP seed in bytes: 160 bits, the HMAC-SHA-1 block RFC 4226 §4 recommends.
+pub const TOTP_SECRET_BYTES: usize = 20;

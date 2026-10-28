@@ -24,6 +24,9 @@ const OTHERS_MASK: u32 = 0o077;
 /// The label of the outer HMAC key over sign-in password verifiers (PEP).
 const PEPPER_LABEL: &[u8] = b"tessaridb-vault/v1/pepper";
 
+/// The label of the key TOTP seeds are sealed under at rest (KT).
+const TOTP_LABEL: &[u8] = b"tessaridb-vault/v1/totp";
+
 /// The service key, held only in memory and cleared when dropped.
 pub struct ServiceKey(Zeroizing<[u8; SERVICE_KEY_BYTES]>);
 
@@ -88,6 +91,15 @@ impl ServiceKey {
     /// [`Error::Custody`] when the derivation fails.
     pub fn pepper(&self) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {
         self.derive(PEPPER_LABEL)
+    }
+
+    /// The TOTP sealing key (KT): the AES-256-GCM key TOTP seeds are sealed under at rest.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Custody`] when the derivation fails.
+    pub fn totp_key(&self) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {
+        self.derive(TOTP_LABEL)
     }
 
     fn derive(&self, label: &[u8]) -> Result<Zeroizing<[u8; SERVICE_KEY_BYTES]>> {
