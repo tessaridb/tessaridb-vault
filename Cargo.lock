@@ -679,6 +679,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -773,6 +774,8 @@ version = "0.0.0"
 dependencies = [
  "tessari-vault-constants",
  "thiserror",
+ "unicode-normalization",
+ "zeroize",
 ]
 
 [[package]]

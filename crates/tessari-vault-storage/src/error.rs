@@ -45,6 +45,9 @@ pub enum Conflict {
     /// The account is not an active member of the company, so it cannot join one of its groups.
     #[error("the account is not an active member of this company")]
     NotAMember,
+    /// The account already has a sign-in credential; a new one is recovery, which an enrolment link never is.
+    #[error("the account is already enrolled")]
+    Enrolled,
     /// The caller's standing changed between the decision and the write; nothing was written.
     #[error("the caller's standing changed; try again")]
     StandingChanged,

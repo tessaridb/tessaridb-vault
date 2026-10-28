@@ -2,10 +2,12 @@
 
 use std::sync::Arc;
 
+use tessari_vault_infrastructure::custody::{Passwords, TotpSeal};
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 
 use crate::accounts::{AccountService, TessaridbAccountRepository};
 use crate::companies::{CompanyService, TessaridbCompanyRepository};
+use crate::enrolments::EnrolmentService;
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::sessions::SessionService;
 use crate::throttle::ThrottleService;
@@ -17,6 +19,8 @@ pub struct Storage {
     pub accounts: Arc<AccountService>,
     /// Companies and memberships.
     pub companies: Arc<CompanyService>,
+    /// Enrolment links and the credentials they create.
+    pub enrolments: Arc<EnrolmentService>,
     /// Departments and teams.
     pub groups: Arc<GroupService>,
     /// Sessions.
@@ -26,16 +30,35 @@ pub struct Storage {
 }
 
 impl Storage {
-    /// Every service, over `database`, working at `place`.
+    /// Every service, over `database`, working at `place`, with the verifier and the seal the service key made.
     #[must_use]
-    pub fn new(database: &Database, place: &Place) -> Self {
+    pub fn new(
+        database: &Database,
+        place: &Place,
+        passwords: Arc<Passwords>,
+        seal: Arc<TotpSeal>,
+    ) -> Self {
         let accounts = Arc::new(AccountService::new(
             Arc::new(TessaridbAccountRepository::new(database.clone())),
             place.clone(),
         ));
+        let sessions = Arc::new(SessionService::new(
+            database.clone(),
+            place.clone(),
+            Arc::clone(&accounts),
+        ));
+        let enrolments = Arc::new(EnrolmentService::new(
+            database.clone(),
+            place.clone(),
+            Arc::clone(&accounts),
+            passwords,
+            seal,
+            Arc::clone(&sessions),
+        ));
         let companies = Arc::new(CompanyService::new(
             Arc::new(TessaridbCompanyRepository::new(database.clone())),
             Arc::clone(&accounts),
+            Arc::clone(&enrolments),
             database.clone(),
             place.clone(),
         ));
@@ -45,15 +68,11 @@ impl Storage {
             database.clone(),
             place.clone(),
         ));
-        let sessions = Arc::new(SessionService::new(
-            database.clone(),
-            place.clone(),
-            Arc::clone(&accounts),
-        ));
         let throttle = Arc::new(ThrottleService::new(database.clone(), place.clone()));
         Self {
             accounts,
             companies,
+            enrolments,
             groups,
             sessions,
             throttle,

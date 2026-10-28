@@ -27,6 +27,10 @@ DEFINE INDEX IF NOT EXISTS by_company ON memberships FIELDS company; \
 DEFINE INDEX IF NOT EXISTS by_account ON memberships FIELDS account; \
 DEFINE EDGE IF NOT EXISTS in_group IN access FROM accounts TO groups; \
 DEFINE EDGE IF NOT EXISTS part_of IN access FROM groups TO groups; \
+DEFINE TABLE IF NOT EXISTS credentials (account_id string, verifier string, totp string, totp_factor string, \
+totp_last_step int, created datetime); \
+DEFINE INDEX IF NOT EXISTS by_id ON credentials FIELDS account_id UNIQUE; \
+DEFINE SPACE IF NOT EXISTS enrolments; \
 DEFINE SPACE IF NOT EXISTS sessions; \
 DEFINE SPACE IF NOT EXISTS throttles;";
 

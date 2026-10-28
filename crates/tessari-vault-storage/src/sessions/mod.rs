@@ -32,12 +32,12 @@ impl fmt::Debug for SessionToken {
     }
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// The store key for a token's text, or `None` when the text is not the shape a token has.
-fn digest_key(token: &str) -> Option<String> {
+pub(crate) fn digest_key(token: &str) -> Option<String> {
     let shaped = token.len() == SESSION_TOKEN_BYTES.saturating_mul(2)
         && token
             .bytes()

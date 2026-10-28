@@ -9,6 +9,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use serde_json::{Value, json};
 use tessari_vault_api::{AppState, router};
+use tessari_vault_infrastructure::custody::{PasswordCost, Passwords, ServiceKey, TotpSeal};
 use tessari_vault_infrastructure::tessaridb::{Database, Place, StoreConfig};
 use tessari_vault_storage::{Storage, migrate};
 use tessari_vault_types::{AccountId, Email, Name};
@@ -90,6 +91,22 @@ impl World {
         )
         .expect("a loopback pool");
         let turn = TURN.fetch_add(1, Ordering::Relaxed);
+        let key_file =
+            std::env::temp_dir().join(format!("vault-live-key-{}-{turn}", std::process::id()));
+        std::fs::write(&key_file, "ab".repeat(32)).expect("the key file");
+        std::fs::set_permissions(
+            &key_file,
+            std::os::unix::fs::PermissionsExt::from_mode(0o600),
+        )
+        .expect("its mode");
+        let service_key = ServiceKey::load(&key_file).expect("a service key");
+        let passwords = Passwords::new(
+            &service_key,
+            PasswordCost::new(65_536, 3, 1).expect("the floor"),
+            4,
+        )
+        .expect("the verifier");
+        let seal = std::sync::Arc::new(TotpSeal::new(&service_key).expect("the seal"));
         let place = Place::new(format!("vault_t{turn}"), "main").expect("plain names");
         migrate(&database, &place)
             .await
@@ -97,7 +114,7 @@ impl World {
         migrate(&database, &place)
             .await
             .expect("the schema applies a second time unchanged");
-        let storage = Storage::new(&database, &place);
+        let storage = Storage::new(&database, &place, passwords, seal);
         Self {
             app: router(AppState {
                 storage: storage.clone(),

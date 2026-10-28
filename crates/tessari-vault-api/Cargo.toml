@@ -13,6 +13,7 @@ autotests = false
 doctest = false
 
 [dependencies]
+zeroize.workspace = true
 tessari-vault-constants.workspace = true
 tessari-vault-types.workspace = true
 tessari-vault-core.workspace = true

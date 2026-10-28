@@ -15,12 +15,14 @@ use super::entity::{Company, CompanyView, Member, Membership};
 use super::repository::{Change, CompanyRepository, Joining};
 use crate::access::{self, Actor, guard_values};
 use crate::accounts::AccountService;
+use crate::enrolments::{EnrolmentService, EnrolmentToken};
 use crate::{Error, Result};
 
 /// Companies and memberships.
 pub struct CompanyService {
     repository: Arc<dyn CompanyRepository>,
     accounts: Arc<AccountService>,
+    enrolments: Arc<EnrolmentService>,
     database: Database,
     place: Place,
 }
@@ -29,12 +31,14 @@ impl CompanyService {
     pub(crate) fn new(
         repository: Arc<dyn CompanyRepository>,
         accounts: Arc<AccountService>,
+        enrolments: Arc<EnrolmentService>,
         database: Database,
         place: Place,
     ) -> Self {
         Self {
             repository,
             accounts,
+            enrolments,
             database,
             place,
         }
@@ -288,6 +292,34 @@ impl CompanyService {
                 loses_owner,
             )
             .await
+    }
+
+    /// An enrolment link for `account`, a member of `company` with no credential yet. Issuing it is managing that
+    /// member, so the decision is the one a change to them takes: admins for members and admins, owners for anyone.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotFound`] when the account is not a member the caller may see; [`Error::Refused`] per the decision;
+    /// [`Error::Conflict`] when the account is already enrolled.
+    pub async fn issue_enrolment(
+        &self,
+        actor: &Actor,
+        company: &CompanyId,
+        account: &AccountId,
+    ) -> Result<EnrolmentToken> {
+        let target = self.visible_target(actor, company, account).await?;
+        access::authorize(
+            &self.database,
+            &self.place,
+            actor,
+            company,
+            Action::ChangeMember {
+                from: target.role,
+                to: target.role,
+            },
+        )
+        .await?;
+        self.enrolments.system_issue(account).await
     }
 
     /// The membership of `account` in `company`, after the caller has been shown the company at all, so a caller

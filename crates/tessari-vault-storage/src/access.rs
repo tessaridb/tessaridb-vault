@@ -208,6 +208,7 @@ pub(crate) fn thrown(error: Error) -> Error {
         ("group not empty", Conflict::GroupNotEmpty),
         ("wrong parent", Conflict::WrongParent),
         ("not a member", Conflict::NotAMember),
+        ("already enrolled", Conflict::Enrolled),
     ];
     if message.starts_with("not found") {
         return Error::NotFound;

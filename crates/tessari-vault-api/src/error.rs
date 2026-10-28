@@ -6,6 +6,7 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use tessari_vault_core::access::Refusal;
 use tessari_vault_storage::{Conflict, Error};
+use tessari_vault_types::PasswordError;
 
 /// A refusal, ready to answer with.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +51,24 @@ impl ApiError {
         "invalid_request",
         "the request is malformed",
     );
+    /// The one-time code is not the authenticator's current code.
+    pub const WRONG_CODE: Self = Self::new(
+        StatusCode::BAD_REQUEST,
+        "wrong_code",
+        "the code is not the authenticator's current code",
+    );
+
+    /// The new password breaks the policy named by `weak`.
+    #[must_use]
+    pub const fn weak_password(weak: PasswordError) -> Self {
+        let message = match weak {
+            PasswordError::Length => "a password is 8 to 256 characters",
+            PasswordError::Control => "a password holds no control characters",
+            PasswordError::Context => "a password does not contain the account's address",
+        };
+        Self::new(StatusCode::BAD_REQUEST, "weak_password", message)
+    }
+
     /// Too many requests in this window.
     pub const THROTTLED: Self = Self::new(
         StatusCode::TOO_MANY_REQUESTS,
@@ -130,6 +149,7 @@ const fn conflicted(conflict: Conflict) -> ApiError {
             "not_a_member",
             "the account is not an active member of this company",
         ),
+        Conflict::Enrolled => ("enrolled", "the account is already enrolled"),
         Conflict::StandingChanged => (
             "standing_changed",
             "your role changed while this ran; try again",

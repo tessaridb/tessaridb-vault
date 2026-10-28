@@ -23,14 +23,7 @@ impl FromRequestParts<AppState> for Caller {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         // The address bucket is counted before anything else, so a caller without a session is bounded too.
-        let address = parts
-            .extensions
-            .get::<ConnectInfo<SocketAddr>>()
-            .map_or_else(
-                || "unknown".to_owned(),
-                |ConnectInfo(peer)| peer.ip().to_string(),
-            );
-        within(state, &format!("address:{address}"), RATE_PER_ADDRESS).await?;
+        count_address(parts, state).await?;
         let token = parts
             .headers
             .get(AUTHORIZATION)
@@ -52,6 +45,32 @@ impl FromRequestParts<AppState> for Caller {
         .await?;
         Ok(Self(actor))
     }
+}
+
+/// A request with no session, counted against its address: the unsigned routes take this instead of [`Caller`].
+pub struct Unsigned;
+
+impl FromRequestParts<AppState> for Unsigned {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        count_address(parts, state).await?;
+        Ok(Self)
+    }
+}
+
+async fn count_address(parts: &Parts, state: &AppState) -> Result<(), ApiError> {
+    let address = parts
+        .extensions
+        .get::<ConnectInfo<SocketAddr>>()
+        .map_or_else(
+            || "unknown".to_owned(),
+            |ConnectInfo(peer)| peer.ip().to_string(),
+        );
+    within(state, &format!("address:{address}"), RATE_PER_ADDRESS).await
 }
 
 /// Count one request against `key`. A store that cannot count refuses the request: an unbounded endpoint is the

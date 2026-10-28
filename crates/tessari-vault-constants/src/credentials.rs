@@ -33,3 +33,16 @@ pub const TOTP_SKEW_STEPS: u64 = 1;
 
 /// The length of a TOTP seed in bytes: 160 bits, the HMAC-SHA-1 block RFC 4226 §4 recommends.
 pub const TOTP_SECRET_BYTES: usize = 20;
+
+/// The fewest characters a sign-in password has: eight, because a second factor is always required with it (NIST SP
+/// 800-63B-4 §3.1.1, "SHALL ≥8 when used only within MFA").
+pub const PASSWORD_MIN_CHARS: usize = 8;
+
+/// The most characters a sign-in password may have; long enough for any passphrase, short enough to bound the work.
+pub const PASSWORD_MAX_CHARS: usize = 256;
+
+/// How long an enrolment link can be used, in hours; a newer link for the same account replaces it.
+pub const ENROLMENT_LIFETIME_HOURS: u32 = 24;
+
+/// The length of an enrolment token in bytes: 256 bits, so its digest needs no salt and no slow hash.
+pub const ENROLMENT_TOKEN_BYTES: usize = 32;

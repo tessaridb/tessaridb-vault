@@ -4,6 +4,7 @@
 
 #![cfg(test)]
 
+mod enrolment;
 mod rules;
 mod world;
 
@@ -20,10 +21,12 @@ enum Who {
     OtherAdmin,
 }
 
-/// One route's negative rows: what the low-privilege identity gets, and what another company's admin gets.
+/// One route's negative rows: what a request with no session or an unknown one gets, what the low-privilege identity
+/// gets, and what another company's admin gets.
 struct Probe {
     path: String,
     body: Option<Value>,
+    unsigned: StatusCode,
     low: Option<(Who, StatusCode)>,
     cross: Option<(Who, StatusCode)>,
 }
@@ -42,8 +45,19 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         Some(Probe {
             path: path.clone(),
             body,
+            unsigned: StatusCode::UNAUTHORIZED,
             low,
             cross,
+        })
+    };
+    // The unsigned routes: the token in the body is the credential, so a token that is not one is the refusal.
+    let by_token = |body: Value| {
+        Some(Probe {
+            path: path.clone(),
+            body: Some(body),
+            unsigned: StatusCode::NOT_FOUND,
+            low: None,
+            cross: None,
         })
     };
     match (method.as_str(), pattern) {
@@ -70,6 +84,13 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             row(Some(json!({ "role": "admin" })), manage, hidden)
         }
         ("DELETE", "/api/companies/{company}/members/{account}") => row(None, manage, hidden),
+        ("POST", "/api/companies/{company}/members/{account}/enrolment") => {
+            row(None, manage, hidden)
+        }
+        ("POST", "/api/enrolment/begin") => by_token(json!({ "token": "cd".repeat(32) })),
+        ("POST", "/api/enrolment/complete") => by_token(
+            json!({ "token": "cd".repeat(32), "password": "a long enough password", "code": "000000" }),
+        ),
         ("POST", "/api/companies/{company}/groups") => row(
             Some(json!({ "kind": "department", "name": "Sales" })),
             manage,
@@ -124,11 +145,9 @@ async fn every_route_refuses_the_unsigned_the_lower_role_and_another_company() {
             .call(route.method.clone(), &probe.path, None, probe.body.clone())
             .await;
         assert_eq!(
-            status,
-            StatusCode::UNAUTHORIZED,
+            status, probe.unsigned,
             "{} {} unsigned: {body}",
-            route.method,
-            route.path
+            route.method, route.path
         );
         assert!(refusal_only(&body), "{body}");
         let (status, body) = world
@@ -140,11 +159,9 @@ async fn every_route_refuses_the_unsigned_the_lower_role_and_another_company() {
             )
             .await;
         assert_eq!(
-            status,
-            StatusCode::UNAUTHORIZED,
+            status, probe.unsigned,
             "{} {} unknown token: {body}",
-            route.method,
-            route.path
+            route.method, route.path
         );
         for (who, expected) in [probe.low, probe.cross].into_iter().flatten() {
             let (status, body) = world
