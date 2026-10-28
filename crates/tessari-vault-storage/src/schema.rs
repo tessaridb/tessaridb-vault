@@ -62,7 +62,15 @@ DEFINE TABLE IF NOT EXISTS files (file_id string, company string, record string,
 written int, created int); \
 DEFINE INDEX IF NOT EXISTS by_id ON files FIELDS file_id UNIQUE; \
 DEFINE INDEX IF NOT EXISTS by_record ON files FIELDS record; \
-DEFINE BUCKET IF NOT EXISTS record_files MAX 4194304;";
+DEFINE BUCKET IF NOT EXISTS record_files MAX 4194304; \
+DEFINE TABLE IF NOT EXISTS member_keys (company string, account string, key_id string, agreement_public string, \
+signing_public string, kdf_salt string, kdf_memory int, kdf_passes int, kdf_lanes int, created int); \
+DEFINE INDEX IF NOT EXISTS by_company ON member_keys FIELDS company; \
+DEFINE INDEX IF NOT EXISTS by_key ON member_keys FIELDS company, key_id UNIQUE; \
+DEFINE TABLE IF NOT EXISTS chains (company string, owner_signing string, length int, created int); \
+DEFINE TABLE IF NOT EXISTS statements (company string, seq int, bytes string, signature string, author string, \
+created int); \
+DEFINE INDEX IF NOT EXISTS by_company ON statements FIELDS company;";
 
 /// Declare the namespace and database of `place` and everything in them that is missing.
 ///

@@ -246,6 +246,9 @@ pub(crate) fn thrown(error: Error) -> Error {
         ("already enrolled", Conflict::Enrolled),
         ("stale revision", Conflict::StaleRevision),
         ("out of order", Conflict::OutOfOrder),
+        ("keys exist", Conflict::KeysExist),
+        ("stale chain", Conflict::StaleChain),
+        ("unknown key", Conflict::UnknownKey),
     ];
     if message.starts_with("not found") {
         return Error::NotFound;

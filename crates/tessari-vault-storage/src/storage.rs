@@ -7,11 +7,13 @@ use tessari_vault_infrastructure::tessaridb::{Database, Place};
 
 use crate::accounts::{AccountService, TessaridbAccountRepository};
 use crate::audit::AuditService;
+use crate::chain::{ChainService, TessaridbChainRepository};
 use crate::companies::{CompanyService, TessaridbCompanyRepository};
 use crate::enrolments::EnrolmentService;
 use crate::files::{FileService, TessaridbFiles};
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::identities::IdentityService;
+use crate::keys::{KeyService, TessaridbKeyRepository};
 use crate::passkeys::PasskeyService;
 use crate::record_types::{RecordTypeService, TessaridbRecordTypeRepository};
 use crate::records::{RecordService, RecordVaults, TessaridbRecordRepository};
@@ -38,6 +40,8 @@ pub struct Storage {
     pub accounts: Arc<AccountService>,
     /// The company audit trails.
     pub audit: Arc<AuditService>,
+    /// The companies' vouching chains.
+    pub chain: Arc<ChainService>,
     /// Companies and memberships.
     pub companies: Arc<CompanyService>,
     /// Enrolment links and the credentials they create.
@@ -48,6 +52,8 @@ pub struct Storage {
     pub groups: Arc<GroupService>,
     /// Identities at an OpenID Connect issuer, and requests in flight to one.
     pub identities: Arc<IdentityService>,
+    /// Members' key sets.
+    pub keys: Arc<KeyService>,
     /// Passkeys and their ceremonies.
     pub passkeys: Arc<PasskeyService>,
     /// Record types the company defined.
@@ -134,6 +140,17 @@ impl Storage {
             database.clone(),
             place.clone(),
         ));
+        let keys = Arc::new(KeyService::new(
+            Arc::new(TessaridbKeyRepository::new(database.clone())),
+            Arc::clone(&vaults),
+            database.clone(),
+            place.clone(),
+        ));
+        let chain = Arc::new(ChainService::new(
+            Arc::new(TessaridbChainRepository::new(database.clone())),
+            database.clone(),
+            place.clone(),
+        ));
         let throttle = Arc::new(ThrottleService::new(database.clone(), place.clone()));
         let sign_in = Arc::new(SignInService::new(
             database.clone(),
@@ -150,11 +167,13 @@ impl Storage {
         Self {
             accounts,
             audit: Arc::new(AuditService::new(database.clone(), place.clone())),
+            chain,
             companies,
             enrolments,
             files,
             groups,
             identities,
+            keys,
             passkeys,
             record_types,
             records,

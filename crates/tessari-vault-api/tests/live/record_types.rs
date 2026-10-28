@@ -4,11 +4,11 @@
 use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::world::{Cast, World, sealed_record};
+use crate::world::{Cast, World, sealed_record_by};
 
-/// A record of `record_type` as the browser sends one.
-fn record_of(record_type: &str) -> Value {
-    let mut body = sealed_record();
+/// A record of `record_type` as the browser of the member who registered `key` sends one.
+fn record_of(record_type: &str, key: &str) -> Value {
+    let mut body = sealed_record_by(key);
     body["record_type"] = json!(record_type);
     body
 }
@@ -26,7 +26,7 @@ async fn defined(world: &World, cast: &Cast, allowed: &[&str]) -> String {
         world,
         &format!("/api/companies/{a}/records"),
         &cast.admin_a,
-        record_of("record-type"),
+        record_of("record-type", &cast.admin_a_key),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{definition}");
@@ -50,15 +50,30 @@ async fn only_the_roles_a_company_type_admits_create_records_of_it() {
     let records = format!("/api/companies/{a}/records");
     let kind = defined(&world, &cast, &["admin"]).await;
 
-    let (status, refused) = post(&world, &records, &cast.member_a, record_of(&kind)).await;
+    let (status, refused) = post(
+        &world,
+        &records,
+        &cast.member_a,
+        record_of(&kind, &cast.member_a_key),
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{refused}");
-    for token in [&cast.admin_a, &cast.owner_a] {
-        let (status, created) = post(&world, &records, token, record_of(&kind)).await;
+    for (token, key) in [
+        (&cast.admin_a, &cast.admin_a_key),
+        (&cast.owner_a, &cast.owner_a_key),
+    ] {
+        let (status, created) = post(&world, &records, token, record_of(&kind, key)).await;
         assert_eq!(status, StatusCode::CREATED, "{created}");
         assert_eq!(created["record_type"], kind.as_str());
     }
     let open = defined(&world, &cast, &["member"]).await;
-    let (status, created) = post(&world, &records, &cast.member_a, record_of(&open)).await;
+    let (status, created) = post(
+        &world,
+        &records,
+        &cast.member_a,
+        record_of(&open, &cast.member_a_key),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
 }
 
@@ -90,7 +105,7 @@ async fn members_see_the_types_and_neither_define_them_nor_keep_definitions() {
         &world,
         &format!("/api/companies/{a}/records"),
         &cast.member_a,
-        record_of("record-type"),
+        record_of("record-type", &cast.member_a_key),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{refused}");
@@ -124,7 +139,7 @@ async fn a_type_rests_on_its_definers_own_definition_and_stays_in_its_company() 
         &world,
         &format!("/api/companies/{}/records", cast.company_b),
         &cast.admin_b,
-        record_of(&kind),
+        record_of(&kind, &cast.member_a_key),
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{refused}");

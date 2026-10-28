@@ -61,6 +61,15 @@ pub enum Action {
     ReadRecord,
     /// Write a new revision of a record; which records is decided on the record.
     ReviseRecord,
+    /// Keep one's own key set in the company, and read it back.
+    KeepKeys,
+    /// Read the company's key directory and vouching chain.
+    ReadKeys,
+    /// Extend the company's vouching chain; the `genesis` statement begins it.
+    Vouch {
+        /// Whether this statement begins the chain.
+        genesis: bool,
+    },
 }
 
 /// Why an action was refused.
@@ -101,11 +110,15 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
                 Decision::Refused(Refusal::Forbidden)
             };
         }
-        Action::ReadMembers | Action::ReadGroups | Action::ReadRecord | Action::ReviseRecord => {
-            Role::Member
-        }
+        Action::ReadMembers
+        | Action::ReadGroups
+        | Action::ReadRecord
+        | Action::ReviseRecord
+        | Action::KeepKeys
+        | Action::ReadKeys => Role::Member,
         Action::AddMember { role: Role::Owner }
         | Action::RemoveMember { role: Role::Owner }
+        | Action::Vouch { genesis: true }
         | Action::ChangeMember {
             from: Role::Owner, ..
         }
@@ -121,6 +134,7 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::AddToGroup
         | Action::RemoveFromGroup
         | Action::DefineRecordType
+        | Action::Vouch { genesis: false }
         | Action::ReadAudit => Role::Admin,
     };
     if reaches(held.role, needed) {

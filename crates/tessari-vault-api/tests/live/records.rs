@@ -332,3 +332,36 @@ async fn a_record_body_is_absent_from_the_backup_and_the_store_directory() {
     drop(world);
     let _ = std::fs::remove_dir_all(&directory);
 }
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_record_is_signed_only_under_the_callers_own_registered_key() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let a = &cast.company_a;
+    let mut theirs = new_record(b"under the owner's key");
+    theirs["author_key"] = serde_json::json!(cast.owner_a_key);
+    let (status, refused) = world
+        .call(
+            Method::POST,
+            &format!("/api/companies/{a}/records"),
+            Some(&cast.member_a),
+            Some(theirs),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert_eq!(refused["error_code"], "unknown_key");
+    let id = create(&world, a, &cast.member_a, b"mine").await;
+    let mut revised = revision(1, b"under no key at all");
+    revised["author_key"] = serde_json::json!("66".repeat(16));
+    let (status, refused) = world
+        .call(
+            Method::PUT,
+            &format!("/api/companies/{a}/records/{id}"),
+            Some(&cast.member_a),
+            Some(revised),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert_eq!(refused["error_code"], "unknown_key");
+}

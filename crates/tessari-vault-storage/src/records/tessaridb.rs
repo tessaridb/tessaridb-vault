@@ -11,7 +11,7 @@ use tessari_vault_types::{AccountId, CompanyId, KeyId, RecordId, base64url};
 use super::entity::{RecordEntity, Sealed};
 use super::repository::{RecordRepository, Write};
 use super::vault::RecordVaults;
-use crate::access::{GUARD, bind, thrown};
+use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
 use crate::record_types::role_words;
 use crate::{Error, Result, answers};
@@ -19,6 +19,9 @@ use crate::{Error, Result, answers};
 /// Refuses unless `$record` is `$company`'s and `$author` wrote it, the answer a record that does not exist gets.
 pub(crate) const AUTHORS_RECORD: &str = "\
 THROW 'not found' IF (GET records:$record).company != $company OR (GET records:$record).author != $author;";
+
+/// Refuses unless `$author_key` is the key set `$author` keeps in `$company`, so a revision names no key but theirs.
+const OWN_KEY: &str = "THROW 'unknown key' IF (GET member_keys:$own_keys).key_id != $author_key;";
 
 /// The statements that store one revision: its row, its sealed body, and the author's wrapped key beside it.
 fn revision_statements(vault: &str) -> String {
@@ -73,6 +76,10 @@ impl TessaridbRecordRepository {
             bind("type", write.record_type),
             bind("key_id", write.key_id.as_str()),
             bind("author", write.author.as_str()),
+            bind(
+                "own_keys",
+                membership_id(write.company, write.author).as_str(),
+            ),
             bind("author_key", sealed.author_key.as_str()),
             bind("signature", base64url::encode(&sealed.signature).as_str()),
             bind("size", size),
@@ -157,7 +164,7 @@ impl RecordRepository for TessaridbRecordRepository {
             None => "",
         };
         let script = format!(
-            "BEGIN; {GUARD} {type_unchanged} \
+            "BEGIN; {GUARD} {type_unchanged} {OWN_KEY} \
              CREATE records:$record = {{ record_id: $record, company: $company, record_type: $type, \
              revision: $revision, key_id: $key_id, author: $author, state: 'active', created: $now, \
              updated: $now }}; {revision} {RECORD} COMMIT;"
@@ -175,7 +182,7 @@ impl RecordRepository for TessaridbRecordRepository {
         guard.push(bind("expected", expected));
         let revision = revision_statements(&RecordVaults::name(write.company));
         let script = format!(
-            "BEGIN; {GUARD} {AUTHORS_RECORD} \
+            "BEGIN; {GUARD} {AUTHORS_RECORD} {OWN_KEY} \
              THROW 'stale revision' IF (GET records:$record).revision != $expected; \
              UPDATE records:$record SET revision = $revision, key_id = $key_id, updated = $now; \
              {revision} {RECORD} COMMIT;"

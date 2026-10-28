@@ -13,6 +13,7 @@ mod enrolment;
 mod files;
 mod issuer;
 mod keyed_vault;
+mod keys;
 mod oauth_e2e;
 mod oidc;
 mod passkeys;
@@ -179,6 +180,24 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ("POST", "/api/companies/{company}/record-types") => row(
             Some(json!({ "allowed_roles": ["member"], "definition": cast.record_a })),
             manage,
+            hidden,
+        ),
+        // Every member keeps their own key set and reads the company's directory and chain.
+        ("PUT", "/api/companies/{company}/keys/me") => row(
+            Some(crate::keys::key_set(&"aa".repeat(16), 10)),
+            None,
+            hidden,
+        ),
+        ("GET", "/api/companies/{company}/keys/me" | "/api/companies/{company}/keys") => {
+            row(None, None, hidden)
+        }
+        ("GET", "/api/companies/{company}/statements") => row(None, None, hidden),
+        ("POST", "/api/companies/{company}/statements") => row(
+            Some(
+                json!({ "seq": 1, "bytes": "AA", "signature": crate::records::encoded(&[0; 64]),
+                         "owner_signing": crate::records::encoded(&[0; 32]) }),
+            ),
+            Some((Who::Member, StatusCode::FORBIDDEN)),
             hidden,
         ),
         // A file is reached only through its record's author, so the owner and another company find nothing.

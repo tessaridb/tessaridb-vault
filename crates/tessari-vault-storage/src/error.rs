@@ -67,6 +67,18 @@ pub enum Conflict {
     /// The file is not yet written to its size.
     #[error("the file is not yet complete")]
     Incomplete,
+    /// The member keeps a key set in this company already.
+    #[error("the member keeps a key set already")]
+    KeysExist,
+    /// Another member's key set holds that key id.
+    #[error("the key id is taken")]
+    KeyTaken,
+    /// The statement is not the next one in the chain; nothing was written.
+    #[error("the statement is not the next one in the chain")]
+    StaleChain,
+    /// The key id is not the caller's registered key in the company.
+    #[error("the key is not the caller's registered key")]
+    UnknownKey,
 }
 
 /// The result of a `tessari-vault-storage` call.

@@ -310,6 +310,10 @@ pub struct Cast {
     pub record_a: String,
     /// A small file member A wrote on that record.
     pub file_a: String,
+    /// The key ids owner A, admin A and member A registered in company A.
+    pub owner_a_key: String,
+    pub admin_a_key: String,
+    pub member_a_key: String,
 }
 
 async fn company(world: &World, platform: &str, name: &str, owner: &str) -> (String, String) {
@@ -331,15 +335,20 @@ async fn company(world: &World, platform: &str, name: &str, owner: &str) -> (Str
     )
 }
 
-/// A record's sealed parts as the browser sends them; the bytes mean nothing here.
+/// A record's sealed parts as member A's browser sends them; the bytes mean nothing here.
 pub fn sealed_record() -> Value {
+    sealed_record_by(&"22".repeat(16))
+}
+
+/// The same, signed under the registered key `author_key`.
+pub fn sealed_record_by(author_key: &str) -> Value {
     use tessari_vault_types::base64url::encode;
     json!({
         "record_type": "login",
         "key_id": "11".repeat(16),
         "body": encode(b"sealed"),
         "signature": encode(&[7; 64]),
-        "author_key": "22".repeat(16),
+        "author_key": author_key,
         "wrap": encode(&[9; 82]),
     })
 }
@@ -391,6 +400,23 @@ impl Cast {
             .await;
         assert_eq!(status, StatusCode::CREATED, "{team}");
         let team_a = team["id"].as_str().expect("an id").to_owned();
+        let (owner_a_key, admin_a_key, member_a_key) =
+            ("44".repeat(16), "55".repeat(16), "22".repeat(16));
+        for (token, key, seed) in [
+            (&owner_a, &owner_a_key, 4),
+            (&admin_a, &admin_a_key, 5),
+            (&member_a, &member_a_key, 2),
+        ] {
+            let (status, body) = world
+                .call(
+                    Method::PUT,
+                    &format!("/api/companies/{company_a}/keys/me"),
+                    Some(token),
+                    Some(crate::keys::key_set(key, seed)),
+                )
+                .await;
+            assert_eq!(status, StatusCode::CREATED, "{body}");
+        }
         let (status, record) = world
             .call(
                 Method::POST,
@@ -436,6 +462,9 @@ impl Cast {
             team_a,
             record_a,
             file_a,
+            owner_a_key,
+            admin_a_key,
+            member_a_key,
         }
     }
 }

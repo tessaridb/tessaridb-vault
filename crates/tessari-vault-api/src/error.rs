@@ -182,6 +182,16 @@ const fn conflicted(conflict: Conflict) -> ApiError {
              within the file's size",
         ),
         Conflict::Incomplete => ("incomplete", "the file is not yet written to its size"),
+        Conflict::KeysExist => ("keys_exist", "you keep a key set in this company already"),
+        Conflict::KeyTaken => ("key_taken", "another member's key set holds that key id"),
+        Conflict::StaleChain => (
+            "stale_chain",
+            "the statement is not the next one in the chain; read the chain again",
+        ),
+        Conflict::UnknownKey => (
+            "unknown_key",
+            "the key id is not the key set you keep in this company",
+        ),
     };
     ApiError::new(StatusCode::CONFLICT, code, message)
 }

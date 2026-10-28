@@ -12,6 +12,9 @@ fn standing(role: Role) -> Standing {
 
 const READS: [Action; 2] = [Action::ReadMembers, Action::ReadGroups];
 
+/// What every active member may do with key sets: keep their own, read the company's directory and chain.
+const KEYS: [Action; 2] = [Action::KeepKeys, Action::ReadKeys];
+
 /// What every active member may do with records; which records is decided on the record itself.
 const RECORDS: [Action; 3] = [
     Action::CreateRecord {
@@ -21,7 +24,8 @@ const RECORDS: [Action; 3] = [
     Action::ReviseRecord,
 ];
 
-const MANAGING: [Action; 12] = [
+const MANAGING: [Action; 13] = [
+    Action::Vouch { genesis: false },
     Action::DefineRecordType,
     Action::CreateRecord {
         allowed: Roles::MANAGERS,
@@ -41,7 +45,8 @@ const MANAGING: [Action; 12] = [
     Action::ReadAudit,
 ];
 
-const OWNER_ONLY: [Action; 5] = [
+const OWNER_ONLY: [Action; 6] = [
+    Action::Vouch { genesis: true },
     Action::AddMember { role: Role::Owner },
     Action::ChangeMember {
         from: Role::Owner,
@@ -61,6 +66,7 @@ const OWNER_ONLY: [Action; 5] = [
 fn every_action() -> Vec<Action> {
     READS
         .iter()
+        .chain(&KEYS)
         .chain(&RECORDS)
         .chain(&MANAGING)
         .chain(&OWNER_ONLY)
@@ -103,6 +109,15 @@ fn a_suspended_member_or_a_suspended_company_is_the_same_as_none() {
 fn every_active_member_reads_the_structure() {
     for role in [Role::Owner, Role::Admin, Role::Member] {
         for action in READS {
+            assert_eq!(decide(Some(&standing(role)), action), Decision::Permitted);
+        }
+    }
+}
+
+#[test]
+fn every_active_member_keeps_their_keys_and_reads_the_companys() {
+    for role in [Role::Owner, Role::Admin, Role::Member] {
+        for action in KEYS {
             assert_eq!(decide(Some(&standing(role)), action), Decision::Permitted);
         }
     }
@@ -186,9 +201,13 @@ fn reference(standing: Option<&Standing>, action: Action) -> Decision {
     let touches_owner = match action {
         Action::AddMember { role } | Action::RemoveMember { role } => role == Role::Owner,
         Action::ChangeMember { from, to } => from == Role::Owner || to == Role::Owner,
+        Action::Vouch { genesis } => genesis,
         _ => false,
     };
-    let reads = matches!(action, Action::ReadMembers | Action::ReadGroups);
+    let reads = matches!(
+        action,
+        Action::ReadMembers | Action::ReadGroups | Action::KeepKeys | Action::ReadKeys
+    );
     let allowed = reads || held.role == Role::Owner || (held.role == Role::Admin && !touches_owner);
     if allowed {
         Decision::Permitted
@@ -209,6 +228,10 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
         Action::AddToGroup,
         Action::RemoveFromGroup,
         Action::ReadAudit,
+        Action::KeepKeys,
+        Action::ReadKeys,
+        Action::Vouch { genesis: false },
+        Action::Vouch { genesis: true },
     ];
     for role in roles {
         actions.push(Action::AddMember { role });
@@ -238,6 +261,6 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
             }
         }
     }
-    // 23 actions (8 without a role, 5 per role) under 12 standings.
-    assert_eq!(compared, 23 * 12);
+    // 27 actions (12 without a role, 5 per role) under 12 standings.
+    assert_eq!(compared, 27 * 12);
 }
