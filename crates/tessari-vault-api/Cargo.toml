@@ -13,6 +13,8 @@ autotests = false
 doctest = false
 
 [dependencies]
+tessari-vault-infrastructure.workspace = true
+url.workspace = true
 zeroize.workspace = true
 tessari-vault-constants.workspace = true
 tessari-vault-types.workspace = true
@@ -33,4 +35,6 @@ path = "tests/live/main.rs"
 tessari-vault-infrastructure.workspace = true
 serde_json.workspace = true
 tower.workspace = true
+ring.workspace = true
+axum = { workspace = true, features = ["form"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time"] }

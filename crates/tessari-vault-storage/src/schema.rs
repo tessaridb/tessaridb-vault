@@ -31,6 +31,10 @@ DEFINE TABLE IF NOT EXISTS credentials (account_id string, verifier string, totp
 totp_last_step int, created datetime); \
 DEFINE INDEX IF NOT EXISTS by_id ON credentials FIELDS account_id UNIQUE; \
 DEFINE SPACE IF NOT EXISTS enrolments; \
+DEFINE TABLE IF NOT EXISTS identities (issuer string, subject string, account string, linked datetime); \
+DEFINE INDEX IF NOT EXISTS by_identity ON identities FIELDS issuer, subject UNIQUE; \
+DEFINE INDEX IF NOT EXISTS by_account ON identities FIELDS account; \
+DEFINE SPACE IF NOT EXISTS oidc_pending; \
 DEFINE SPACE IF NOT EXISTS sessions; \
 DEFINE SPACE IF NOT EXISTS sign_ins; \
 DEFINE SPACE IF NOT EXISTS throttles;";

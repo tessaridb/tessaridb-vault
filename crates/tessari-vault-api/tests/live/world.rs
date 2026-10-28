@@ -6,16 +6,19 @@ use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::body::Body;
-use axum::http::{Method, Request, StatusCode};
+use axum::http::{HeaderMap, Method, Request, StatusCode};
 use serde_json::{Value, json};
 use tessari_vault_api::{AppState, router};
 use tessari_vault_infrastructure::custody::{
     PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal,
 };
+use tessari_vault_infrastructure::oidc::OidcProvider;
 use tessari_vault_infrastructure::tessaridb::{Database, Place, StoreConfig};
 use tessari_vault_storage::{Custody, Storage, migrate};
 use tessari_vault_types::{AccountId, Email, Name};
 use tower::ServiceExt;
+
+use crate::issuer::{CLIENT_ID, REDIRECT};
 
 const STORE_USER: &str = "vault_test";
 const STORE_PASSWORD: &str = "a-test-password-for-the-live-suite";
@@ -81,6 +84,18 @@ pub struct World {
 
 impl World {
     pub async fn new() -> Self {
+        Self::build(None).await
+    }
+
+    /// A world whose server signs people in through the stub issuer at `issuer`.
+    pub async fn with_issuer(issuer: &str) -> Self {
+        let provider = OidcProvider::discover(issuer, CLIENT_ID, REDIRECT)
+            .await
+            .expect("the stub is discovered");
+        Self::build(Some(std::sync::Arc::new(provider))).await
+    }
+
+    async fn build(oidc: Option<std::sync::Arc<OidcProvider>>) -> Self {
         let node = Node::start().await;
         let database = Database::new(
             StoreConfig {
@@ -129,6 +144,7 @@ impl World {
         Self {
             app: router(AppState {
                 storage: storage.clone(),
+                oidc,
             }),
             storage,
             _node: node,
@@ -169,9 +185,25 @@ impl World {
         token: Option<&str>,
         body: Option<Value>,
     ) -> (StatusCode, Value) {
+        let headers: Vec<(&str, String)> = token
+            .map(|token| ("authorization", format!("Bearer {token}")))
+            .into_iter()
+            .collect();
+        let (status, _, value) = self.call_with(method, path, &headers, body).await;
+        (status, value)
+    }
+
+    /// Call the router with `headers`, answering the response headers too.
+    pub async fn call_with(
+        &self,
+        method: Method,
+        path: &str,
+        headers: &[(&str, String)],
+        body: Option<Value>,
+    ) -> (StatusCode, HeaderMap, Value) {
         let mut request = Request::builder().method(method).uri(path);
-        if let Some(token) = token {
-            request = request.header("authorization", format!("Bearer {token}"));
+        for (name, value) in headers {
+            request = request.header(*name, value);
         }
         let request = match body {
             Some(body) => request
@@ -182,6 +214,7 @@ impl World {
         .expect("a request");
         let response = self.app.clone().oneshot(request).await.expect("an answer");
         let status = response.status();
+        let answered = response.headers().clone();
         let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
             .await
             .expect("a body");
@@ -190,7 +223,7 @@ impl World {
         } else {
             serde_json::from_slice(&bytes).expect("a JSON body")
         };
-        (status, value)
+        (status, answered, value)
     }
 }
 

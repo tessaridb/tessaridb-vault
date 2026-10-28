@@ -156,6 +156,10 @@ const fn conflicted(conflict: Conflict) -> ApiError {
             "the account is not an active member of this company",
         ),
         Conflict::Enrolled => ("enrolled", "the account is already enrolled"),
+        Conflict::IdentityLinked => (
+            "identity_linked",
+            "the identity is already linked to an account",
+        ),
         Conflict::StandingChanged => (
             "standing_changed",
             "your role changed while this ran; try again",

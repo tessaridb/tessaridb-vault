@@ -13,12 +13,15 @@ autotests = false
 doctest = false
 
 [dependencies]
+serde_json.workspace = true
+tessaridb-oauth-client.workspace = true
 tessari-vault-constants.workspace = true
 tessari-vault-types.workspace = true
 tessari-vault-core.workspace = true
 tessari-vault-infrastructure.workspace = true
 async-trait.workspace = true
 sha2.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
 
 [lints]

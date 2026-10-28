@@ -45,6 +45,9 @@ pub enum Conflict {
     /// The account is not an active member of the company, so it cannot join one of its groups.
     #[error("the account is not an active member of this company")]
     NotAMember,
+    /// The identity at that issuer is already linked to an account.
+    #[error("the identity is already linked to an account")]
+    IdentityLinked,
     /// The account already has a sign-in credential; a new one is recovery, which an enrolment link never is.
     #[error("the account is already enrolled")]
     Enrolled,

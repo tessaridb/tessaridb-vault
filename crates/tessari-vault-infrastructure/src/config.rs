@@ -21,6 +21,19 @@ pub struct NodeConfig {
     pub platform_admin: Option<(String, String)>,
     /// The file holding the service key (K_svc), read once at start-up.
     pub service_key_file: PathBuf,
+    /// The OpenID Connect issuer people may sign in through, when one is configured.
+    pub oidc: Option<OidcConfig>,
+}
+
+/// An OpenID Connect issuer and this server's registration there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OidcConfig {
+    /// The issuer identifier, discovered at start.
+    pub issuer: String,
+    /// This server's client id at the issuer.
+    pub client_id: String,
+    /// The redirect URI registered there.
+    pub redirect: String,
 }
 
 impl NodeConfig {
@@ -30,7 +43,8 @@ impl NodeConfig {
     /// `TESSARIDB_VAULT_SERVICE_KEY_FILE` are required; `TESSARIDB_VAULT_STORE_AUTHORITY` is a PEM file for a store reached over TLS;
     /// `TESSARIDB_VAULT_NAMESPACE` (default `vault`), `TESSARIDB_VAULT_DATABASE` (default `main`),
     /// `TESSARIDB_VAULT_LISTEN` (default `127.0.0.1:8080`); `TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL` with
-    /// `TESSARIDB_VAULT_PLATFORM_ADMIN_NAME`, both or neither.
+    /// `TESSARIDB_VAULT_PLATFORM_ADMIN_NAME`, both or neither; `TESSARIDB_VAULT_OIDC_ISSUER`,
+    /// `TESSARIDB_VAULT_OIDC_CLIENT_ID` and `TESSARIDB_VAULT_OIDC_REDIRECT`, all three or none.
     ///
     /// # Errors
     ///
@@ -73,6 +87,24 @@ impl NodeConfig {
                 });
             }
         };
+        let oidc = match (
+            lookup("TESSARIDB_VAULT_OIDC_ISSUER"),
+            lookup("TESSARIDB_VAULT_OIDC_CLIENT_ID"),
+            lookup("TESSARIDB_VAULT_OIDC_REDIRECT"),
+        ) {
+            (Some(issuer), Some(client_id), Some(redirect)) => Some(OidcConfig {
+                issuer,
+                client_id,
+                redirect,
+            }),
+            (None, None, None) => None,
+            _ => {
+                return Err(Error::InvalidConfig {
+                    field: "TESSARIDB_VAULT_OIDC_ISSUER",
+                    reason: "set together with TESSARIDB_VAULT_OIDC_CLIENT_ID and TESSARIDB_VAULT_OIDC_REDIRECT, or none",
+                });
+            }
+        };
         Ok(Self {
             store: StoreConfig {
                 address: required("TESSARIDB_VAULT_STORE")?,
@@ -85,6 +117,7 @@ impl NodeConfig {
             listen,
             platform_admin,
             service_key_file: required("TESSARIDB_VAULT_SERVICE_KEY_FILE")?.into(),
+            oidc,
         })
     }
 }

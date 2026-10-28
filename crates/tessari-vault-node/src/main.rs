@@ -17,6 +17,7 @@ use tessari_vault_infrastructure::config::NodeConfig;
 use tessari_vault_infrastructure::custody::{
     PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal,
 };
+use tessari_vault_infrastructure::oidc::OidcProvider;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_observability::init_tracing;
 use tessari_vault_storage::{Custody, Storage, migrate};
@@ -111,12 +112,20 @@ async fn run() -> Result<&'static str, StartError> {
         );
         return Ok("enrolment-link");
     }
+    // A configured issuer that cannot be discovered refuses the start rather than serving without it.
+    let oidc = match &config.oidc {
+        Some(issuer) => Some(Arc::new(
+            OidcProvider::discover(&issuer.issuer, &issuer.client_id, &issuer.redirect).await?,
+        )),
+        None => None,
+    };
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(StartError::Listen)?;
     tracing::info!(version = env!("CARGO_PKG_VERSION"), listen = %config.listen, "tessaridb-vault serving");
     let (stopped, signalled) = tokio::sync::oneshot::channel();
-    let app = router(AppState { storage }).into_make_service_with_connect_info::<SocketAddr>();
+    let app =
+        router(AppState { storage, oidc }).into_make_service_with_connect_info::<SocketAddr>();
     let serving = axum::serve(listener, app).with_graceful_shutdown(async move {
         let name = shutdown_signal().await.unwrap_or("signal listener failed");
         let _ = stopped.send(name);

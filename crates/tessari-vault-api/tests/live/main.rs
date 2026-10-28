@@ -5,6 +5,8 @@
 #![cfg(test)]
 
 mod enrolment;
+mod issuer;
+mod oidc;
 mod rules;
 mod sign_in;
 mod world;
@@ -97,6 +99,18 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             StatusCode::UNAUTHORIZED,
         ),
         ("DELETE", "/api/session") => row(None, None, None),
+        // No issuer is configured in this world, so the two unsigned issuer routes answer that there is none.
+        ("GET", "/api/sign-in/oidc" | "/api/sign-in/oidc/return") => Some(Probe {
+            path: format!("{path}?state=cd&code=ef"),
+            body: None,
+            unsigned: StatusCode::NOT_FOUND,
+            low: None,
+            cross: None,
+        }),
+        ("POST", "/api/me/identities/oidc") => row(None, None, None),
+        ("POST", "/api/me/identities/oidc/return") => {
+            row(Some(json!({ "query": "state=cd&code=ef" })), None, None)
+        }
         ("POST", "/api/enrolment/begin") => {
             by_token(json!({ "token": "cd".repeat(32) }), StatusCode::NOT_FOUND)
         }

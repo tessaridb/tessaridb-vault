@@ -28,7 +28,7 @@ pub(crate) fn unhex(text: &str) -> Option<Vec<u8>> {
 }
 
 /// The string field `name` of an object answer.
-pub(super) fn field(answer: Option<Answer>, name: &str) -> Option<String> {
+pub(crate) fn field(answer: Option<Answer>, name: &str) -> Option<String> {
     match answer {
         Some(Answer::Value {
             value: Value::Object(object),

@@ -4,6 +4,7 @@ pub(crate) mod companies;
 pub(crate) mod enrolment;
 pub(crate) mod groups;
 pub(crate) mod members;
+pub(crate) mod oidc;
 pub(crate) mod sign_in;
 
 use serde::Serialize;

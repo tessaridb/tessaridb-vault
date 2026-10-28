@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::NodeConfig;
+use super::{NodeConfig, OidcConfig};
 use crate::Error;
 
 fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
@@ -80,4 +80,34 @@ fn the_service_key_file_is_required_and_named() {
             reason: "required",
         }
     ));
+}
+
+#[test]
+fn the_oidc_issuer_is_all_three_settings_or_none() {
+    let config = NodeConfig::from_lookup(lookup(&STORE)).expect("valid");
+    assert_eq!(config.oidc, None);
+    let mut pairs = STORE.to_vec();
+    pairs.push(("TESSARIDB_VAULT_OIDC_ISSUER", "https://id.example.com"));
+    pairs.push(("TESSARIDB_VAULT_OIDC_CLIENT_ID", "vault"));
+    let error = NodeConfig::from_lookup(lookup(&pairs)).expect_err("two of three");
+    assert!(matches!(
+        error,
+        Error::InvalidConfig {
+            field: "TESSARIDB_VAULT_OIDC_ISSUER",
+            ..
+        }
+    ));
+    pairs.push((
+        "TESSARIDB_VAULT_OIDC_REDIRECT",
+        "https://vault.example.com/sign-in/return",
+    ));
+    let config = NodeConfig::from_lookup(lookup(&pairs)).expect("all three");
+    assert_eq!(
+        config.oidc,
+        Some(OidcConfig {
+            issuer: "https://id.example.com".to_owned(),
+            client_id: "vault".to_owned(),
+            redirect: "https://vault.example.com/sign-in/return".to_owned(),
+        })
+    );
 }

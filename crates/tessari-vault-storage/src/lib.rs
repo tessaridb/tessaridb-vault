@@ -8,6 +8,7 @@ pub mod companies;
 pub mod enrolments;
 mod error;
 pub mod groups;
+pub mod identities;
 mod schema;
 pub mod sessions;
 pub mod signin;
