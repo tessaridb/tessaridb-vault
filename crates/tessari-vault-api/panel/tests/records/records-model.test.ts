@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { encode } from "../../src/base64url.ts";
-import { openedPagePath, readOpened, readOpenedPage, readRecipient, readRow } from "../../src/records-model.ts";
+import { openedPagePath, readGroupIds, readGroupKey, readOpened, readOpenedPage, readRecipient, readRow } from "../../src/records-model.ts";
 
 const ID = (digit: string) => digit.repeat(32);
 const row = {
@@ -59,5 +59,29 @@ describe("the records readers", () => {
   it("builds the page route with the cursor encoded", () => {
     assert.equal(openedPagePath("c1", null), "/api/companies/c1/records?opened=true");
     assert.equal(openedPagePath("c1", ID("f")), `/api/companies/c1/records?opened=true&after=${ID("f")}`);
+  });
+});
+
+describe("the group keys a reader may open", () => {
+  const group = { id: ID("4"), kind: "team", name: "Ops", parent: ID("5") };
+
+  it("reads the company's group ids", () => {
+    assert.deepEqual(readGroupIds({ groups: [group, { ...group, id: ID("6") }] }), [ID("4"), ID("6")]);
+    assert.deepEqual(readGroupIds({ groups: [] }), []);
+    assert.equal(readGroupIds({ groups: [{ ...group, id: "team-1" }] }), null);
+    assert.equal(readGroupIds({}), null);
+  });
+
+  it("reads a group key with or without the caller's wrap", () => {
+    const key = { key_id: ID("7"), public: encode(new Uint8Array(32).fill(8)), wrap: encode(new Uint8Array(82).fill(9)), rotation_due: false };
+    const read = readGroupKey(key);
+    assert.deepEqual(read?.keyId, new Uint8Array(16).fill(0x77));
+    assert.deepEqual(read?.public, new Uint8Array(32).fill(8));
+    assert.deepEqual(read?.wrap, new Uint8Array(82).fill(9));
+    assert.equal(readGroupKey({ ...key, wrap: null })?.wrap, null);
+    assert.equal(readGroupKey({ ...key, key_id: "7" }), null);
+    assert.equal(readGroupKey({ ...key, public: encode(new Uint8Array(31)) }), null);
+    assert.equal(readGroupKey({ ...key, wrap: "" }), null);
+    assert.equal(readGroupKey({ ...key, wrap: "not base64!" }), null);
   });
 });

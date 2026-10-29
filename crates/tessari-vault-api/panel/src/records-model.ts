@@ -1,8 +1,11 @@
 // What the records views read: a record's row, an opened record (its row and its latest revision's sealed parts with
-// the record key wrapped to a key this person holds), and a page of opened records. No DOM here, so all of it is tested.
+// the record key wrapped to a key this person holds), a page of opened records, and the group keys a wrap may be kept
+// under. No DOM here, so all of it is tested.
 
 import { decode } from "./base64url.ts";
 import type { Bytes } from "./crypto/bytes.ts";
+import type { ListedGroupKey } from "./records/recipient-keys.ts";
+import { keyIdBytes } from "./unlock-model.ts";
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isText = (v: unknown): v is string => typeof v === "string" && v !== "";
@@ -93,3 +96,27 @@ export function readOpenedPage(v: unknown): OpenedPage | null {
 /** The route of a page of opened records in `company`, after `cursor` when given. */
 export const openedPagePath = (company: string, cursor: string | null): string =>
   `/api/companies/${encodeURIComponent(company)}/records?opened=true${cursor === null ? "" : `&after=${encodeURIComponent(cursor)}`}`;
+
+/** The ids of the company's groups, as `GET /api/companies/{company}/groups` answers them. */
+export function readGroupIds(v: unknown): readonly string[] | null {
+  if (!isRecord(v) || !Array.isArray(v["groups"])) {
+    return null;
+  }
+  const ids = v["groups"].map((group: unknown) => (isRecord(group) && isId(group["id"]) ? group["id"] : null));
+  return ids.every((id) => id !== null) ? ids : null;
+}
+
+/**
+ * A group's key as `GET /api/companies/{company}/groups/{group}/key` answers it; `wrap` is null when none is kept for the
+ * caller.
+ */
+export function readGroupKey(v: unknown): ListedGroupKey | null {
+  if (!isRecord(v) || typeof v["key_id"] !== "string" || !isText(v["public"])) {
+    return null;
+  }
+  const keyId = keyIdBytes(v["key_id"]);
+  const listed = decode(v["public"]);
+  const wrapped = v["wrap"];
+  const wrap = wrapped === null ? null : isText(wrapped) ? (decode(wrapped) ?? undefined) : undefined;
+  return keyId !== null && listed !== null && listed.length === 32 && wrap !== undefined ? { keyId, public: listed, wrap } : null;
+}
