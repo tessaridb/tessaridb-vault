@@ -117,6 +117,20 @@ function associatedData(context: MemberKeyContext): Bytes {
   );
 }
 
+/** Whose key set a pinned owner key belongs to. */
+export interface PinContext {
+  account: string;
+  company: string;
+  keyId: Bytes;
+}
+
+function pinData(pin: PinContext): Bytes {
+  if (pin.keyId.length !== KEY_ID_BYTES) {
+    throw new VaultCryptoError("malformed");
+  }
+  return concat(utf8(LABEL.ownerPin), field(utf8(pin.account)), field(utf8(pin.company)), field(pin.keyId));
+}
+
 /** The unlock key, holding the count of wraps made under it so far (stored with the member's bundle). */
 export class UnlockKey {
   readonly #key: CryptoKey;
@@ -166,6 +180,41 @@ export class UnlockKey {
       additionalData: associatedData(context),
     });
     return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context.keyId, nonce, new Uint8Array(sealed));
+  }
+
+  /** Seal the company owner's Ed25519 public key under UK, to be pinned in this member's key set; one more wrap. */
+  async sealPin(ownerPublic: CryptoKey, pin: PinContext): Promise<{ nonce: Bytes; sealed: Bytes }> {
+    if (this.#wrapsMade >= MAX_WRAPS) {
+      throw new VaultCryptoError("wrap-bound");
+    }
+    this.#wrapsMade += 1;
+    const nonce = random(NONCE_BYTES);
+    const sealed = await crypto.subtle.wrapKey("raw", ownerPublic, this.#key, {
+      name: "AES-GCM",
+      iv: nonce,
+      additionalData: pinData(pin),
+    });
+    return { nonce, sealed: new Uint8Array(sealed) };
+  }
+
+  /** Open the pinned owner key; a pin sealed for another member, company or key set is `unauthentic`. */
+  async openPin(pin: PinContext, nonce: Bytes, sealed: Bytes): Promise<CryptoKey> {
+    if (nonce.length !== NONCE_BYTES) {
+      throw new VaultCryptoError("malformed");
+    }
+    try {
+      return await crypto.subtle.unwrapKey(
+        "raw",
+        sealed,
+        this.#key,
+        { name: "AES-GCM", iv: nonce, additionalData: pinData(pin) },
+        { name: "Ed25519" },
+        true,
+        ["verify"],
+      );
+    } catch {
+      throw new VaultCryptoError("unauthentic");
+    }
   }
 
   /** Unwrap into a non-extractable key: X25519 for agreement, Ed25519 for signing. */

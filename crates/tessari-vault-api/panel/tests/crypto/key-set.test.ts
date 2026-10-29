@@ -7,14 +7,14 @@ import { describe, it } from "node:test";
 
 import { concat, type Bytes } from "../../src/crypto/bytes.ts";
 import { NEW_KDF, createKeySet, openKeySet, type StoredKeySet } from "../../src/crypto/key-set.ts";
-import { publicBytes, x25519 } from "../../src/crypto/keys.ts";
+import { generatePair, publicBytes, x25519 } from "../../src/crypto/keys.ts";
 import { refusedWith } from "./support.ts";
 
 const WASM = new URL("../../../../../target/wasm32-unknown-unknown/release/tessari_vault_crypto.wasm", import.meta.url);
 const MODULE = new WebAssembly.Module(readFileSync(WASM));
 const PASSWORD = "my unlock password, not my sign-in";
 
-const made = createKeySet(MODULE, PASSWORD, "account-1", "company-1");
+const made = createKeySet(MODULE, PASSWORD, "account-1", "company-1", "self");
 
 /** `stored` with its wrapped bytes replaced. */
 const withWrapped = (stored: StoredKeySet, wrapped: Bytes): StoredKeySet => ({ ...stored, wrapped });
@@ -51,15 +51,39 @@ describe("a member's key set", () => {
     await refusedWith(openKeySet(MODULE, PASSWORD, "account-1", "company-2", stored), "unauthentic");
   });
 
+  it("pins its own signing key when its member is the first owner", async () => {
+    const { stored, open } = await made;
+    assert.deepEqual(open.ownerSigningPublic, stored.signingPublic);
+    const reopened = await openKeySet(MODULE, PASSWORD, "account-1", "company-1", stored);
+    assert.deepEqual(reopened.ownerSigningPublic, stored.signingPublic);
+  });
+
+  it("pins the owner key it was given, and opens it back", async () => {
+    const owner = await publicBytes((await generatePair("Ed25519")).publicKey);
+    const { stored, open } = await createKeySet(MODULE, PASSWORD, "account-2", "company-1", owner);
+    assert.deepEqual(open.ownerSigningPublic, owner);
+    assert.notDeepEqual(open.ownerSigningPublic, stored.signingPublic);
+    const reopened = await openKeySet(MODULE, PASSWORD, "account-2", "company-1", stored);
+    assert.deepEqual(reopened.ownerSigningPublic, owner);
+  });
+
   it("refuses a set whose wraps were swapped, cut or added to", async () => {
     const { stored } = await made;
     const head = stored.wrapped.slice(0, 5);
     const rest = stored.wrapped.slice(5);
-    const first = rest.slice(0, 4 + new DataView(rest.buffer, rest.byteOffset).getUint32(0));
-    const second = rest.slice(first.length);
-    await refusedWith(openKeySet(MODULE, PASSWORD, "account-1", "company-1", withWrapped(stored, concat(head, second, first))), "unauthentic");
-    await refusedWith(openKeySet(MODULE, PASSWORD, "account-1", "company-1", withWrapped(stored, concat(head, first))), "malformed");
+    const fieldOf = (bytes: Bytes): Bytes => bytes.slice(0, 4 + new DataView(bytes.buffer, bytes.byteOffset).getUint32(0));
+    const first = fieldOf(rest);
+    const second = fieldOf(rest.slice(first.length));
+    const pin = rest.slice(first.length + second.length);
+    await refusedWith(openKeySet(MODULE, PASSWORD, "account-1", "company-1", withWrapped(stored, concat(head, second, first, pin))), "unauthentic");
+    await refusedWith(openKeySet(MODULE, PASSWORD, "account-1", "company-1", withWrapped(stored, concat(head, first, second))), "malformed");
     await refusedWith(openKeySet(MODULE, PASSWORD, "account-1", "company-1", withWrapped(stored, concat(stored.wrapped, Uint8Array.of(0)))), "malformed");
     await refusedWith(openKeySet(MODULE, PASSWORD, "account-1", "company-1", withWrapped(stored, concat(Uint8Array.of(9), rest))), "unknown-version");
+  });
+
+  it("refuses a first-version set, which pinned no owner key", async () => {
+    const { stored } = await made;
+    const rest = stored.wrapped.slice(1);
+    await refusedWith(openKeySet(MODULE, PASSWORD, "account-1", "company-1", withWrapped(stored, concat(Uint8Array.of(1), rest))), "unknown-version");
   });
 });

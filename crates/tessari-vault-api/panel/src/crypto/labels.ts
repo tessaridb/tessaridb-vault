@@ -16,6 +16,8 @@ export const LABEL = {
   fileChunk: `${PREFIX}file-chunk`,
   /** Associated-data prefix of a membership private key wrapped under the unlock key. */
   memberKey: `${PREFIX}member-key`,
+  /** Associated-data prefix of the company owner's public key, pinned under the unlock key in a member's key set. */
+  ownerPin: `${PREFIX}owner-pin`,
   /** HPKE `info` prefix of a key wrap. */
   wrap: `${PREFIX}wrap`,
   /** Ed25519 domain prefix of a vouching statement. */

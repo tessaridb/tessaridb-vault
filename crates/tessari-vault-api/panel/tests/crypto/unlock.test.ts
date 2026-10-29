@@ -112,3 +112,31 @@ describe("member private keys under the unlock key (algorithm 0x03)", () => {
     await refusedWith(unlockKey(MAX_WRAPS + 1), "wrap-bound");
   });
 });
+
+describe("the owner key pinned under the unlock key", () => {
+  const pin = { account: "account-1", company: "company-1", keyId: random(16) };
+
+  it("opens back into the owner's public key and counts as one wrap", async () => {
+    const uk = await unlockKey();
+    const owner = await generatePair("Ed25519");
+    const { nonce, sealed } = await uk.sealPin(owner.publicKey, pin);
+    assert.equal(uk.wrapsMade, 1);
+    const opened = await uk.openPin(pin, nonce, sealed);
+    assert.equal(toHex(await publicBytes(opened)), toHex(await publicBytes(owner.publicKey)));
+  });
+
+  it("refuses a pin read for another account, company or key set, or with a changed byte", async () => {
+    const uk = await unlockKey();
+    const { nonce, sealed } = await uk.sealPin((await generatePair("Ed25519")).publicKey, pin);
+    await refusedWith(uk.openPin({ ...pin, account: "account-2" }, nonce, sealed), "unauthentic");
+    await refusedWith(uk.openPin({ ...pin, company: "company-2" }, nonce, sealed), "unauthentic");
+    await refusedWith(uk.openPin({ ...pin, keyId: random(16) }, nonce, sealed), "unauthentic");
+    await refusedWith(uk.openPin(pin, nonce, flipped(sealed, 0)), "unauthentic");
+    await refusedWith(uk.openPin(pin, nonce.slice(1), sealed), "malformed");
+  });
+
+  it("is not made past the wrap bound", async () => {
+    const uk = await unlockKey(MAX_WRAPS);
+    await refusedWith(uk.sealPin((await generatePair("Ed25519")).publicKey, pin), "wrap-bound");
+  });
+});

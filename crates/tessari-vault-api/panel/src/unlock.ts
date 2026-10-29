@@ -2,9 +2,12 @@
 // that password and makes their keys. The password never leaves the browser and is not the sign-in password, so nobody
 // at the server can reset it; a company's owners can restore access through recovery.
 
-import { call, type Failure } from "./api.ts";
+import { call, ignored, type Failure } from "./api.ts";
+import { genesisBody, needsGenesis, ownerPinFor, readChain } from "./chain-model.ts";
+import type { Bytes } from "./crypto/bytes.ts";
 import { VaultCryptoError } from "./crypto/errors.ts";
-import { createKeySet, openKeySet, type StoredKeySet } from "./crypto/key-set.ts";
+import { createKeySet, openKeySet, type OpenKeySet, type StoredKeySet } from "./crypto/key-set.ts";
+import { appendStatement } from "./crypto/statements.ts";
 import { el, field, fill } from "./dom.ts";
 import { heading, refusal } from "./screen.ts";
 import {
@@ -63,6 +66,27 @@ function unlockFailure(problem: unknown): string {
 const loadFailure = (failure: Failure): string =>
   failure.code === "network" ? "The vault didn't answer. Check your connection, then try again." : "The vault couldn't load your keys. Try again in a minute.";
 
+const chainPath = (company: Company): string => `/api/companies/${encodeURIComponent(company.id)}/statements`;
+
+/** Begins the company's chain: the owner's member statement, signed by the key it names, pinning that key. */
+async function beginChain(company: Company, me: Me, keys: OpenKeySet): Promise<boolean> {
+  const fields = { kind: "member" as const, subject: me.account, agreementPublic: keys.agreementPublic, signingPublic: keys.signingPublic };
+  const statement = await appendStatement(company.id, undefined, fields, { privateKey: keys.signingPrivate, publicBytes: keys.signingPublic });
+  const answer = await call("POST", chainPath(company), ignored, { body: genesisBody(statement, keys.signingPublic) });
+  return answer.ok;
+}
+
+/** An owner whose keys pinned themselves begins the chain if it has not begun, so the company's members can join. */
+async function chainOwed(company: Company, me: Me, keys: OpenKeySet): Promise<boolean> {
+  if (company.role !== "owner") {
+    return true;
+  }
+  const chain = await call("GET", chainPath(company), readChain);
+  return chain.ok && (!needsGenesis(chain.value, keys) || (await beginChain(company, me, keys)));
+}
+
+const CHAIN_FAILURE = "The vault couldn't record you as your company's owner. Try again in a minute.";
+
 /** A company choice when the person belongs to several: radios, so the arrow keys move between them. */
 function companyChoice(companies: readonly Company[]): { readonly row: HTMLElement | null; readonly chosen: () => Company } {
   const first = companies[0];
@@ -99,6 +123,10 @@ function unlockForm(main: HTMLElement, me: Me, company: Company, stored: StoredK
     try {
       const keys = await openKeySet(await cryptoModule(), password.input.value, me.account, company.id, stored);
       password.input.value = "";
+      if (!(await chainOwed(company, me, keys))) {
+        fill(said, refusal(CHAIN_FAILURE));
+        return;
+      }
       hold({ company: company.id, account: me.account, keys });
       done();
     } catch (problem) {
@@ -115,7 +143,7 @@ function unlockForm(main: HTMLElement, me: Me, company: Company, stored: StoredK
 }
 
 /** The form that sets the unlock password the first time and makes the person's keys for `company`. */
-function firstUnlockForm(main: HTMLElement, me: Me, company: Company, choice: HTMLElement | null, done: () => void): void {
+function firstUnlockForm(main: HTMLElement, me: Me, company: Company, owner: Bytes | "self", choice: HTMLElement | null, done: () => void): void {
   const password = field(
     "new-unlock-password",
     "New unlock password",
@@ -145,7 +173,7 @@ function firstUnlockForm(main: HTMLElement, me: Me, company: Company, choice: HT
     submit.disabled = true;
     fill(said, el("p", { class: "muted", role: "status" }, "Making your keys. This takes a few seconds."));
     try {
-      const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id);
+      const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id, owner);
       const answer = await call("PUT", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readKept(made.stored.keyId), {
         body: keySetBody(made.stored),
       });
@@ -155,6 +183,10 @@ function firstUnlockForm(main: HTMLElement, me: Me, company: Company, choice: HT
       }
       password.input.value = "";
       repeated.input.value = "";
+      if (owner === "self" && !(await beginChain(company, me, made.open))) {
+        fill(said, refusal(CHAIN_FAILURE));
+        return;
+      }
       hold({ company: company.id, account: me.account, keys: made.open });
       done();
     } catch (problemMaking) {
@@ -194,13 +226,27 @@ export async function unlock(main: HTMLElement, done: () => void, signOut: () =>
     return;
   }
   const choice = companyChoice(open);
+  const firstTime = async (company: Company): Promise<void> => {
+    const chain = await call("GET", chainPath(company), readChain);
+    if (!chain.ok) {
+      fill(main, card("Unlock your vault", "", choice.row, refusal(loadFailure(chain))));
+      return;
+    }
+    const owner = ownerPinFor(chain.value, company.role);
+    if (owner === "not-yet") {
+      const lead = "Your company's owner hasn't opened the vault yet. Once they have, you can set your unlock password here.";
+      fill(main, card("Waiting for your company's owner", lead, choice.row));
+      return;
+    }
+    firstUnlockForm(main, me.value, company, owner, choice.row, done);
+  };
   const draw = async (): Promise<void> => {
     const company = choice.chosen();
     const keys = await call("GET", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readOwnKeys);
     if (keys.ok) {
       unlockForm(main, me.value, company, keys.value, choice.row, done);
     } else if (keys.status === 404) {
-      firstUnlockForm(main, me.value, company, choice.row, done);
+      await firstTime(company);
     } else {
       fill(main, card("Unlock your vault", "", choice.row, refusal(loadFailure(keys))));
     }

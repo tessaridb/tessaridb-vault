@@ -594,9 +594,59 @@
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 
+  // src/chain-model.ts
+  var OWNER_KEY_BYTES = 32;
+  var isRecord3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isText = (v) => typeof v === "string" && v !== "";
+  function readChain(v) {
+    if (!isRecord3(v) || !Array.isArray(v["statements"])) {
+      return null;
+    }
+    const pinned = v["owner_signing"];
+    const ownerSigning = pinned === null ? null : isText(pinned) ? decode(pinned) : void 0;
+    if (ownerSigning === void 0 || ownerSigning !== null && ownerSigning.length !== OWNER_KEY_BYTES) {
+      return null;
+    }
+    const statements = [];
+    for (const [index, item] of v["statements"].entries()) {
+      if (!isRecord3(item) || item["seq"] !== index + 1 || !isText(item["bytes"]) || !isText(item["signature"])) {
+        return null;
+      }
+      const [bytes, signature] = [decode(item["bytes"]), decode(item["signature"])];
+      if (bytes === null || signature === null) {
+        return null;
+      }
+      statements.push({ bytes, signature });
+    }
+    return ownerSigning === null === (statements.length === 0) ? { ownerSigning, statements } : null;
+  }
+  function ownerPinFor(chain, role) {
+    if (chain.ownerSigning !== null) {
+      return chain.ownerSigning;
+    }
+    return role === "owner" ? "self" : "not-yet";
+  }
+  var needsGenesis = (chain, keys) => chain.ownerSigning === null && sameBytes(keys.ownerSigningPublic, keys.signingPublic);
+  var genesisBody = (statement, ownerSigning) => ({
+    seq: 1,
+    bytes: encode(statement.bytes),
+    signature: encode(statement.signature),
+    owner_signing: encode(ownerSigning)
+  });
+
   // src/crypto/keys.ts
   var PKCS8_PREFIX_X25519 = Uint8Array.of(48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 110, 4, 34, 4, 32);
   var PKCS8_PREFIX_ED25519 = Uint8Array.of(48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 112, 4, 34, 4, 32);
+  var KEY_BYTES = 32;
+  function exactKey(raw) {
+    if (raw.length !== KEY_BYTES) {
+      throw new VaultCryptoError("malformed");
+    }
+    return raw;
+  }
+  async function ed25519PublicFromBytes(raw) {
+    return crypto.subtle.importKey("raw", exactKey(raw), { name: "Ed25519" }, true, ["verify"]);
+  }
   async function publicBytes(publicKey) {
     return new Uint8Array(await crypto.subtle.exportKey("raw", publicKey));
   }
@@ -624,6 +674,8 @@
     fileChunk: `${PREFIX}file-chunk`,
     /** Associated-data prefix of a membership private key wrapped under the unlock key. */
     memberKey: `${PREFIX}member-key`,
+    /** Associated-data prefix of the company owner's public key, pinned under the unlock key in a member's key set. */
+    ownerPin: `${PREFIX}owner-pin`,
     /** HPKE `info` prefix of a key wrap. */
     wrap: `${PREFIX}wrap`,
     /** Ed25519 domain prefix of a vouching statement. */
@@ -707,6 +759,12 @@
       field2(context2.keyId)
     );
   }
+  function pinData(pin) {
+    if (pin.keyId.length !== KEY_ID_BYTES) {
+      throw new VaultCryptoError("malformed");
+    }
+    return concat(utf8(LABEL.ownerPin), field2(utf8(pin.account)), field2(utf8(pin.company)), field2(pin.keyId));
+  }
   var UnlockKey = class _UnlockKey {
     #key;
     #wrapsMade;
@@ -752,6 +810,39 @@
       });
       return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context2.keyId, nonce, new Uint8Array(sealed));
     }
+    /** Seal the company owner's Ed25519 public key under UK, to be pinned in this member's key set; one more wrap. */
+    async sealPin(ownerPublic, pin) {
+      if (this.#wrapsMade >= MAX_WRAPS) {
+        throw new VaultCryptoError("wrap-bound");
+      }
+      this.#wrapsMade += 1;
+      const nonce = random(NONCE_BYTES);
+      const sealed = await crypto.subtle.wrapKey("raw", ownerPublic, this.#key, {
+        name: "AES-GCM",
+        iv: nonce,
+        additionalData: pinData(pin)
+      });
+      return { nonce, sealed: new Uint8Array(sealed) };
+    }
+    /** Open the pinned owner key; a pin sealed for another member, company or key set is `unauthentic`. */
+    async openPin(pin, nonce, sealed) {
+      if (nonce.length !== NONCE_BYTES) {
+        throw new VaultCryptoError("malformed");
+      }
+      try {
+        return await crypto.subtle.unwrapKey(
+          "raw",
+          sealed,
+          this.#key,
+          { name: "AES-GCM", iv: nonce, additionalData: pinData(pin) },
+          { name: "Ed25519" },
+          true,
+          ["verify"]
+        );
+      } catch {
+        throw new VaultCryptoError("unauthentic");
+      }
+    }
     /** Unwrap into a non-extractable key: X25519 for agreement, Ed25519 for signing. */
     async unwrap(context2, wrapped) {
       const reader = new Reader(wrapped);
@@ -788,6 +879,8 @@
   var NEW_KDF = { memoryKib: 65536, passes: 3, lanes: 4 };
   var SALT_BYTES2 = 16;
   var KEY_ID_BYTES2 = 16;
+  var PIN_NONCE_BYTES = 12;
+  var KEY_SET_VERSION = 2;
   var context = (account, company, kind, keyId) => ({
     account,
     company,
@@ -799,30 +892,34 @@
   }
   function parse(stored) {
     const reader = new Reader(stored.wrapped);
-    if (reader.integer(1) !== FORMAT_VERSION) {
+    if (reader.integer(1) !== KEY_SET_VERSION) {
       throw new VaultCryptoError("unknown-version");
     }
     const wrapsMade = reader.integer(4);
     const agreementWrap = reader.field();
     const signingWrap = reader.field();
+    const pinNonce = reader.take(PIN_NONCE_BYTES);
+    const pin = reader.field();
     reader.end();
-    return { wrapsMade, agreementWrap, signingWrap };
+    return { wrapsMade, agreementWrap, signingWrap, pinNonce, pin };
   }
   async function openWith(key, account, company, stored) {
-    const { agreementWrap, signingWrap } = parse(stored);
+    const { agreementWrap, signingWrap, pinNonce, pin } = parse(stored);
+    const owner = await key.openPin({ account, company, keyId: stored.keyId }, pinNonce, pin);
     return {
       keyId: stored.keyId,
       agreementPrivate: await key.unwrap(context(account, company, "agreement", stored.keyId), agreementWrap),
       signingPrivate: await key.unwrap(context(account, company, "signing", stored.keyId), signingWrap),
       agreementPublic: stored.agreementPublic,
-      signingPublic: stored.signingPublic
+      signingPublic: stored.signingPublic,
+      ownerSigningPublic: await publicBytes(owner)
     };
   }
   async function openKeySet(module2, password, account, company, stored) {
     const { wrapsMade } = parse(stored);
     return openWith(await unlockKey(module2, password, stored.salt, stored.kdf, wrapsMade), account, company, stored);
   }
-  async function createKeySet(module2, password, account, company) {
+  async function createKeySet(module2, password, account, company, ownerSigningPublic) {
     const salt = random(SALT_BYTES2);
     const keyId = random(KEY_ID_BYTES2);
     const key = await unlockKey(module2, password, salt, NEW_KDF, 0);
@@ -830,36 +927,112 @@
     const signing = await generatePair("Ed25519");
     const agreementWrap = await key.wrap(agreement.privateKey, context(account, company, "agreement", keyId));
     const signingWrap = await key.wrap(signing.privateKey, context(account, company, "signing", keyId));
+    const signingPublic = await publicBytes(signing.publicKey);
+    const owner = await ed25519PublicFromBytes(ownerSigningPublic === "self" ? signingPublic : ownerSigningPublic);
+    const pin = await key.sealPin(owner, { account, company, keyId });
     const stored = {
       keyId,
       agreementPublic: await publicBytes(agreement.publicKey),
-      signingPublic: await publicBytes(signing.publicKey),
-      wrapped: concat(Uint8Array.of(FORMAT_VERSION), integer(key.wrapsMade, 4), field2(agreementWrap), field2(signingWrap)),
+      signingPublic,
+      wrapped: concat(
+        Uint8Array.of(KEY_SET_VERSION),
+        integer(key.wrapsMade, 4),
+        field2(agreementWrap),
+        field2(signingWrap),
+        pin.nonce,
+        field2(pin.sealed)
+      ),
       salt,
       kdf: NEW_KDF
     };
     return { stored, open: await openWith(key, account, company, stored) };
   }
 
+  // src/crypto/signatures.ts
+  async function sign(privateKey, message) {
+    const signature = new Uint8Array(await crypto.subtle.sign("Ed25519", privateKey, message));
+    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.signature), signature);
+  }
+
+  // src/crypto/statements.ts
+  var KEY_BYTES2 = 32;
+  var DIGEST_BYTES = 32;
+  var KINDS = ["member", "admin", "group", "revoke", "recovery"];
+  function encode2(company, seq, prev, fields, signerPublic) {
+    return concat(
+      utf8(LABEL.statement),
+      Uint8Array.of(FORMAT_VERSION, KINDS.indexOf(fields.kind) + 1),
+      field2(utf8(company)),
+      integer(seq, 8),
+      prev,
+      field2(utf8(fields.subject)),
+      field2(fields.agreementPublic),
+      field2(fields.signingPublic),
+      signerPublic
+    );
+  }
+  function decode2(bytes) {
+    const reader = new Reader(bytes);
+    if (!sameBytes(reader.take(utf8(LABEL.statement).length), utf8(LABEL.statement))) {
+      throw new VaultCryptoError("malformed");
+    }
+    if (reader.integer(1) !== FORMAT_VERSION) {
+      throw new VaultCryptoError("unknown-version");
+    }
+    const kind = KINDS[reader.integer(1) - 1];
+    if (kind === void 0) {
+      throw new VaultCryptoError("chain-broken");
+    }
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    const text2 = (raw) => {
+      try {
+        return decoder.decode(raw);
+      } catch {
+        throw new VaultCryptoError("malformed");
+      }
+    };
+    const decoded = {
+      kind,
+      company: text2(reader.field()),
+      seq: reader.integer(8),
+      prev: reader.take(DIGEST_BYTES),
+      subject: text2(reader.field()),
+      agreementPublic: reader.field(),
+      signingPublic: reader.field(),
+      signerPublic: reader.take(KEY_BYTES2)
+    };
+    reader.end();
+    return decoded;
+  }
+  async function digest(statement) {
+    return new Uint8Array(await crypto.subtle.digest("SHA-256", concat(statement.bytes, statement.signature)));
+  }
+  async function appendStatement(company, previous, fields, signer) {
+    const seq = previous === void 0 ? 1 : decode2(previous.bytes).seq + 1;
+    const prev = previous === void 0 ? new Uint8Array(DIGEST_BYTES) : await digest(previous);
+    const bytes = encode2(company, seq, prev, fields, signer.publicBytes);
+    return { bytes, signature: await sign(signer.privateKey, bytes) };
+  }
+
   // src/unlock-model.ts
-  var isRecord3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  var isText = (v) => typeof v === "string" && v !== "";
+  var isRecord4 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isText2 = (v) => typeof v === "string" && v !== "";
   var isCount = (v) => typeof v === "number" && Number.isSafeInteger(v) && v > 0;
   function readMe(v) {
-    if (!isRecord3(v) || !isRecord3(v["account"]) || typeof v["platform_admin"] !== "boolean") {
+    if (!isRecord4(v) || !isRecord4(v["account"]) || typeof v["platform_admin"] !== "boolean") {
       return null;
     }
     const { id, name, email } = v["account"];
-    return isText(id) && isText(name) && isText(email) ? { account: id, name, email, platformAdmin: v["platform_admin"] } : null;
+    return isText2(id) && isText2(name) && isText2(email) ? { account: id, name, email, platformAdmin: v["platform_admin"] } : null;
   }
   var isRole = (v) => v === "owner" || v === "admin" || v === "member";
   function readCompanies(v) {
-    if (!isRecord3(v) || !Array.isArray(v["companies"])) {
+    if (!isRecord4(v) || !Array.isArray(v["companies"])) {
       return null;
     }
     const companies = [];
     for (const item of v["companies"]) {
-      if (!isRecord3(item) || !isText(item["id"]) || !isText(item["name"]) || !isText(item["state"])) {
+      if (!isRecord4(item) || !isText2(item["id"]) || !isText2(item["name"]) || !isText2(item["state"])) {
         return null;
       }
       const role = item["role"];
@@ -878,15 +1051,15 @@
     return Uint8Array.from(text2.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
   }
   function readOwnKeys(v) {
-    if (!isRecord3(v) || !isRecord3(v["kdf"]) || !isText(v["key_id"])) {
+    if (!isRecord4(v) || !isRecord4(v["kdf"]) || !isText2(v["key_id"])) {
       return null;
     }
     const { salt, memory_kib: memoryKib, passes, lanes } = v["kdf"];
-    if (!isText(salt) || !isCount(memoryKib) || !isCount(passes) || !isCount(lanes)) {
+    if (!isText2(salt) || !isCount(memoryKib) || !isCount(passes) || !isCount(lanes)) {
       return null;
     }
     const keyId = keyIdBytes(v["key_id"]);
-    const parts = [v["agreement_public"], v["signing_public"], v["wrapped"], salt].map((part) => isText(part) ? decode(part) : null);
+    const parts = [v["agreement_public"], v["signing_public"], v["wrapped"], salt].map((part) => isText2(part) ? decode(part) : null);
     const [agreementPublic, signingPublic, wrapped, saltBytes] = parts;
     if (keyId === null || agreementPublic == null || signingPublic == null || wrapped == null || saltBytes == null) {
       return null;
@@ -913,7 +1086,7 @@
     }
     return null;
   }
-  var readKept = (sent) => (v) => isRecord3(v) && v["key_id"] === hex(sent) ? hex(sent) : null;
+  var readKept = (sent) => (v) => isRecord4(v) && v["key_id"] === hex(sent) ? hex(sent) : null;
 
   // src/vault.ts
   var IDLE_MINUTES = 15;
@@ -997,6 +1170,21 @@
     return "This page couldn't open your keys. Reload the page and try again.";
   }
   var loadFailure = (failure) => failure.code === "network" ? "The vault didn't answer. Check your connection, then try again." : "The vault couldn't load your keys. Try again in a minute.";
+  var chainPath = (company) => `/api/companies/${encodeURIComponent(company.id)}/statements`;
+  async function beginChain(company, me, keys) {
+    const fields = { kind: "member", subject: me.account, agreementPublic: keys.agreementPublic, signingPublic: keys.signingPublic };
+    const statement = await appendStatement(company.id, void 0, fields, { privateKey: keys.signingPrivate, publicBytes: keys.signingPublic });
+    const answer = await call("POST", chainPath(company), ignored, { body: genesisBody(statement, keys.signingPublic) });
+    return answer.ok;
+  }
+  async function chainOwed(company, me, keys) {
+    if (company.role !== "owner") {
+      return true;
+    }
+    const chain = await call("GET", chainPath(company), readChain);
+    return chain.ok && (!needsGenesis(chain.value, keys) || await beginChain(company, me, keys));
+  }
+  var CHAIN_FAILURE = "The vault couldn't record you as your company's owner. Try again in a minute.";
   function companyChoice(companies) {
     const first = companies[0];
     if (first === void 0) {
@@ -1030,6 +1218,10 @@
       try {
         const keys = await openKeySet(await cryptoModule(), password.input.value, me.account, company.id, stored);
         password.input.value = "";
+        if (!await chainOwed(company, me, keys)) {
+          fill(said, refusal(CHAIN_FAILURE));
+          return;
+        }
         hold({ company: company.id, account: me.account, keys });
         done();
       } catch (problem) {
@@ -1044,7 +1236,7 @@
     fill(main, view2);
     password.input.focus();
   }
-  function firstUnlockForm(main, me, company, choice, done) {
+  function firstUnlockForm(main, me, company, owner, choice, done) {
     const password = field(
       "new-unlock-password",
       "New unlock password",
@@ -1074,7 +1266,7 @@
       submit.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Making your keys. This takes a few seconds."));
       try {
-        const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id);
+        const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id, owner);
         const answer = await call("PUT", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readKept(made.stored.keyId), {
           body: keySetBody(made.stored)
         });
@@ -1084,6 +1276,10 @@
         }
         password.input.value = "";
         repeated.input.value = "";
+        if (owner === "self" && !await beginChain(company, me, made.open)) {
+          fill(said, refusal(CHAIN_FAILURE));
+          return;
+        }
         hold({ company: company.id, account: me.account, keys: made.open });
         done();
       } catch (problemMaking) {
@@ -1119,13 +1315,27 @@
       return;
     }
     const choice = companyChoice(open2);
+    const firstTime = async (company) => {
+      const chain = await call("GET", chainPath(company), readChain);
+      if (!chain.ok) {
+        fill(main, card2("Unlock your vault", "", choice.row, refusal(loadFailure(chain))));
+        return;
+      }
+      const owner = ownerPinFor(chain.value, company.role);
+      if (owner === "not-yet") {
+        const lead = "Your company's owner hasn't opened the vault yet. Once they have, you can set your unlock password here.";
+        fill(main, card2("Waiting for your company's owner", lead, choice.row));
+        return;
+      }
+      firstUnlockForm(main, me.value, company, owner, choice.row, done);
+    };
     const draw2 = async () => {
       const company = choice.chosen();
       const keys = await call("GET", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readOwnKeys);
       if (keys.ok) {
         unlockForm(main, me.value, company, keys.value, choice.row, done);
       } else if (keys.status === 404) {
-        firstUnlockForm(main, me.value, company, choice.row, done);
+        await firstTime(company);
       } else {
         fill(main, card2("Unlock your vault", "", choice.row, refusal(loadFailure(keys))));
       }
