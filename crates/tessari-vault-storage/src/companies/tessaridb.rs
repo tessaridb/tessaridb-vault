@@ -13,6 +13,7 @@ use super::entity::{CompanyEntity, Membership, MembershipEntity};
 use super::repository::{Change, CompanyRepository, Joining};
 use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
+use crate::shares::retiring;
 use crate::{Result, answers};
 
 /// The statement that refuses a change taking away the company's last active owner. Binds `$company`.
@@ -61,6 +62,7 @@ joined: time::now() };";
 struct GroupRow {
     group: String,
     company: String,
+    parent: String,
 }
 
 impl FromRecord for GroupRow {
@@ -68,6 +70,7 @@ impl FromRecord for GroupRow {
         Ok(Self {
             group: row.take("group_id")?,
             company: row.take("company")?,
+            parent: row.take("parent")?,
         })
     }
 }
@@ -267,6 +270,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
         target: &Membership,
         groups: &[GroupId],
         loses_owner: bool,
+        retired: Vec<String>,
     ) -> Result<()> {
         parameters.extend(target_values(target));
         parameters.push(bind("account", target.account.as_str()));
@@ -279,8 +283,10 @@ impl CompanyRepository for TessaridbCompanyRepository {
             parameters.push(bind(&name, group.as_str()));
         }
         let owners = if loses_owner { KEEPS_AN_OWNER } else { "" };
+        // Every key the leaver could hold retires, with every record they wrote or that was shared through them.
+        let retire = retiring(&mut parameters, retired, Some(&target.account));
         let script = format!(
-            "BEGIN; {GUARD} {TARGET_UNCHANGED} {owners} {edges} DELETE memberships:$target; {RECORD} COMMIT;"
+            "BEGIN; {GUARD} {TARGET_UNCHANGED} {owners} {edges} DELETE memberships:$target; {retire} {RECORD} COMMIT;"
         );
         self.database
             .run_at(place, &script, parameters)
@@ -289,19 +295,23 @@ impl CompanyRepository for TessaridbCompanyRepository {
         Ok(())
     }
 
-    async fn groups_of(&self, place: &Place, account: &AccountId) -> Result<Vec<(String, String)>> {
+    async fn groups_of(
+        &self,
+        place: &Place,
+        account: &AccountId,
+    ) -> Result<Vec<(String, String, String)>> {
         let answers = self
             .database
             .run_at(
                 place,
-                "SELECT group_id, company FROM accounts:$account->in_group->groups;",
+                "SELECT group_id, company, parent FROM accounts:$account->in_group->groups;",
                 vec![bind("account", account.as_str())],
             )
             .await?;
         let rows: Vec<GroupRow> = answers::records(answers, "group")?;
         Ok(rows
             .into_iter()
-            .map(|row| (row.group, row.company))
+            .map(|row| (row.group, row.company, row.parent))
             .collect())
     }
 }

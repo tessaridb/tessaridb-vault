@@ -9,8 +9,8 @@ use super::repository::{GroupRepository, Leaving, NewGroup};
 use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
 use crate::records::RecordVaults;
+use crate::shares::retiring;
 use crate::{Result, answers};
-use tessari_vault_constants::RECORD_LIST_MAX;
 
 /// Refuses unless `$group` is a department or team of `$company`, the answer a group of another company gets.
 const GROUP_OF_COMPANY: &str = "\
@@ -216,12 +216,8 @@ impl GroupRepository for TessaridbGroupRepository {
             bind("group", leaving.group.as_str()),
             bind("account", leaving.account.as_str()),
             bind("gvid", format!("group.{}", leaving.group.as_str()).as_str()),
-            bind(
-                "affected",
-                Value::Array(leaving.affected.into_iter().map(Value::from).collect()),
-            ),
-            bind("limit", RECORD_LIST_MAX),
         ]);
+        let retire = retiring(&mut parameters, leaving.affected, None);
         let revoke = match &leaving.revocation {
             Some(revocation) => {
                 parameters.push(bind("revoked", revocation.recipient.as_str()));
@@ -233,10 +229,7 @@ impl GroupRepository for TessaridbGroupRepository {
         // so a read decided before this commit refuses.
         let script = format!(
             "BEGIN; {GUARD} {GROUP_OF_COMPANY} DELETE accounts:$account->in_group->groups:$group; \
-             UPDATE group_keys SET rotate = true WHERE company = $company AND group_id IN $affected; \
-             UPDATE records SET rotate = true, share_version = share_version + 1 WHERE company = $company \
-             AND record_id IN (SELECT record FROM shares WHERE company = $company AND target IN $affected \
-             LIMIT $limit);{revoke} {RECORD} COMMIT;"
+             {retire}{revoke} {RECORD} COMMIT;"
         );
         match leaving.revocation {
             Some(revocation) => {

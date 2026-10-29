@@ -95,7 +95,12 @@ pub(crate) trait CompanyRepository: Send + Sync {
         target: &Membership,
         groups: &[GroupId],
         loses_owner: bool,
+        retired: Vec<String>,
     ) -> Result<()>;
-    /// The groups `account` is in, with the company each belongs to.
-    async fn groups_of(&self, place: &Place, account: &AccountId) -> Result<Vec<(String, String)>>;
+    /// The groups `account` is in, each with the company it belongs to and the group it sits in.
+    async fn groups_of(
+        &self,
+        place: &Place,
+        account: &AccountId,
+    ) -> Result<Vec<(String, String, String)>>;
 }

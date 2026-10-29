@@ -94,6 +94,28 @@ fn revision(expected: i64, body: &[u8]) -> serde_json::Value {
     })
 }
 
+/// A record created by the member `token` signs as, under their key set `key`.
+pub(crate) async fn create_by(
+    world: &World,
+    company: &str,
+    token: &str,
+    key: &str,
+    body: &[u8],
+) -> String {
+    let mut record = new_record(body);
+    record["author_key"] = serde_json::json!(key);
+    let (status, answer) = world
+        .call(
+            Method::POST,
+            &format!("/api/companies/{company}/records"),
+            Some(token),
+            Some(record),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    answer["id"].as_str().expect("an id").to_owned()
+}
+
 pub(crate) async fn create(world: &World, company: &str, token: &str, body: &[u8]) -> String {
     let (status, answer) = world
         .call(

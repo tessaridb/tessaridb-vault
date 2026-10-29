@@ -26,6 +26,28 @@ OR (GET memberships:$membership).state != 'active'; \
 THROW 'no key' IF (GET member_keys:$membership).key_id = NONE; \
 THROW 'unknown key' IF (GET member_keys:$membership).key_id != $key_id;";
 
+/// The statements retiring the keys of `retired` groups and every record shared with any of `retired`, or written
+/// by `author`: each is marked for rotation, and a record's share version moves so a read decided before the commit
+/// refuses. Binds `$retired`, `$retired_author` and `$retired_limit` beside the caller's `$company`.
+pub(crate) fn retiring(
+    parameters: &mut Vec<(String, Value)>,
+    retired: Vec<String>,
+    author: Option<&AccountId>,
+) -> &'static str {
+    parameters.extend([
+        bind(
+            "retired",
+            Value::Array(retired.into_iter().map(Value::from).collect()),
+        ),
+        bind("retired_author", author.map_or("", AccountId::as_str)),
+        bind("retired_limit", RECORD_LIST_MAX),
+    ]);
+    "UPDATE group_keys SET rotate = true WHERE company = $company AND group_id IN $retired; \
+     UPDATE records SET rotate = true, share_version = share_version + 1 WHERE company = $company \
+     AND (author = $retired_author OR record_id IN (SELECT record FROM shares WHERE company = $company \
+     AND target IN $retired LIMIT $retired_limit));"
+}
+
 pub(crate) struct TessaridbShareRepository {
     database: Database,
 }

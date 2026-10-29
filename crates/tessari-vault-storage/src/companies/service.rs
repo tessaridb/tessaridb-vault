@@ -304,13 +304,24 @@ impl CompanyService {
             Action::RemoveMember { role: target.role },
         )
         .await?;
-        let groups: Vec<GroupId> = self
+        let held: Vec<(String, String, String)> = self
             .repository
             .groups_of(&self.place, account)
             .await?
             .into_iter()
-            .filter(|(_, owner)| owner == company.as_str())
-            .map(|(group, _)| GroupId::parse(&group))
+            .filter(|(_, owner, _)| owner == company.as_str())
+            .collect();
+        // The company group's key and every key of their groups and of the groups those sit in retire.
+        let mut retired: Vec<String> =
+            vec![company.as_str().to_owned(), account.as_str().to_owned()];
+        for (group, _, parent) in &held {
+            retired.extend([group.clone(), parent.clone()]);
+        }
+        retired.sort_unstable();
+        retired.dedup();
+        let groups: Vec<GroupId> = held
+            .iter()
+            .map(|(group, _, _)| GroupId::parse(group))
             .collect::<std::result::Result<_, _>>()
             .map_err(|_| Error::Unreadable {
                 record: "group",
@@ -324,6 +335,7 @@ impl CompanyService {
                 &target,
                 &groups,
                 loses_owner,
+                retired,
             )
             .await
     }

@@ -305,3 +305,124 @@ async fn leaving_a_team_also_rotates_the_key_of_its_department() {
     );
     assert_eq!(rotation_due(&world, &cast).await, true);
 }
+
+/// Whether `token`'s list shows `record` as due for rotation.
+async fn due_for(world: &World, cast: &Cast, token: &str, record: &str) -> Value {
+    let (status, list) = world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{}/records", cast.company_a),
+            Some(token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{list}");
+    list["records"]
+        .as_array()
+        .expect("a list")
+        .iter()
+        .find(|item| item["id"] == record)
+        .expect("the record is listed")["rotation_due"]
+        .clone()
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn leaving_the_company_rotates_every_key_and_record_the_leaver_could_open() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    crate::shares::into_team(&world, &cast, &cast.admin_a_id).await;
+    let team_key = "da".repeat(16);
+    let company_key = "db".repeat(16);
+    crate::shares::keyed(&world, &cast, &cast.team_a, &team_key, &[&cast.admin_a_key]).await;
+    crate::shares::keyed(
+        &world,
+        &cast,
+        &cast.company_a,
+        &company_key,
+        &[&cast.owner_a_key, &cast.admin_a_key, &cast.member_a_key],
+    )
+    .await;
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &shares(&cast, &cast.record_a),
+            Some(&cast.member_a),
+            Some(crate::shares::to_group(&cast.team_a, &team_key, "read", 6)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let for_all =
+        crate::records::create(&world, &cast.company_a, &cast.member_a, b"for everyone").await;
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &shares(&cast, &for_all),
+            Some(&cast.member_a),
+            Some(crate::shares::to_group(
+                &cast.company_a,
+                &company_key,
+                "read",
+                7,
+            )),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    // A record the leaver wrote holds a key they hold.
+    let theirs = crate::records::create_by(
+        &world,
+        &cast.company_a,
+        &cast.admin_a,
+        &cast.admin_a_key,
+        b"mine",
+    )
+    .await;
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &shares(&cast, &theirs),
+            Some(&cast.admin_a),
+            Some(to_member(&cast.owner_a_id, &cast.owner_a_key, "edit", 8)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (status, body) = world
+        .call(
+            Method::DELETE,
+            &format!(
+                "/api/companies/{}/members/{}",
+                cast.company_a, cast.admin_a_id
+            ),
+            Some(&cast.owner_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (status, _) = world
+        .call(
+            Method::GET,
+            &record_path(&cast, &cast.record_a),
+            Some(&cast.admin_a),
+            None,
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "a member who left the company still read"
+    );
+    for group in [&cast.team_a, &cast.company_a] {
+        assert_eq!(
+            group_key(&world, &cast, group, &cast.owner_a).await["rotation_due"],
+            true,
+            "{group}"
+        );
+    }
+    assert_eq!(
+        due_for(&world, &cast, &cast.member_a, &cast.record_a).await,
+        true
+    );
+    assert_eq!(due_for(&world, &cast, &cast.member_a, &for_all).await, true);
+    assert_eq!(due_for(&world, &cast, &cast.owner_a, &theirs).await, true);
+}
