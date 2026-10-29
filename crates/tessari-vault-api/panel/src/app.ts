@@ -14,6 +14,7 @@ import { copier } from "./records/listing.ts";
 import { drawRecord } from "./records/record-view.ts";
 import { text } from "./router/query.ts";
 import { drawMembers } from "./members/members-view.ts";
+import { drawGroup } from "./groups/group-page.ts";
 import { drawGroups } from "./groups/groups-view.ts";
 import { bearer, forget } from "./session.ts";
 import { providerReturned, signIn } from "./sign-in.ts";
@@ -39,6 +40,7 @@ const routes = defineRoutes({
   editRecord: { path: "/records/:record/edit", guard: open },
   members: { path: "/members", guard: open },
   groups: { path: "/groups", guard: open },
+  group: { path: "/groups/:group", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
   unlock: { path: "/unlock", query: { next: text }, guard: session },
 });
@@ -120,7 +122,14 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
     case "groups": {
       const held = unlocked();
       if (held !== null) {
-        void drawGroups(view, held);
+        void drawGroups(view, held, (group) => router.href("group", { group }));
+      }
+      break;
+    }
+    case "group": {
+      const held = unlocked();
+      if (held !== null) {
+        void drawGroup(view, held, outcome.match.params.group, router.href("groups", {}), () => go(router.href("groups", {})));
       }
       break;
     }

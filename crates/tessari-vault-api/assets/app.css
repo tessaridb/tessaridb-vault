@@ -1557,3 +1557,16 @@ table.records .message {
     margin-inline-start: 0;
   }
 }
+
+/* A department's or team's name opens its own page, the way a record's title does in the records list. */
+a.share-name {
+  color: var(--text);
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.share-name:hover {
+    color: var(--accent-text);
+    text-decoration: underline;
+  }
+}

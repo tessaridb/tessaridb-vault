@@ -15,14 +15,14 @@ import { companyPath } from "../records/load.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { groupKeyBody, newGroupKey, pendingWraps, wrapsBody } from "./group-key.ts";
-import { labelled, membersControl } from "./group-members-view.ts";
+import { labelled } from "./group-page.ts";
 import { giveButton, keyButton } from "./group-words.ts";
 import { createFailure, groupTree, readGroupRows, readPending, readRotationDue, type TreeRow } from "./groups-model.ts";
 
 const KIND_WORDS = { company: "Company", department: "Department", team: "Team" } as const;
 
 /** Draws the groups page into `main`; `notice` is said at its top, as after a change the chain had moved past. */
-export async function drawGroups(main: HTMLElement, held: Unlocked, notice: string | null = null): Promise<void> {
+export async function drawGroups(main: HTMLElement, held: Unlocked, pageOf: (group: string) => string, notice: string | null = null): Promise<void> {
   const title = heading("Departments and teams");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the groups."));
   fill(main, el("div", { class: "page-head" }, title), said);
@@ -40,7 +40,7 @@ export async function drawGroups(main: HTMLElement, held: Unlocked, notice: stri
     fill(said, refusal(CHAIN_REFUSED));
     return;
   }
-  const again = (words: string | null = null): void => void drawGroups(main, held, words);
+  const again = (words: string | null = null): void => void drawGroups(main, held, pageOf, words);
   const tree = groupTree({ id: held.company, name: held.companyName }, groups.value);
   // Only an owner or an admin is told who is waiting; anyone else is refused, and sees no count.
   const waiting = new Map(
@@ -60,7 +60,7 @@ export async function drawGroups(main: HTMLElement, held: Unlocked, notice: stri
       )
     ).filter((id) => id !== null),
   );
-  const items = tree.map((row) => groupItem(held, row, vouched, due.has(row.id) ? null : (waiting.get(row.id) ?? null), due.has(row.id), chain.value.statements, again));
+  const items = tree.map((row) => groupItem(held, row, vouched, due.has(row.id) ? null : (waiting.get(row.id) ?? null), due.has(row.id), chain.value.statements, again, pageOf));
   fill(
     main,
     el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "A record shared with a group opens for everyone in it. A group needs a key before anything can be shared with it."))),
@@ -72,7 +72,7 @@ export async function drawGroups(main: HTMLElement, held: Unlocked, notice: stri
 }
 
 /** One group's line: its name, kind and key state, "Key this group" while it has none, and access for who waits. */
-function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: number | null, rotate: boolean, chain: readonly Statement[], again: (words?: string | null) => void): HTMLElement {
+function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: number | null, rotate: boolean, chain: readonly Statement[], again: (words?: string | null) => void, pageOf: (group: string) => string): HTMLElement {
   const said = el("div", { "aria-live": "polite" });
   const keyed = vouched.groupKeyOf(row.id) !== undefined;
   const give = waiting === null || waiting === 0 ? null : labelled(giveButton(row.name, waiting));
@@ -104,9 +104,9 @@ function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: numb
   return el(
     "li",
     { class: "share group", "data-depth": String(row.depth) },
-    el("div", {}, el("span", { class: "share-name" }, row.name), el("span", { class: "detail" }, KIND_WORDS[row.kind])),
+    el("div", {}, row.kind === "company" ? el("span", { class: "share-name" }, row.name) : el("a", { class: "share-name", href: pageOf(row.id) }, row.name), el("span", { class: "detail" }, KIND_WORDS[row.kind])),
     el("span", { class: `state ${keyed && !rotate ? "vouched" : "waiting"}` }, rotate ? "Needs a new key" : keyed ? "Has a key" : "No key yet"),
-    el("div", { class: "row-actions" }, key ?? give, ...(row.kind === "company" ? [] : membersControl(held, row, () => again()))),
+    el("div", { class: "row-actions" }, key ?? give),
     said,
   );
 }

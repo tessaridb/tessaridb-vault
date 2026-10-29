@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { giveButton, keyButton, membersButton, takeOutButton } from "../../src/groups/group-words.ts";
+import { giveButton, groupCrumbs, keyButton, takeOutButton } from "../../src/groups/group-words.ts";
 
 describe("the groups page's buttons", () => {
   it("are named by the words they show, then by what they act on", () => {
@@ -12,7 +12,6 @@ describe("the groups page's buttons", () => {
       [keyButton("Engineering", false), "Engineering"],
       [keyButton("Engineering", true), "Engineering"],
       [giveButton("Engineering", 2), "Engineering"],
-      [membersButton("Engineering"), "Engineering"],
       [takeOutButton("Sam Member", "Engineering"), "Sam Member"],
     ] as const;
     for (const [words, subject] of buttons) {
@@ -25,7 +24,17 @@ describe("the groups page's buttons", () => {
     assert.equal(keyButton("Engineering", false).text, "Key this group");
     assert.equal(keyButton("Engineering", true).text, "Make a new key");
     assert.equal(giveButton("Engineering", 2).text, "Give access (2 waiting)");
-    assert.equal(membersButton("Engineering").text, "Members");
     assert.equal(takeOutButton("Sam Member", "Engineering").text, "Take out");
+  });
+
+  it("trails a group's own page under Groups, the group itself unlinked", () => {
+    assert.deepEqual(groupCrumbs("#/groups", "Engineering"), [
+      { label: "Groups", href: "#/groups" },
+      { label: "Engineering", href: null },
+    ]);
+    assert.deepEqual(groupCrumbs("#/groups", null), [
+      { label: "Groups", href: "#/groups" },
+      { label: "Group", href: null },
+    ]);
   });
 });

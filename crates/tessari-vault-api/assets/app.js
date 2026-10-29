@@ -3608,13 +3608,187 @@ ${END}
     title.focus();
   }
 
+  // src/groups/group-members.ts
+  var isRecord7 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isId4 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isText5 = (v) => typeof v === "string" && v !== "";
+  function readGroupMembers(v) {
+    if (!isRecord7(v) || !Array.isArray(v["members"])) {
+      return null;
+    }
+    const members = v["members"].map(
+      (member) => isRecord7(member) && isId4(member["id"]) && isText5(member["email"]) && isText5(member["name"]) ? { account: member["id"], email: member["email"], name: member["name"] } : null
+    );
+    return members.every((member) => member !== null) ? members : null;
+  }
+  function addable(company, inGroup) {
+    const inside = new Set(inGroup.map((member) => member.account));
+    return company.filter((member) => member.active && !inside.has(member.account)).sort((one, other) => one.name.localeCompare(other.name));
+  }
+
+  // src/groups/group-words.ts
+  function keyButton(group, rotate) {
+    return rotate ? { text: "Make a new key", label: `Make a new key for ${group}` } : { text: "Key this group", label: `Key this group, ${group}` };
+  }
+  function giveButton(group, waiting) {
+    return { text: `Give access (${waiting} waiting)`, label: `Give access (${waiting} waiting), ${group}` };
+  }
+  function takeOutButton(person, group) {
+    return { text: "Take out", label: `Take out ${person} from ${group}` };
+  }
+  var groupCrumbs = (groups, name) => [
+    { label: "Groups", href: groups },
+    { label: name ?? "Group", href: null }
+  ];
+
+  // src/groups/groups-model.ts
+  var KEY_BYTES5 = 32;
+  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isId5 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isText6 = (v) => typeof v === "string" && v !== "";
+  function readGroupRows(v) {
+    if (!isRecord8(v) || !Array.isArray(v["groups"])) {
+      return null;
+    }
+    const rows = v["groups"].map((group) => {
+      if (!isRecord8(group) || !isId5(group["id"]) || !isText6(group["name"]) || !isId5(group["parent"])) {
+        return null;
+      }
+      const { kind } = group;
+      return kind === "department" || kind === "team" ? { id: group["id"], kind, name: group["name"], parent: group["parent"] } : null;
+    });
+    return rows.every((row2) => row2 !== null) ? rows : null;
+  }
+  function groupTree(company, rows) {
+    const byName = (one, other) => one.name.localeCompare(other.name);
+    const teamsOf = (parent, depth) => rows.filter((row2) => row2.kind === "team" && row2.parent === parent).sort(byName).map((row2) => ({ id: row2.id, kind: row2.kind, name: row2.name, depth }));
+    const departments = rows.filter((row2) => row2.kind === "department").sort(byName).flatMap((row2) => [{ id: row2.id, kind: row2.kind, name: row2.name, depth: 1 }, ...teamsOf(row2.id, 2)]);
+    return [{ id: company.id, kind: "company", name: company.name, depth: 0 }, ...departments, ...teamsOf(company.id, 1)];
+  }
+  function readPending(v) {
+    if (!isRecord8(v) || !Array.isArray(v["pending"])) {
+      return null;
+    }
+    const keys = v["pending"].map((item) => {
+      if (!isRecord8(item) || !isId5(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
+        return null;
+      }
+      const keyId = keyIdBytes(item["key_id"]);
+      const agreementPublic = decode(item["agreement_public"]);
+      return keyId === null || agreementPublic === null || agreementPublic.length !== KEY_BYTES5 ? null : { account: item["account"], keyId, agreementPublic };
+    });
+    return keys.every((key) => key !== null) ? keys : null;
+  }
+  function createFailure(code, fallback) {
+    switch (code) {
+      case "wrong_parent":
+        return "A department sits in the company; a team sits in a department or in the company.";
+      case "forbidden":
+        return "Only an owner or an admin can make departments and teams.";
+      case "group_not_empty":
+        return "This department still holds teams. Delete or move them first.";
+      default:
+        return fallback;
+    }
+  }
+  function readRotationDue(v) {
+    return isRecord8(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
+  }
+
+  // src/groups/group-page.ts
+  var KIND_WORDS = { department: "Department", team: "Team" };
+  var labelled = (words) => el("button", { type: "button", "aria-label": words.label }, words.text);
+  async function drawGroup(main2, held2, id, groups, gone, notice2 = null) {
+    const base = `${companyPath(held2)}/groups/${encodeURIComponent(id)}`;
+    fill(main2, breadcrumbs(groupCrumbs(groups, null)), el("div", { class: "page-head" }, heading("Group")), el("p", { class: "muted", role: "status" }, "Loading the group."));
+    const [listed, inGroup, company] = await Promise.all([
+      call("GET", `${companyPath(held2)}/groups`, readGroupRows),
+      call("GET", `${base}/members`, readGroupMembers),
+      call("GET", `${companyPath(held2)}/members`, readMemberList)
+    ]);
+    const failed2 = [listed, inGroup, company].find((answer) => !answer.ok);
+    const row2 = listed.ok ? listed.value.find((each) => each.id === id) : void 0;
+    if (failed2 !== void 0 || !listed.ok || !inGroup.ok || !company.ok || row2 === void 0) {
+      const words = failed2 !== void 0 && !failed2.ok ? loadFailure(failed2) : "This group doesn't exist any more.";
+      fill(main2, breadcrumbs(groupCrumbs(groups, null)), el("div", { class: "page-head" }, heading("Group")), refusal(words));
+      return;
+    }
+    const said = el("div", { "aria-live": "polite" }, notice2 === null ? null : el("p", { class: "muted", role: "status" }, notice2));
+    const again = (words = null) => void drawGroup(main2, held2, id, groups, gone, words);
+    const send = (method, url, payload, then) => {
+      fill(said, el("p", { class: "muted", role: "status" }, "Saving."));
+      void call(method, url, ignored, payload === void 0 ? {} : { body: payload }).then((answer) => {
+        if (!answer.ok) {
+          fill(said, refusal(answer.code === "not_a_member" ? "Only an active member of the company can join a group." : createFailure(answer.code, loadFailure(answer))));
+          return;
+        }
+        then();
+      });
+    };
+    const people = inGroup.value.map((member) => {
+      const remove2 = labelled(takeOutButton(member.name, row2.name));
+      remove2.addEventListener("click", () => send("DELETE", `${base}/members/${encodeURIComponent(member.account)}`, void 0, () => again(`${member.name} is out of ${row2.name}. The group needs a new key; make it on the Groups page.`)));
+      return el("li", { class: "share" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove2);
+    });
+    const candidates = addable(company.value, inGroup.value);
+    let chosen = null;
+    const choices = candidates.map((member) => {
+      const radio = el("input", { id: `join-${member.account}`, type: "radio", name: "join" });
+      radio.addEventListener("change", () => chosen = member.account);
+      return el("div", { class: "choice" }, radio, el("label", { for: radio.id }, member.name, el("span", { class: "detail" }, member.email)));
+    });
+    const add = el("button", { type: "button", class: "primary" }, "Add to group");
+    add.addEventListener("click", () => chosen === null ? fill(said, refusal("Choose who to add.")) : send("POST", `${base}/members`, { account_id: chosen }, () => again()));
+    const name = el("input", { id: "group-rename", type: "text", autocomplete: "off", value: row2.name });
+    const rename = el("button", { type: "button" }, "Rename");
+    rename.addEventListener("click", () => {
+      const wanted = name.value.trim();
+      if (wanted !== "" && wanted !== row2.name) {
+        send("PATCH", base, { name: wanted }, () => again());
+      }
+    });
+    const keep2 = el("button", { type: "button" }, "Keep it");
+    const confirmed = el("button", { type: "button", class: "danger" }, `Delete “${row2.name}”`);
+    const confirm = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": "delete-group-title" },
+      el("h2", { id: "delete-group-title" }, `Delete “${row2.name}”?`),
+      el("p", {}, "Records shared with this group stop opening for the people who reached them through it."),
+      el("div", { class: "actions" }, keep2, confirmed)
+    );
+    const remove = el("button", { type: "button", class: "danger" }, "Delete group");
+    remove.addEventListener("click", () => confirm.showModal());
+    keep2.addEventListener("click", () => confirm.close());
+    confirmed.addEventListener("click", () => {
+      confirm.close();
+      send("DELETE", base, void 0, gone);
+    });
+    fill(
+      main2,
+      breadcrumbs(groupCrumbs(groups, row2.name)),
+      el("div", { class: "page-head" }, el("div", {}, heading(row2.name), el("p", { class: "lede" }, KIND_WORDS[row2.kind]))),
+      said,
+      el(
+        "section",
+        { class: "record-section", "aria-labelledby": "in-group" },
+        el("h2", { id: "in-group" }, "People in it"),
+        people.length === 0 ? el("p", { class: "muted" }, "Nobody is in this group yet.") : el("ul", { class: "shares" }, ...people),
+        candidates.length === 0 ? null : el("fieldset", { class: "choices" }, el("legend", {}, "Add someone"), el("div", { class: "targets" }, ...choices)),
+        candidates.length === 0 ? null : add
+      ),
+      el("section", { class: "record-section", "aria-labelledby": "group-name" }, el("h2", { id: "group-name" }, "Name"), el("div", { class: "field" }, el("label", { for: name.id }, "Group name"), name), rename),
+      el("section", { class: "record-section", "aria-labelledby": "group-delete" }, el("h2", { id: "group-delete" }, "Delete"), remove),
+      confirm
+    );
+  }
+
   // src/groups/group-key.ts
   var KEY_ID_BYTES4 = 16;
-  var KEY_BYTES5 = 32;
+  var KEY_BYTES6 = 32;
   async function newGroupKey(company, group, signer, ownerSigning, chain, vouched, pending) {
     const pair = await generatePair("X25519");
     const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
-    const raw = pkcs8.slice(pkcs8.length - KEY_BYTES5);
+    const raw = pkcs8.slice(pkcs8.length - KEY_BYTES6);
     wipe(pkcs8);
     try {
       const groupPublic = await publicBytes(pair.publicKey);
@@ -3667,183 +3841,9 @@ ${END}
     wraps: made.wraps.map((each) => ({ key_id: hex(each.keyId), wrap: encode(each.wrap) }))
   });
 
-  // src/groups/group-members.ts
-  var isRecord7 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  var isId4 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
-  var isText5 = (v) => typeof v === "string" && v !== "";
-  function readGroupMembers(v) {
-    if (!isRecord7(v) || !Array.isArray(v["members"])) {
-      return null;
-    }
-    const members = v["members"].map(
-      (member) => isRecord7(member) && isId4(member["id"]) && isText5(member["email"]) && isText5(member["name"]) ? { account: member["id"], email: member["email"], name: member["name"] } : null
-    );
-    return members.every((member) => member !== null) ? members : null;
-  }
-  function addable(company, inGroup) {
-    const inside = new Set(inGroup.map((member) => member.account));
-    return company.filter((member) => member.active && !inside.has(member.account)).sort((one, other) => one.name.localeCompare(other.name));
-  }
-
-  // src/groups/group-words.ts
-  function keyButton(group, rotate) {
-    return rotate ? { text: "Make a new key", label: `Make a new key for ${group}` } : { text: "Key this group", label: `Key this group, ${group}` };
-  }
-  function giveButton(group, waiting) {
-    return { text: `Give access (${waiting} waiting)`, label: `Give access (${waiting} waiting), ${group}` };
-  }
-  function membersButton(group) {
-    return { text: "Members", label: `Members of ${group}` };
-  }
-  function takeOutButton(person, group) {
-    return { text: "Take out", label: `Take out ${person} from ${group}` };
-  }
-
-  // src/groups/groups-model.ts
-  var KEY_BYTES6 = 32;
-  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  var isId5 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
-  var isText6 = (v) => typeof v === "string" && v !== "";
-  function readGroupRows(v) {
-    if (!isRecord8(v) || !Array.isArray(v["groups"])) {
-      return null;
-    }
-    const rows = v["groups"].map((group) => {
-      if (!isRecord8(group) || !isId5(group["id"]) || !isText6(group["name"]) || !isId5(group["parent"])) {
-        return null;
-      }
-      const { kind } = group;
-      return kind === "department" || kind === "team" ? { id: group["id"], kind, name: group["name"], parent: group["parent"] } : null;
-    });
-    return rows.every((row2) => row2 !== null) ? rows : null;
-  }
-  function groupTree(company, rows) {
-    const byName = (one, other) => one.name.localeCompare(other.name);
-    const teamsOf = (parent, depth) => rows.filter((row2) => row2.kind === "team" && row2.parent === parent).sort(byName).map((row2) => ({ id: row2.id, kind: row2.kind, name: row2.name, depth }));
-    const departments = rows.filter((row2) => row2.kind === "department").sort(byName).flatMap((row2) => [{ id: row2.id, kind: row2.kind, name: row2.name, depth: 1 }, ...teamsOf(row2.id, 2)]);
-    return [{ id: company.id, kind: "company", name: company.name, depth: 0 }, ...departments, ...teamsOf(company.id, 1)];
-  }
-  function readPending(v) {
-    if (!isRecord8(v) || !Array.isArray(v["pending"])) {
-      return null;
-    }
-    const keys = v["pending"].map((item) => {
-      if (!isRecord8(item) || !isId5(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
-        return null;
-      }
-      const keyId = keyIdBytes(item["key_id"]);
-      const agreementPublic = decode(item["agreement_public"]);
-      return keyId === null || agreementPublic === null || agreementPublic.length !== KEY_BYTES6 ? null : { account: item["account"], keyId, agreementPublic };
-    });
-    return keys.every((key) => key !== null) ? keys : null;
-  }
-  function createFailure(code, fallback) {
-    switch (code) {
-      case "wrong_parent":
-        return "A department sits in the company; a team sits in a department or in the company.";
-      case "forbidden":
-        return "Only an owner or an admin can make departments and teams.";
-      case "group_not_empty":
-        return "This department still holds teams. Delete or move them first.";
-      default:
-        return fallback;
-    }
-  }
-  function readRotationDue(v) {
-    return isRecord8(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
-  }
-
-  // src/groups/group-members-view.ts
-  var labelled = (words) => el("button", { type: "button", "aria-label": words.label }, words.text);
-  function membersControl(held2, row2, changed) {
-    const path = `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}/members`;
-    const body = el("div", {});
-    const said = el("div", { "aria-live": "polite" });
-    const close = el("button", { type: "button" }, "Close");
-    const dialog = el("dialog", { class: "confirm", "aria-labelledby": `members-${row2.id}` }, el("h2", { id: `members-${row2.id}` }, `People in “${row2.name}”`), body, said, el("div", { class: "actions" }, close));
-    let touched = false;
-    const send = (method, url, payload, then = () => void draw2()) => {
-      fill(said, el("p", { class: "muted", role: "status" }, "Saving."));
-      void call(method, url, ignored, payload === void 0 ? {} : { body: payload }).then((answer) => {
-        if (!answer.ok) {
-          fill(said, refusal(answer.code === "not_a_member" ? "Only an active member of the company can join a group." : createFailure(answer.code, loadFailure(answer))));
-          return;
-        }
-        touched = true;
-        fill(said, null);
-        then();
-      });
-    };
-    const act = (method, url, payload) => send(method, url, payload);
-    const draw2 = async () => {
-      const [inGroup, company] = await Promise.all([call("GET", path, readGroupMembers), call("GET", `${companyPath(held2)}/members`, readMemberList)]);
-      if (!inGroup.ok || !company.ok) {
-        const failed2 = !inGroup.ok ? inGroup : company;
-        fill(body, failed2.ok ? null : refusal(loadFailure(failed2)));
-        return;
-      }
-      const people = inGroup.value.map((member) => {
-        const remove2 = labelled(takeOutButton(member.name, row2.name));
-        remove2.addEventListener("click", () => act("DELETE", `${path}/${encodeURIComponent(member.account)}`));
-        return el("li", { class: "share" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove2);
-      });
-      const candidates = addable(company.value, inGroup.value);
-      let chosen = null;
-      const choices = candidates.map((member) => {
-        const id = `join-${row2.id}-${member.account}`;
-        const radio = el("input", { id, type: "radio", name: `join-${row2.id}` });
-        radio.addEventListener("change", () => chosen = member.account);
-        return el("div", { class: "choice" }, radio, el("label", { for: id }, member.name, el("span", { class: "detail" }, member.email)));
-      });
-      const add = el("button", { type: "button", class: "primary" }, "Add to group");
-      add.addEventListener("click", () => chosen === null ? fill(said, refusal("Choose who to add.")) : act("POST", path, { account_id: chosen }));
-      fill(
-        body,
-        people.length === 0 ? el("p", { class: "muted" }, "Nobody is in this group yet.") : el("ul", { class: "shares" }, ...people),
-        candidates.length === 0 ? null : el("fieldset", { class: "choices" }, el("legend", {}, "Add someone"), el("div", { class: "targets" }, ...choices)),
-        candidates.length === 0 ? null : add
-      );
-    };
-    const name = el("input", { id: `group-rename-${row2.id}`, type: "text", autocomplete: "off", value: row2.name });
-    const rename = el("button", { type: "button" }, "Rename");
-    rename.addEventListener("click", () => {
-      const wanted = name.value.trim();
-      if (wanted === "" || wanted === row2.name) {
-        return;
-      }
-      send("PATCH", `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}`, { name: wanted });
-    });
-    const remove = el("button", { type: "button", class: "danger" }, "Delete group");
-    const sure = el("div", { class: "actions" });
-    sure.hidden = true;
-    const keep2 = el("button", { type: "button" }, "Keep it");
-    const gone = el("button", { type: "button", class: "danger" }, `Delete “${row2.name}”`);
-    fill(sure, el("p", {}, "Records shared with this group stop opening for the people who reached them through it."), keep2, gone);
-    remove.addEventListener("click", () => sure.hidden = false);
-    keep2.addEventListener("click", () => sure.hidden = true);
-    gone.addEventListener("click", () => send("DELETE", `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}`, void 0, () => dialog.close()));
-    const settings = el("section", { class: "record-section" }, el("div", { class: "field" }, el("label", { for: name.id }, "Name"), name), rename, remove, sure);
-    dialog.insertBefore(settings, said);
-    const open3 = labelled(membersButton(row2.name));
-    open3.addEventListener("click", () => {
-      touched = false;
-      fill(said, null);
-      fill(body, el("p", { class: "muted", role: "status" }, "Loading who is in the group."));
-      dialog.showModal();
-      void draw2();
-    });
-    close.addEventListener("click", () => dialog.close());
-    dialog.addEventListener("close", () => {
-      if (touched) {
-        changed();
-      }
-    });
-    return [open3, dialog];
-  }
-
   // src/groups/groups-view.ts
-  var KIND_WORDS = { company: "Company", department: "Department", team: "Team" };
-  async function drawGroups(main2, held2, notice2 = null) {
+  var KIND_WORDS2 = { company: "Company", department: "Department", team: "Team" };
+  async function drawGroups(main2, held2, pageOf, notice2 = null) {
     const title = heading("Departments and teams");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the groups."));
     fill(main2, el("div", { class: "page-head" }, title), said);
@@ -3861,7 +3861,7 @@ ${END}
       fill(said, refusal(CHAIN_REFUSED));
       return;
     }
-    const again = (words = null) => void drawGroups(main2, held2, words);
+    const again = (words = null) => void drawGroups(main2, held2, pageOf, words);
     const tree = groupTree({ id: held2.company, name: held2.companyName }, groups.value);
     const waiting = new Map(
       await Promise.all(
@@ -3873,7 +3873,7 @@ ${END}
         tree.filter((row2) => vouched.groupKeyOf(row2.id) !== void 0).map((row2) => call("GET", `${path}/groups/${encodeURIComponent(row2.id)}/key`, readRotationDue).then((answer) => answer.ok && answer.value === true ? row2.id : null))
       )).filter((id) => id !== null)
     );
-    const items = tree.map((row2) => groupItem(held2, row2, vouched, due.has(row2.id) ? null : waiting.get(row2.id) ?? null, due.has(row2.id), chain.value.statements, again));
+    const items = tree.map((row2) => groupItem(held2, row2, vouched, due.has(row2.id) ? null : waiting.get(row2.id) ?? null, due.has(row2.id), chain.value.statements, again, pageOf));
     fill(
       main2,
       el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "A record shared with a group opens for everyone in it. A group needs a key before anything can be shared with it."))),
@@ -3883,7 +3883,7 @@ ${END}
     );
     title.focus();
   }
-  function groupItem(held2, row2, vouched, waiting, rotate, chain, again) {
+  function groupItem(held2, row2, vouched, waiting, rotate, chain, again, pageOf) {
     const said = el("div", { "aria-live": "polite" });
     const keyed = vouched.groupKeyOf(row2.id) !== void 0;
     const give = waiting === null || waiting === 0 ? null : labelled(giveButton(row2.name, waiting));
@@ -3915,9 +3915,9 @@ ${END}
     return el(
       "li",
       { class: "share group", "data-depth": String(row2.depth) },
-      el("div", {}, el("span", { class: "share-name" }, row2.name), el("span", { class: "detail" }, KIND_WORDS[row2.kind])),
+      el("div", {}, row2.kind === "company" ? el("span", { class: "share-name" }, row2.name) : el("a", { class: "share-name", href: pageOf(row2.id) }, row2.name), el("span", { class: "detail" }, KIND_WORDS2[row2.kind])),
       el("span", { class: `state ${keyed && !rotate ? "vouched" : "waiting"}` }, rotate ? "Needs a new key" : keyed ? "Has a key" : "No key yet"),
-      el("div", { class: "row-actions" }, key ?? give, ...row2.kind === "company" ? [] : membersControl(held2, row2, () => again())),
+      el("div", { class: "row-actions" }, key ?? give),
       said
     );
   }
@@ -3968,7 +3968,7 @@ ${END}
     let kind = "department";
     let parent = held2.company;
     const name = el("input", { id: "group-name", type: "text", autocomplete: "off" });
-    const kinds = ["department", "team"].map((each) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === kind) }, KIND_WORDS[each]));
+    const kinds = ["department", "team"].map((each) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === kind) }, KIND_WORDS2[each]));
     const places = tree.filter((row2) => row2.kind !== "team");
     const parents = el("fieldset", { class: "choices" }, el("legend", {}, "Sits in"), el("div", { class: "targets" }, ...places.map((row2) => placeRow(row2, row2.id === parent, () => parent = row2.id))));
     parents.hidden = true;
@@ -4016,7 +4016,7 @@ ${END}
     const id = `group-parent-${row2.id}`;
     const radio = el("input", { id, type: "radio", name: "group-parent", ...checked ? { checked: "" } : {} });
     radio.addEventListener("change", choose);
-    return el("div", { class: "choice" }, radio, el("label", { for: id }, row2.name, el("span", { class: "detail" }, KIND_WORDS[row2.kind])));
+    return el("div", { class: "choice" }, radio, el("label", { for: id }, row2.name, el("span", { class: "detail" }, KIND_WORDS2[row2.kind])));
   }
 
   // src/sign-in-model.ts
@@ -4808,6 +4808,7 @@ ${END}
     editRecord: { path: "/records/:record/edit", guard: open2 },
     members: { path: "/members", guard: open2 },
     groups: { path: "/groups", guard: open2 },
+    group: { path: "/groups/:group", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
   });
@@ -4879,7 +4880,14 @@ ${END}
       case "groups": {
         const held2 = unlocked();
         if (held2 !== null) {
-          void drawGroups(view2, held2);
+          void drawGroups(view2, held2, (group) => router.href("group", { group }));
+        }
+        break;
+      }
+      case "group": {
+        const held2 = unlocked();
+        if (held2 !== null) {
+          void drawGroup(view2, held2, outcome.match.params.group, router.href("groups", {}), () => go(router.href("groups", {})));
         }
         break;
       }

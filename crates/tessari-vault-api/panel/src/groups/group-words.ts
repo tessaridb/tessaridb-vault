@@ -18,12 +18,13 @@ export function giveButton(group: string, waiting: number): ButtonWords {
   return { text: `Give access (${waiting} waiting)`, label: `Give access (${waiting} waiting), ${group}` };
 }
 
-/** The button that opens `group`'s members. */
-export function membersButton(group: string): ButtonWords {
-  return { text: "Members", label: `Members of ${group}` };
-}
-
 /** The button that takes `person` out of `group`. */
 export function takeOutButton(person: string, group: string): ButtonWords {
   return { text: "Take out", label: `Take out ${person} from ${group}` };
 }
+
+/** The trail above a group's own page; `name` is null until the group is read. */
+export const groupCrumbs = (groups: string, name: string | null): Array<{ readonly label: string; readonly href: string | null }> => [
+  { label: "Groups", href: groups },
+  { label: name ?? "Group", href: null },
+];
