@@ -224,7 +224,13 @@ impl GroupKeyService {
             Action::KeyGroup,
         )
         .await?;
-        self.open(company, group, false).await
+        // A key due for rotation is owed afresh to the whole reach: the wraps of the retiring key do not count.
+        let rotating = self
+            .repository
+            .get(&self.place, group)
+            .await?
+            .is_some_and(|entity| entity.rotate);
+        self.open(company, group, rotating).await
     }
 
     /// The group's key, with the caller's own wrap of it when they hold one; the read is on the trail first.

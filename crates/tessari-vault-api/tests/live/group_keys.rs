@@ -207,3 +207,56 @@ async fn the_pending_list_names_the_reach_still_without_a_wrap() {
         "a member read the pending list"
     );
 }
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn after_a_member_leaves_the_pending_list_names_everyone_the_new_key_is_for() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    member_in_team(&world, &cast, &cast.member_a_id).await;
+    member_in_team(&world, &cast, &cast.owner_a_id).await;
+    let path = key_path(&cast, &cast.team_a);
+    let wraps = vec![
+        wrap_to(&cast.member_a_key, 1),
+        wrap_to(&cast.owner_a_key, 2),
+    ];
+    let (status, body) = world
+        .call(
+            Method::PUT,
+            &path,
+            Some(&cast.admin_a),
+            Some(group_key(&"c6".repeat(16), wraps)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(pending(&world, &cast, &cast.team_a).await.is_empty());
+    let (status, body) = world
+        .call(
+            Method::DELETE,
+            &format!(
+                "/api/companies/{}/groups/{}/members/{}",
+                cast.company_a, cast.team_a, cast.owner_a_id
+            ),
+            Some(&cast.admin_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    // The key the leaver held is retired, so the new one is owed to everyone still in the team.
+    assert_eq!(
+        pending(&world, &cast, &cast.team_a).await,
+        vec![cast.member_a_key.clone()]
+    );
+    let (status, body) = world
+        .call(
+            Method::PUT,
+            &path,
+            Some(&cast.admin_a),
+            Some(group_key(
+                &"c7".repeat(16),
+                vec![wrap_to(&cast.member_a_key, 3)],
+            )),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "the new key: {body}");
+}
