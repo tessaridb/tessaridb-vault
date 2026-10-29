@@ -8,6 +8,7 @@ import { afterSignIn, afterUnlock, every, needsSession, needsUnlock } from "./gu
 import { browserHistory } from "./router/history.ts";
 import { Router, defineRoutes, type Outcome } from "./router/router.ts";
 import type { Stops } from "./records/field-view.ts";
+import { drawEdit, drawNew } from "./records/edit-view.ts";
 import { drawList } from "./records/list-view.ts";
 import { copier } from "./records/listing.ts";
 import { drawRecord } from "./records/record-view.ts";
@@ -27,7 +28,9 @@ const open = every(session, needsUnlock(isUnlocked, () => history.current()));
 
 const routes = defineRoutes({
   records: { path: "/", guard: open },
+  newRecord: { path: "/records/new", query: { type: text }, guard: open },
   record: { path: "/records/:record", guard: open },
+  editRecord: { path: "/records/:record/edit", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
   unlock: { path: "/unlock", query: { next: text }, guard: session },
 });
@@ -69,14 +72,31 @@ function draw(outcome: Outcome<Routes>, view: HTMLElement, router: Router<Routes
     case "records": {
       const held = unlocked();
       if (held !== null) {
-        void drawList(view, held, (record) => router.href("record", { record }));
+        void drawList(view, held, (record) => router.href("record", { record }), router.href("newRecord", {}));
       }
       break;
     }
     case "record": {
       const held = unlocked();
       if (held !== null) {
-        void drawRecord(view, held, outcome.match.params.record, copy, stops, router.href("records", {}));
+        const record = outcome.match.params.record;
+        void drawRecord(view, held, record, copy, stops, router.href("records", {}), router.href("editRecord", { record }));
+      }
+      break;
+    }
+    case "newRecord": {
+      const held = unlocked();
+      if (held !== null) {
+        const opened = (record: string): void => go(router.href("record", { record }));
+        drawNew(view, held, outcome.match.query.type, router.href("records", {}), opened, (type) => router.href("newRecord", {}, { type }));
+      }
+      break;
+    }
+    case "editRecord": {
+      const held = unlocked();
+      if (held !== null) {
+        const record = outcome.match.params.record;
+        void drawEdit(view, held, record, router.href("record", { record }), (saved) => go(router.href("record", { record: saved })));
       }
       break;
     }

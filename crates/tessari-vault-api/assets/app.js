@@ -547,6 +547,252 @@
   var heading = (title) => el("h1", { tabindex: "-1", class: "view-title" }, title);
   var refusal = (words) => el("p", { class: "message bad", role: "alert" }, words);
 
+  // src/crypto/labels.ts
+  var PREFIX = "tessaridb-vault/v1/";
+  var LABEL = {
+    /** HKDF info for the unlock wrap key derived from the master key. */
+    unlockWrap: `${PREFIX}unlock-wrap`,
+    /** HKDF info for a revision's content key derived from its record key. */
+    recordContent: `${PREFIX}record-content`,
+    /** Associated-data prefix of a record body. */
+    record: `${PREFIX}record`,
+    /** HKDF info for a file's key derived from its record key. */
+    file: `${PREFIX}file`,
+    /** Associated-data prefix of every chunk of a file. */
+    fileChunk: `${PREFIX}file-chunk`,
+    /** Associated-data prefix of a membership private key wrapped under the unlock key. */
+    memberKey: `${PREFIX}member-key`,
+    /** Associated-data prefix of the company owner's public key, pinned under the unlock key in a member's key set. */
+    ownerPin: `${PREFIX}owner-pin`,
+    /** HPKE `info` prefix of a key wrap. */
+    wrap: `${PREFIX}wrap`,
+    /** Ed25519 domain prefix of a vouching statement. */
+    statement: `${PREFIX}statement`,
+    /** Ed25519 domain prefix of a revision signature. */
+    revision: `${PREFIX}revision`
+  };
+  var FORMAT_VERSION = 1;
+  var ALGORITHM = {
+    recordBody: 1,
+    keyWrap: 2,
+    memberKey: 3,
+    signature: 4,
+    file: 5
+  };
+
+  // src/crypto/files.ts
+  var FILE_CHUNK_BYTES = 64 * 1024;
+  var FILE_MAX_BYTES = 256 * 1024 * 1024;
+  var TAG_BYTES = 16;
+  var SEALED_CHUNK_BYTES = FILE_CHUNK_BYTES + TAG_BYTES;
+  var MAX_CHUNKS = FILE_MAX_BYTES / FILE_CHUNK_BYTES;
+
+  // src/records/totp.ts
+  var HASH = { SHA1: "SHA-1", SHA256: "SHA-256", SHA512: "SHA-512" };
+  async function totpCode(params, unixSeconds) {
+    if (!Number.isSafeInteger(params.period) || params.period < 1 || !Number.isSafeInteger(unixSeconds) || unixSeconds < 0) {
+      throw new VaultCryptoError("malformed");
+    }
+    const key = await crypto.subtle.importKey("raw", params.secret, { name: "HMAC", hash: HASH[params.algorithm] }, false, [
+      "sign"
+    ]);
+    const step = integer(Math.floor(unixSeconds / params.period), 8);
+    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, step));
+    const offset = (mac[mac.length - 1] ?? 0) & 15;
+    const binary = ((mac[offset] ?? 0) & 127) << 24 | (mac[offset + 1] ?? 0) << 16 | (mac[offset + 2] ?? 0) << 8 | (mac[offset + 3] ?? 0);
+    return String(binary % 10 ** params.digits).padStart(params.digits, "0");
+  }
+  var ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  function base32Decode(text2) {
+    const clean = text2.replace(/\s+/g, "").toUpperCase().replace(/=+$/, "");
+    const out = [];
+    let buffer = 0;
+    let bits = 0;
+    for (const character of clean) {
+      const value = ALPHABET.indexOf(character);
+      if (value < 0) {
+        throw new VaultCryptoError("malformed");
+      }
+      buffer = buffer << 5 | value;
+      bits += 5;
+      if (bits >= 8) {
+        out.push(buffer >> bits - 8 & 255);
+        bits -= 8;
+      }
+      buffer &= (1 << bits) - 1;
+    }
+    if (bits >= 5 || buffer !== 0) {
+      throw new VaultCryptoError("malformed");
+    }
+    return Uint8Array.from(out);
+  }
+
+  // src/records/fields.ts
+  var FIELD_TYPES = [
+    "text",
+    "multiline",
+    "concealed",
+    "url",
+    "email",
+    "phone",
+    "number",
+    "date",
+    "month-year",
+    "boolean",
+    "otp",
+    "file",
+    "security-question",
+    "ssh-key"
+  ];
+  var MAX_TEXT = 65536;
+  var SHAPES = {
+    url: (text2) => URL.canParse(text2),
+    email: (text2) => /^[^\s@]+@[^\s@]+$/.test(text2),
+    phone: (text2) => /^[+0-9 ().-]{1,32}$/.test(text2),
+    number: (text2) => /^-?\d+(\.\d+)?$/.test(text2),
+    date: (text2) => {
+      const match2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text2);
+      if (match2 === null) {
+        return false;
+      }
+      const [year, month, day] = [Number(match2[1]), Number(match2[2]), Number(match2[3])];
+      const date = new Date(Date.UTC(year, month - 1, day));
+      return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+    },
+    "month-year": (text2) => /^\d{4}-(0[1-9]|1[0-2])$/.test(text2)
+  };
+  function fail() {
+    throw new VaultCryptoError("malformed");
+  }
+  function exactly(raw, keys) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return fail();
+    }
+    const present = Object.keys(raw);
+    if (present.length !== keys.length || !keys.every((key) => present.includes(key))) {
+      return fail();
+    }
+    return Object.fromEntries(Object.entries(raw));
+  }
+  function readText(raw) {
+    if (typeof raw !== "string") {
+      return fail();
+    }
+    if (raw.length > MAX_TEXT) {
+      throw new VaultCryptoError("too-large");
+    }
+    return raw;
+  }
+  function readOtp(raw) {
+    const value = exactly(raw, ["secret", "algorithm", "digits", "period"]);
+    const secret = readText(value["secret"]);
+    const { algorithm, digits, period } = value;
+    if (base32Decode(secret).length === 0 || algorithm !== "SHA1" && algorithm !== "SHA256" && algorithm !== "SHA512" || digits !== 6 && digits !== 8 || typeof period !== "number" || !Number.isInteger(period) || period < 1 || period > 3600) {
+      return fail();
+    }
+    return { secret, algorithm, digits, period };
+  }
+  function readFile(raw) {
+    const value = exactly(raw, ["id", "name", "size", "mediaType"]);
+    const size = value["size"];
+    if (typeof size !== "number" || !Number.isInteger(size) || size < 0 || size > FILE_MAX_BYTES) {
+      return fail();
+    }
+    return { id: readText(value["id"]), name: readText(value["name"]), size, mediaType: readText(value["mediaType"]) };
+  }
+  function orNull(raw, read) {
+    return raw === null ? null : read(raw);
+  }
+  function readShaped(type, raw) {
+    const text2 = readText(raw);
+    return text2 === "" || SHAPES[type](text2) ? text2 : fail();
+  }
+  function readSecurityQuestion(raw) {
+    const value = exactly(raw, ["question", "answer"]);
+    return { question: readText(value["question"]), answer: readText(value["answer"]) };
+  }
+  function readSshKey(raw) {
+    const value = exactly(raw, ["privateKey", "publicKey", "fingerprint"]);
+    return {
+      privateKey: readText(value["privateKey"]),
+      publicKey: readText(value["publicKey"]),
+      fingerprint: readText(value["fingerprint"])
+    };
+  }
+  function isFieldType(raw) {
+    return FIELD_TYPES.some((type) => type === raw);
+  }
+  function readField(raw) {
+    const field3 = exactly(raw, ["label", "type", "value"]);
+    const { type, value } = field3;
+    if (!isFieldType(type)) {
+      return fail();
+    }
+    const label = readText(field3["label"]);
+    switch (type) {
+      case "text":
+      case "multiline":
+      case "concealed":
+        return { label, type, value: orNull(value, readText) };
+      case "url":
+      case "email":
+      case "phone":
+      case "number":
+      case "date":
+      case "month-year":
+        return { label, type, value: orNull(value, (text2) => readShaped(type, text2)) };
+      case "boolean":
+        return { label, type, value: orNull(value, (flag) => typeof flag === "boolean" ? flag : fail()) };
+      case "otp":
+        return { label, type, value: orNull(value, readOtp) };
+      case "file":
+        return { label, type, value: orNull(value, readFile) };
+      case "security-question":
+        return { label, type, value: orNull(value, readSecurityQuestion) };
+      case "ssh-key":
+        return { label, type, value: orNull(value, readSshKey) };
+    }
+  }
+
+  // src/records/editing.ts
+  var fieldAt = (section, field3) => `${section}.${field3}`;
+  var FORMAT = {
+    url: "Use a full address starting with https://.",
+    email: "Use an address like name@example.com.",
+    phone: "Use digits, spaces and + ( ) - only.",
+    number: "Use digits only.",
+    date: "Use a date like 2027-02-28.",
+    "month-year": "Use a month like 2028-11.",
+    otp: "Paste the setup key exactly as the issuer showed it."
+  };
+  function problem(type, refused) {
+    if (refused instanceof VaultCryptoError && refused.reason === "too-large") {
+      return "This value is too long to keep.";
+    }
+    return FORMAT[type] ?? "This value isn't in a form the record can keep.";
+  }
+  function edited(document2, title, values) {
+    const problems = /* @__PURE__ */ new Map();
+    const named = title.trim();
+    if (named === "") {
+      problems.set("title", "Give the record a title, so you can find it again.");
+    }
+    const sections = document2.sections.map((section, sectionIndex) => ({
+      name: section.name,
+      fields: section.fields.map((field3, fieldIndex) => {
+        const at2 = fieldAt(sectionIndex, fieldIndex);
+        const typed = values.has(at2) ? values.get(at2) : field3.value;
+        try {
+          return readField({ label: field3.label, type: field3.type, value: typed === "" ? null : typed });
+        } catch (refused) {
+          problems.set(at2, problem(field3.type, refused));
+          return field3;
+        }
+      })
+    }));
+    return problems.size === 0 ? { ok: true, document: { ...document2, title: named, sections } } : { ok: false, problems };
+  }
+
   // src/records/types.ts
   function main(name, id, fields) {
     return { id, name, sections: [{ name: "", fields: fields.map(([label, type]) => ({ label, type })) }] };
@@ -614,6 +860,20 @@
       ["Expires", "date"]
     ])
   ];
+  function recordFromTemplate(template, title) {
+    return {
+      v: 1,
+      type: template.id,
+      title,
+      sections: template.sections.map((section) => ({
+        name: section.name,
+        fields: section.fields.map((field3) => emptyField(field3))
+      }))
+    };
+  }
+  function emptyField({ label, type }) {
+    return { label, type, value: null };
+  }
 
   // src/records/listing.ts
   function matches(item, query, type) {
@@ -626,8 +886,8 @@
     }
     return "document" in item && item.document.title.toLocaleLowerCase().includes(wanted);
   }
-  function unreadableWords(problem) {
-    switch (problem) {
+  function unreadableWords(problem2) {
+    switch (problem2) {
       case "unvouched-signer":
         return "It was written by someone your company's owner hasn't vouched for, so it isn't shown.";
       case "bad-signature":
@@ -714,39 +974,6 @@
     signature: encode(statement.signature),
     owner_signing: encode(ownerSigning)
   });
-
-  // src/crypto/labels.ts
-  var PREFIX = "tessaridb-vault/v1/";
-  var LABEL = {
-    /** HKDF info for the unlock wrap key derived from the master key. */
-    unlockWrap: `${PREFIX}unlock-wrap`,
-    /** HKDF info for a revision's content key derived from its record key. */
-    recordContent: `${PREFIX}record-content`,
-    /** Associated-data prefix of a record body. */
-    record: `${PREFIX}record`,
-    /** HKDF info for a file's key derived from its record key. */
-    file: `${PREFIX}file`,
-    /** Associated-data prefix of every chunk of a file. */
-    fileChunk: `${PREFIX}file-chunk`,
-    /** Associated-data prefix of a membership private key wrapped under the unlock key. */
-    memberKey: `${PREFIX}member-key`,
-    /** Associated-data prefix of the company owner's public key, pinned under the unlock key in a member's key set. */
-    ownerPin: `${PREFIX}owner-pin`,
-    /** HPKE `info` prefix of a key wrap. */
-    wrap: `${PREFIX}wrap`,
-    /** Ed25519 domain prefix of a vouching statement. */
-    statement: `${PREFIX}statement`,
-    /** Ed25519 domain prefix of a revision signature. */
-    revision: `${PREFIX}revision`
-  };
-  var FORMAT_VERSION = 1;
-  var ALGORITHM = {
-    recordBody: 1,
-    keyWrap: 2,
-    memberKey: 3,
-    signature: 4,
-    file: 5
-  };
 
   // src/crypto/keys.ts
   var PKCS8_PREFIX_X25519 = Uint8Array.of(48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 110, 4, 34, 4, 32);
@@ -988,7 +1215,7 @@
   var KEY_ID_BYTES = 16;
   var SALT_BYTES = 32;
   var NONCE_BYTES = 12;
-  var TAG_BYTES = 16;
+  var TAG_BYTES2 = 16;
   async function importRecordKey(raw) {
     if (raw.length !== 32) {
       throw new VaultCryptoError("malformed");
@@ -1018,6 +1245,20 @@
       [usage]
     );
   }
+  async function sealRevision(recordKey, context2, plaintext) {
+    if (context2.keyId.length !== KEY_ID_BYTES) {
+      throw new VaultCryptoError("malformed");
+    }
+    const salt = random(SALT_BYTES);
+    const nonce = random(NONCE_BYTES);
+    const key = await contentKey(recordKey, salt, "encrypt");
+    const sealed2 = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: nonce, additionalData: associatedData(context2, salt) },
+      key,
+      plaintext
+    );
+    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.recordBody), context2.keyId, salt, nonce, new Uint8Array(sealed2));
+  }
   async function openRevision(keys, context2, body) {
     const reader = new Reader(body);
     if (reader.integer(1) !== FORMAT_VERSION) {
@@ -1030,7 +1271,7 @@
     const salt = reader.take(SALT_BYTES);
     const nonce = reader.take(NONCE_BYTES);
     const ciphertext = reader.rest();
-    if (ciphertext.length < TAG_BYTES) {
+    if (ciphertext.length < TAG_BYTES2) {
       throw new VaultCryptoError("malformed");
     }
     if (!sameBytes(keyId, context2.keyId)) {
@@ -1061,6 +1302,9 @@
       field2(integer(context2.revision, 8)),
       field2(body)
     );
+  }
+  async function signRevision(signingKey, context2, body) {
+    return sign(signingKey, signedRevision(context2, body));
   }
   async function verifyRevision(vouched, author, context2, body, signature) {
     const signingKey = vouched.signingKeyOf(author);
@@ -1116,6 +1360,11 @@
     wipe(prk, dh);
     return secret;
   }
+  async function encapsulateWith(ephemeral, recipientPublic) {
+    const dh = await x25519(ephemeral.privateKey, await x25519PublicFromBytes(recipientPublic));
+    const enc = ephemeral.publicBytes.slice();
+    return { sharedSecret: await sharedSecretOf(dh, enc, recipientPublic), enc };
+  }
   async function keySchedule(sharedSecret, info) {
     const empty = new Uint8Array(0);
     const pskIdHash = await labeledExtract(HPKE_SUITE, empty, "psk_id_hash", empty);
@@ -1133,6 +1382,16 @@
     const key = await crypto.subtle.importKey("raw", schedule.key, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     wipe(schedule.key, schedule.exporterSecret, sharedSecret);
     return { key, nonce: schedule.baseNonce };
+  }
+  async function sealWith(ephemeral, recipientPublic, info, aad, plaintext) {
+    const { sharedSecret, enc } = await encapsulateWith(ephemeral, recipientPublic);
+    const { key, nonce } = await aeadKey(sharedSecret, info);
+    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, additionalData: aad }, key, plaintext);
+    return { enc, ciphertext: new Uint8Array(ciphertext) };
+  }
+  async function seal(recipientPublic, info, aad, plaintext) {
+    const pair = await generatePair("X25519", false);
+    return sealWith({ privateKey: pair.privateKey, publicBytes: await publicBytes(pair.publicKey) }, recipientPublic, info, aad, plaintext);
   }
   async function open(recipientPrivate, recipientPublic, enc, info, aad, ciphertext) {
     if (enc.length !== SECRET_BYTES) {
@@ -1168,6 +1427,10 @@
       field2(context2.recipientKeyId)
     );
   }
+  async function wrapSecret(recipientPublic, context2, secret) {
+    const sealed2 = await seal(recipientPublic, infoOf(context2), new Uint8Array(0), secret);
+    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.keyWrap), sealed2.enc, sealed2.ciphertext);
+  }
   async function unwrapSecret(recipientPrivate, recipientPublic, context2, wrap) {
     const reader = new Reader(wrap);
     if (reader.integer(1) !== FORMAT_VERSION) {
@@ -1179,180 +1442,6 @@
     const enc = reader.take(ENC_BYTES);
     const ciphertext = reader.rest();
     return open(recipientPrivate, recipientPublic, enc, infoOf(context2), new Uint8Array(0), ciphertext);
-  }
-
-  // src/crypto/files.ts
-  var FILE_CHUNK_BYTES = 64 * 1024;
-  var FILE_MAX_BYTES = 256 * 1024 * 1024;
-  var TAG_BYTES2 = 16;
-  var SEALED_CHUNK_BYTES = FILE_CHUNK_BYTES + TAG_BYTES2;
-  var MAX_CHUNKS = FILE_MAX_BYTES / FILE_CHUNK_BYTES;
-
-  // src/records/totp.ts
-  var HASH = { SHA1: "SHA-1", SHA256: "SHA-256", SHA512: "SHA-512" };
-  async function totpCode(params, unixSeconds) {
-    if (!Number.isSafeInteger(params.period) || params.period < 1 || !Number.isSafeInteger(unixSeconds) || unixSeconds < 0) {
-      throw new VaultCryptoError("malformed");
-    }
-    const key = await crypto.subtle.importKey("raw", params.secret, { name: "HMAC", hash: HASH[params.algorithm] }, false, [
-      "sign"
-    ]);
-    const step = integer(Math.floor(unixSeconds / params.period), 8);
-    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, step));
-    const offset = (mac[mac.length - 1] ?? 0) & 15;
-    const binary = ((mac[offset] ?? 0) & 127) << 24 | (mac[offset + 1] ?? 0) << 16 | (mac[offset + 2] ?? 0) << 8 | (mac[offset + 3] ?? 0);
-    return String(binary % 10 ** params.digits).padStart(params.digits, "0");
-  }
-  var ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  function base32Decode(text2) {
-    const clean = text2.replace(/\s+/g, "").toUpperCase().replace(/=+$/, "");
-    const out = [];
-    let buffer = 0;
-    let bits = 0;
-    for (const character of clean) {
-      const value = ALPHABET.indexOf(character);
-      if (value < 0) {
-        throw new VaultCryptoError("malformed");
-      }
-      buffer = buffer << 5 | value;
-      bits += 5;
-      if (bits >= 8) {
-        out.push(buffer >> bits - 8 & 255);
-        bits -= 8;
-      }
-      buffer &= (1 << bits) - 1;
-    }
-    if (bits >= 5 || buffer !== 0) {
-      throw new VaultCryptoError("malformed");
-    }
-    return Uint8Array.from(out);
-  }
-
-  // src/records/fields.ts
-  var FIELD_TYPES = [
-    "text",
-    "multiline",
-    "concealed",
-    "url",
-    "email",
-    "phone",
-    "number",
-    "date",
-    "month-year",
-    "boolean",
-    "otp",
-    "file",
-    "security-question",
-    "ssh-key"
-  ];
-  var MAX_TEXT = 65536;
-  var SHAPES = {
-    url: (text2) => URL.canParse(text2),
-    email: (text2) => /^[^\s@]+@[^\s@]+$/.test(text2),
-    phone: (text2) => /^[+0-9 ().-]{1,32}$/.test(text2),
-    number: (text2) => /^-?\d+(\.\d+)?$/.test(text2),
-    date: (text2) => {
-      const match2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text2);
-      if (match2 === null) {
-        return false;
-      }
-      const [year, month, day] = [Number(match2[1]), Number(match2[2]), Number(match2[3])];
-      const date = new Date(Date.UTC(year, month - 1, day));
-      return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-    },
-    "month-year": (text2) => /^\d{4}-(0[1-9]|1[0-2])$/.test(text2)
-  };
-  function fail() {
-    throw new VaultCryptoError("malformed");
-  }
-  function exactly(raw, keys) {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      return fail();
-    }
-    const present = Object.keys(raw);
-    if (present.length !== keys.length || !keys.every((key) => present.includes(key))) {
-      return fail();
-    }
-    return Object.fromEntries(Object.entries(raw));
-  }
-  function readText(raw) {
-    if (typeof raw !== "string") {
-      return fail();
-    }
-    if (raw.length > MAX_TEXT) {
-      throw new VaultCryptoError("too-large");
-    }
-    return raw;
-  }
-  function readOtp(raw) {
-    const value = exactly(raw, ["secret", "algorithm", "digits", "period"]);
-    const secret = readText(value["secret"]);
-    const { algorithm, digits, period } = value;
-    if (base32Decode(secret).length === 0 || algorithm !== "SHA1" && algorithm !== "SHA256" && algorithm !== "SHA512" || digits !== 6 && digits !== 8 || typeof period !== "number" || !Number.isInteger(period) || period < 1 || period > 3600) {
-      return fail();
-    }
-    return { secret, algorithm, digits, period };
-  }
-  function readFile(raw) {
-    const value = exactly(raw, ["id", "name", "size", "mediaType"]);
-    const size = value["size"];
-    if (typeof size !== "number" || !Number.isInteger(size) || size < 0 || size > FILE_MAX_BYTES) {
-      return fail();
-    }
-    return { id: readText(value["id"]), name: readText(value["name"]), size, mediaType: readText(value["mediaType"]) };
-  }
-  function orNull(raw, read) {
-    return raw === null ? null : read(raw);
-  }
-  function readShaped(type, raw) {
-    const text2 = readText(raw);
-    return text2 === "" || SHAPES[type](text2) ? text2 : fail();
-  }
-  function readSecurityQuestion(raw) {
-    const value = exactly(raw, ["question", "answer"]);
-    return { question: readText(value["question"]), answer: readText(value["answer"]) };
-  }
-  function readSshKey(raw) {
-    const value = exactly(raw, ["privateKey", "publicKey", "fingerprint"]);
-    return {
-      privateKey: readText(value["privateKey"]),
-      publicKey: readText(value["publicKey"]),
-      fingerprint: readText(value["fingerprint"])
-    };
-  }
-  function isFieldType(raw) {
-    return FIELD_TYPES.some((type) => type === raw);
-  }
-  function readField(raw) {
-    const field3 = exactly(raw, ["label", "type", "value"]);
-    const { type, value } = field3;
-    if (!isFieldType(type)) {
-      return fail();
-    }
-    const label = readText(field3["label"]);
-    switch (type) {
-      case "text":
-      case "multiline":
-      case "concealed":
-        return { label, type, value: orNull(value, readText) };
-      case "url":
-      case "email":
-      case "phone":
-      case "number":
-      case "date":
-      case "month-year":
-        return { label, type, value: orNull(value, (text2) => readShaped(type, text2)) };
-      case "boolean":
-        return { label, type, value: orNull(value, (flag) => typeof flag === "boolean" ? flag : fail()) };
-      case "otp":
-        return { label, type, value: orNull(value, readOtp) };
-      case "file":
-        return { label, type, value: orNull(value, readFile) };
-      case "security-question":
-        return { label, type, value: orNull(value, readSecurityQuestion) };
-      case "ssh-key":
-        return { label, type, value: orNull(value, readSshKey) };
-    }
   }
 
   // src/records/document.ts
@@ -1371,6 +1460,9 @@
       return fail2();
     }
     return Object.fromEntries(Object.entries(raw));
+  }
+  function encodeRecord(document2) {
+    return utf8(JSON.stringify(document2));
   }
   function decodeRecord(bytes) {
     let raw;
@@ -1468,8 +1560,8 @@
     }
     try {
       return { ok: true, vouched: await verifyChain(held2.company, held2.keys.ownerSigningPublic, chain.value.statements) };
-    } catch (problem) {
-      return { ok: false, problem: problem instanceof VaultCryptoError ? problem : new VaultCryptoError("chain-broken") };
+    } catch (problem2) {
+      return { ok: false, problem: problem2 instanceof VaultCryptoError ? problem2 : new VaultCryptoError("chain-broken") };
     }
   }
   var Opener = class {
@@ -1485,8 +1577,8 @@
       try {
         const key = await this.#keyFor(opened);
         return { row: opened.row, document: await openRecord(this.#held.company, this.#vouched, key, opened) };
-      } catch (problem) {
-        return { row: opened.row, problem: problem instanceof VaultCryptoError ? problem.reason : "malformed" };
+      } catch (problem2) {
+        return { row: opened.row, problem: problem2 instanceof VaultCryptoError ? problem2.reason : "malformed" };
       }
     }
     async #keyFor(opened) {
@@ -1540,10 +1632,10 @@
       changed
     );
   }
-  async function drawList(main2, held2, href) {
+  async function drawList(main2, held2, href, newHref) {
     const title = heading("Records");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening your records."));
-    const head = el("div", { class: "page-head" }, title);
+    const head = el("div", { class: "page-head" }, title, el("a", { class: "button primary", href: newHref }, "New record"));
     fill(main2, head, said);
     const chain = await vouchedChain(held2);
     if (!chain.ok) {
@@ -1616,6 +1708,217 @@
     fill(main2, head, filter, types, said, list, tail);
     render();
     title.focus();
+  }
+
+  // src/crypto/recipients.ts
+  function vouchedKey(chain, recipient) {
+    switch (recipient.kind) {
+      case "member":
+        return chain.agreementKeyOf(recipient.account);
+      case "group":
+        return chain.groupKeyOf(recipient.group);
+      case "recovery":
+        return chain.recoveryKey()?.agreementPublic;
+    }
+  }
+  async function wrapToVouched(chain, recipient, listed, context2, secret) {
+    if (context2.recipientKind !== recipient.kind) {
+      throw new VaultCryptoError("malformed");
+    }
+    const vouched = vouchedKey(chain, recipient);
+    if (vouched === void 0 || !sameBytes(vouched, listed)) {
+      throw new VaultCryptoError("unvouched-recipient");
+    }
+    return wrapSecret(vouched, context2, secret);
+  }
+
+  // src/records/save-record.ts
+  var ID_BYTES = 16;
+  var RECORD_KEY_BYTES = 32;
+  async function sealed(company, keys, id, revision, document2, vouched, others) {
+    const keyId = random(ID_BYTES);
+    const raw = random(RECORD_KEY_BYTES);
+    const context2 = (recipientKind, recipientKeyId) => ({ company, wrappedKind: "record", wrappedKeyId: keyId, recipientKind, recipientKeyId });
+    const copy2 = raw.slice();
+    let wrap;
+    const wraps = [];
+    try {
+      wrap = await wrapSecret(keys.agreementPublic, context2("member", keys.keyId), copy2);
+      for (const other of others) {
+        if (vouched === null) {
+          throw new RangeError("a revision shared with others needs the verified chain");
+        }
+        const made = await wrapToVouched(vouched, other.recipient, other.listed, context2(other.recipient.kind, other.keyId), copy2);
+        wraps.push({ recipient: `${other.recipient.kind}:${hex(other.keyId)}`, wrap: encode(made) });
+      }
+    } finally {
+      wipe(copy2);
+    }
+    const place = { company, record: id, revision };
+    const body = await sealRevision(await importRecordKey(raw), { ...place, keyId }, encodeRecord(document2));
+    const signature = await signRevision(keys.signingPrivate, place, body);
+    return { key_id: hex(keyId), body: encode(body), signature: encode(signature), author_key: hex(keys.keyId), wrap: encode(wrap), wraps };
+  }
+  async function newRecord(company, keys, document2) {
+    const id = hex(random(ID_BYTES));
+    const { wraps: _none, ...parts } = await sealed(company, keys, id, 1, document2, null, []);
+    return { id, body: { id, record_type: document2.type, ...parts } };
+  }
+  async function revisedRecord(company, keys, vouched, row2, document2, others) {
+    return { revision: row2.revision, ...await sealed(company, keys, row2.id, row2.revision + 1, document2, vouched, others) };
+  }
+
+  // src/records/edit-view.ts
+  var INPUT = {
+    text: "text",
+    concealed: "password",
+    url: "url",
+    email: "email",
+    phone: "tel",
+    number: "text",
+    date: "date",
+    "month-year": "month"
+  };
+  function control(field3, id) {
+    const hint = el("p", { id: `${id}-hint`, class: "message bad" });
+    hint.hidden = true;
+    const label = el("label", { for: id }, field3.label);
+    let input = null;
+    let read = () => field3.value;
+    if (field3.type === "boolean") {
+      const box = el("input", { id, type: "checkbox" });
+      box.checked = field3.value === true;
+      read = () => box.checked;
+      input = box;
+    } else if (field3.type === "multiline") {
+      const area = el("textarea", { id, rows: "4" });
+      area.value = field3.value ?? "";
+      read = () => area.value;
+      input = area;
+    } else if (INPUT[field3.type] !== void 0 && (typeof field3.value === "string" || field3.value === null)) {
+      const text2 = el("input", { id, type: INPUT[field3.type] ?? "text", autocomplete: field3.type === "concealed" ? "new-password" : "off" });
+      text2.value = typeof field3.value === "string" ? field3.value : "";
+      read = () => text2.value;
+      input = text2;
+    }
+    input?.setAttribute("aria-describedby", hint.id);
+    const kept = input === null ? el("p", { class: "muted" }, "Kept as it is. Editing this kind of field comes later.") : null;
+    const mark2 = (words) => {
+      hint.hidden = words === null;
+      hint.textContent = words ?? "";
+      if (words === null) {
+        input?.removeAttribute("aria-invalid");
+      } else {
+        input?.setAttribute("aria-invalid", "true");
+      }
+    };
+    return { row: el("div", { class: "field" }, label, input, kept, hint), read, mark: mark2 };
+  }
+  function saveFailure(code, fallback) {
+    switch (code) {
+      case "stale_revision":
+        return "This record changed since you opened it. Open it again to see the newer version, then make your change.";
+      case "stale_shares":
+        return "This record is shared, and this page can't yet carry a change to the people it is shared with.";
+      default:
+        return fallback;
+    }
+  }
+  function form(main2, title, document2, back, save) {
+    const name = el("input", { id: "record-title", type: "text", autocomplete: "off", value: document2.title });
+    const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
+    nameHint.hidden = true;
+    name.setAttribute("aria-describedby", nameHint.id);
+    const controls = /* @__PURE__ */ new Map();
+    const sections = document2.sections.map(
+      (section, sectionIndex) => el(
+        "fieldset",
+        { class: "record-section" },
+        section.name === "" ? null : el("legend", {}, section.name),
+        ...section.fields.map((field3, fieldIndex) => {
+          const at2 = fieldAt(sectionIndex, fieldIndex);
+          const made = control(field3, `field-${sectionIndex}-${fieldIndex}`);
+          controls.set(at2, made);
+          return made.row;
+        })
+      )
+    );
+    const submit = el("button", { type: "submit", class: "primary" }, "Save record");
+    const said = el("div", { "aria-live": "polite" });
+    const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, submit, said);
+    body.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const values = new Map([...controls].map(([at2, made]) => [at2, made.read()]));
+      const result = edited(document2, name.value, values);
+      nameHint.hidden = result.ok || !result.problems.has("title");
+      nameHint.textContent = result.ok ? "" : result.problems.get("title") ?? "";
+      for (const [at2, made] of controls) {
+        made.mark(result.ok ? null : result.problems.get(at2) ?? null);
+      }
+      if (!result.ok) {
+        fill(said, refusal("Some values can't be kept. Each one says why below its label."));
+        body.querySelector("[aria-invalid=true]")?.focus();
+        if (result.problems.has("title")) {
+          name.setAttribute("aria-invalid", "true");
+          name.focus();
+        }
+        return;
+      }
+      name.removeAttribute("aria-invalid");
+      submit.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Sealing and saving the record."));
+      void save(result.document).then((refused) => {
+        submit.disabled = false;
+        fill(said, refused === null ? null : refusal(refused));
+      });
+    });
+    const head = el("div", { class: "page-head" }, el("div", {}, heading(title), el("p", { class: "lede" }, typeName(document2.type))));
+    fill(main2, el("a", { href: back, class: "back" }, "All records"), head, body);
+    name.focus();
+  }
+  function drawNew(main2, held2, type, back, opened, newOf) {
+    const template = BUILT_IN_TYPES.find((each) => each.id === type);
+    if (template === void 0) {
+      const choices = el("ul", { class: "records", "aria-label": "Record types" }, ...BUILT_IN_TYPES.map((each) => el("li", { class: "record" }, el("a", { class: "record-title", href: newOf(each.id) }, each.name))));
+      fill(main2, el("a", { href: back, class: "back" }, "All records"), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
+      return;
+    }
+    form(main2, "New record", recordFromTemplate(template, ""), back, async (made) => {
+      const record = await newRecord(held2.company, held2.keys, made);
+      const answer = await call("POST", `${companyPath(held2)}/records`, readRow, { body: record.body });
+      if (!answer.ok) {
+        return saveFailure(answer.code, loadFailure(answer));
+      }
+      opened(record.id);
+      return null;
+    });
+  }
+  async function drawEdit(main2, held2, id, back, opened) {
+    fill(main2, el("div", { class: "page-head" }, heading("Edit record")), el("p", { class: "muted", role: "status" }, "Opening the record."));
+    const [chain, answer] = await Promise.all([vouchedChain(held2), call("GET", `${companyPath(held2)}/records/${encodeURIComponent(id)}`, readOpened)]);
+    if (!chain.ok) {
+      fill(main2, el("div", { class: "page-head" }, heading("Edit record")), refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
+      return;
+    }
+    if (!answer.ok) {
+      fill(main2, el("div", { class: "page-head" }, heading("Edit record")), refusal(loadFailure(answer)));
+      return;
+    }
+    const item = await new Opener(held2, chain.vouched).open(answer.value);
+    if (!("document" in item)) {
+      fill(main2, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
+      return;
+    }
+    const row2 = item.row;
+    form(main2, "Edit record", item.document, back, async (made) => {
+      const revision = await revisedRecord(held2.company, held2.keys, chain.vouched, row2, made, []);
+      const saved = await call("PUT", `${companyPath(held2)}/records/${encodeURIComponent(id)}`, readRow, { body: revision });
+      if (!saved.ok) {
+        return saveFailure(saved.code, loadFailure(saved));
+      }
+      opened(id);
+      return null;
+    });
   }
 
   // src/records/field-view.ts
@@ -1696,7 +1999,7 @@
   }
 
   // src/records/record-view.ts
-  async function drawRecord(main2, held2, id, copy2, stops2, back) {
+  async function drawRecord(main2, held2, id, copy2, stops2, back, editHref) {
     const toList = el("a", { href: back, class: "back" }, "All records");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening the record."));
     fill(main2, toList, el("div", { class: "page-head" }, heading("Record")), said);
@@ -1728,7 +2031,8 @@
       )
     );
     const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type))));
-    fill(main2, toList, head, ...sections);
+    const actions = el("a", { class: "button", href: editHref }, "Edit");
+    fill(main2, toList, el("div", { class: "page-head" }, head, actions), ...sections);
     title.focus();
   }
 
@@ -2043,12 +2347,12 @@
       }
       this.#wrapsMade += 1;
       const nonce = random(NONCE_BYTES3);
-      const sealed = await crypto.subtle.wrapKey("pkcs8", privateKey, this.#key, {
+      const sealed2 = await crypto.subtle.wrapKey("pkcs8", privateKey, this.#key, {
         name: "AES-GCM",
         iv: nonce,
         additionalData: associatedData2(context2)
       });
-      return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context2.keyId, nonce, new Uint8Array(sealed));
+      return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context2.keyId, nonce, new Uint8Array(sealed2));
     }
     /** Seal the company owner's Ed25519 public key under UK, to be pinned in this member's key set; one more wrap. */
     async sealPin(ownerPublic, pin) {
@@ -2057,22 +2361,22 @@
       }
       this.#wrapsMade += 1;
       const nonce = random(NONCE_BYTES3);
-      const sealed = await crypto.subtle.wrapKey("raw", ownerPublic, this.#key, {
+      const sealed2 = await crypto.subtle.wrapKey("raw", ownerPublic, this.#key, {
         name: "AES-GCM",
         iv: nonce,
         additionalData: pinData(pin)
       });
-      return { nonce, sealed: new Uint8Array(sealed) };
+      return { nonce, sealed: new Uint8Array(sealed2) };
     }
     /** Open the pinned owner key; a pin sealed for another member, company or key set is `unauthentic`. */
-    async openPin(pin, nonce, sealed) {
+    async openPin(pin, nonce, sealed2) {
       if (nonce.length !== NONCE_BYTES3) {
         throw new VaultCryptoError("malformed");
       }
       try {
         return await crypto.subtle.unwrapKey(
           "raw",
-          sealed,
+          sealed2,
           this.#key,
           { name: "AES-GCM", iv: nonce, additionalData: pinData(pin) },
           { name: "Ed25519" },
@@ -2094,7 +2398,7 @@
       }
       const keyId = reader.take(KEY_ID_BYTES3);
       const nonce = reader.take(NONCE_BYTES3);
-      const sealed = reader.rest();
+      const sealed2 = reader.rest();
       if (!sameBytes(keyId, context2.keyId)) {
         throw new VaultCryptoError("key-mismatch");
       }
@@ -2102,7 +2406,7 @@
       try {
         return await crypto.subtle.unwrapKey(
           "pkcs8",
-          sealed,
+          sealed2,
           this.#key,
           { name: "AES-GCM", iv: nonce, additionalData: associatedData2(context2) },
           { name: agreement ? "X25519" : "Ed25519" },
@@ -2260,11 +2564,11 @@
       )
     );
   }
-  function unlockFailure(problem) {
-    if (problem instanceof VaultCryptoError && problem.reason === "unauthentic") {
+  function unlockFailure(problem2) {
+    if (problem2 instanceof VaultCryptoError && problem2.reason === "unauthentic") {
       return "That unlock password doesn't open your keys. Check it and try again; it is not your sign-in password.";
     }
-    if (problem instanceof VaultCryptoError && problem.reason === "kdf-refused") {
+    if (problem2 instanceof VaultCryptoError && problem2.reason === "kdf-refused") {
       return "Your keys were made with settings this page can't run. Tell your admin.";
     }
     return "This page couldn't open your keys. Reload the page and try again.";
@@ -2324,10 +2628,10 @@
         }
         hold({ company: company.id, account: me.account, keys });
         done();
-      } catch (problem) {
+      } catch (problem2) {
         password.input.value = "";
         password.input.setAttribute("aria-invalid", "true");
-        fill(said, refusal(unlockFailure(problem)));
+        fill(said, refusal(unlockFailure(problem2)));
         password.input.focus();
       } finally {
         submit.disabled = false;
@@ -2357,9 +2661,9 @@
     );
     view2.querySelector("form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const problem = newPasswordProblem(password.input.value, repeated.input.value, me.email);
-      if (problem !== null) {
-        fill(said, refusal(problem));
+      const problem2 = newPasswordProblem(password.input.value, repeated.input.value, me.email);
+      if (problem2 !== null) {
+        fill(said, refusal(problem2));
         password.input.focus();
         return;
       }
@@ -2453,7 +2757,9 @@
   var open2 = every(session, needsUnlock(isUnlocked, () => history.current()));
   var routes = defineRoutes({
     records: { path: "/", guard: open2 },
+    newRecord: { path: "/records/new", query: { type: text }, guard: open2 },
     record: { path: "/records/:record", guard: open2 },
+    editRecord: { path: "/records/:record/edit", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
   });
@@ -2485,14 +2791,31 @@
       case "records": {
         const held2 = unlocked();
         if (held2 !== null) {
-          void drawList(view2, held2, (record) => router.href("record", { record }));
+          void drawList(view2, held2, (record) => router.href("record", { record }), router.href("newRecord", {}));
         }
         break;
       }
       case "record": {
         const held2 = unlocked();
         if (held2 !== null) {
-          void drawRecord(view2, held2, outcome.match.params.record, copy, stops, router.href("records", {}));
+          const record = outcome.match.params.record;
+          void drawRecord(view2, held2, record, copy, stops, router.href("records", {}), router.href("editRecord", { record }));
+        }
+        break;
+      }
+      case "newRecord": {
+        const held2 = unlocked();
+        if (held2 !== null) {
+          const opened = (record) => go(router.href("record", { record }));
+          drawNew(view2, held2, outcome.match.query.type, router.href("records", {}), opened, (type) => router.href("newRecord", {}, { type }));
+        }
+        break;
+      }
+      case "editRecord": {
+        const held2 = unlocked();
+        if (held2 !== null) {
+          const record = outcome.match.params.record;
+          void drawEdit(view2, held2, record, router.href("record", { record }), (saved) => go(router.href("record", { record: saved })));
         }
         break;
       }

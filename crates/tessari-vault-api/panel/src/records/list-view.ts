@@ -40,10 +40,10 @@ function row(item: Listed, href: (record: string) => string): HTMLElement {
 }
 
 /** Draws the list into `main`; `href` names the view of one record. */
-export async function drawList(main: HTMLElement, held: Unlocked, href: (record: string) => string): Promise<void> {
+export async function drawList(main: HTMLElement, held: Unlocked, href: (record: string) => string, newHref: string): Promise<void> {
   const title = heading("Records");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening your records."));
-  const head = el("div", { class: "page-head" }, title);
+  const head = el("div", { class: "page-head" }, title, el("a", { class: "button primary", href: newHref }, "New record"));
   fill(main, head, said);
   const chain = await vouchedChain(held);
   if (!chain.ok) {

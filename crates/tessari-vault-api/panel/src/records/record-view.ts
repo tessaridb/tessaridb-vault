@@ -19,6 +19,7 @@ export async function drawRecord(
   copy: ReturnType<typeof copier>,
   stops: Stops,
   back: string,
+  editHref: string,
 ): Promise<void> {
   const toList = el("a", { href: back, class: "back" }, "All records");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening the record."));
@@ -51,6 +52,7 @@ export async function drawRecord(
     ),
   );
   const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document.type))));
-  fill(main, toList, head, ...sections);
+  const actions = el("a", { class: "button", href: editHref }, "Edit");
+  fill(main, toList, el("div", { class: "page-head" }, head, actions), ...sections);
   title.focus();
 }
