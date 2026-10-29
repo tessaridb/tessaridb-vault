@@ -65,4 +65,18 @@ describe("vouching for a member's key", () => {
       "unvouched-signer",
     );
   });
+
+  it("keeps a suspended member on the list, marked, so suspending someone does not make them vanish", async () => {
+    const owner = await person();
+    const genesis = await appendStatement(COMPANY, undefined, { kind: "member", subject: OWNER, agreementPublic: owner.agreementPublic, signingPublic: owner.signingPublic }, {
+      privateKey: owner.signing.privateKey,
+      publicBytes: owner.signingPublic,
+    });
+    const members: ListedMember[] = [
+      { account: OWNER, name: "Olive Owner", email: "owner@x.test", role: "owner", active: true },
+      { account: SAM, name: "Sam Member", email: "sam@x.test", role: "member", active: false },
+    ];
+    const rows = await memberRows(members, new Map(), await verifyChain(COMPANY, owner.signingPublic, [genesis]));
+    assert.deepEqual(rows.map((row) => [row.label, row.suspended]), [["Olive Owner", false], ["Sam Member", true]]);
+  });
 });

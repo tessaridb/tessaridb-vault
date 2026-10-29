@@ -3501,9 +3501,9 @@ ${END}
   // src/members/members-model.ts
   async function memberRows(members, directory, vouched) {
     return Promise.all(
-      members.filter((member) => member.active).map(async (member) => {
+      members.map(async (member) => {
         const listed = directory.get(member.account);
-        const base = { account: member.account, label: member.name, detail: member.email, role: member.role };
+        const base = { account: member.account, label: member.name, detail: member.email, role: member.role, suspended: !member.active };
         if (listed === void 0) {
           return { ...base, state: "no-key", fingerprint: null };
         }
@@ -3549,9 +3549,112 @@ ${END}
     return reason === "unvouched-signer" ? "Only the company's owner or an admin the owner vouched for can vouch for keys, and your key isn't one of them yet." : "Your company's list of who may read what doesn't check out, so nothing was vouched for. Tell your company's owner.";
   }
 
-  // src/members/members-view.ts
+  // src/members/member-admin.ts
+  var joinLink = (origin, path, token2) => `${origin}${path}#/join?token=${encodeURIComponent(token2)}`;
+  function roleChoices(mine) {
+    switch (mine) {
+      case "owner":
+        return ["member", "admin", "owner"];
+      case "admin":
+        return ["member", "admin"];
+      case "member":
+        return [];
+    }
+  }
+  function memberFailure(failure) {
+    switch (failure.code) {
+      case "already_member":
+        return "Someone with that email is already in the company.";
+      case "last_owner":
+        return "A company keeps at least one owner. Make someone else an owner first.";
+      case "enrolled":
+        return "They have already joined, so they don't need a join link. They sign in with their own password.";
+      case "forbidden":
+        return "Only an owner can make, change or remove an owner.";
+      case "not_found":
+        return "They aren't in the company any more. The list is shown again.";
+      case "invalid":
+        return "Give a name and a work email address.";
+      case "network":
+        return "The vault didn't answer. Check your connection, then try again.";
+      default:
+        return "The vault couldn't make this change. Try again; if it keeps failing, tell your company's owner.";
+    }
+  }
+
+  // src/members/add-member.ts
   var ROLE_WORDS = { owner: "Owner", admin: "Admin", member: "Member" };
-  async function drawMembers(main2, held2, notice2 = null) {
+  var isRecord7 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var readAdded = (v) => isRecord7(v) && typeof v["account_id"] === "string" && /^[0-9a-f]{32}$/.test(v["account_id"]) ? v["account_id"] : null;
+  var readToken = (v) => isRecord7(v) && typeof v["token"] === "string" && v["token"] !== "" ? v["token"] : null;
+  function invitedBlock(invited) {
+    const copy2 = el("button", { type: "button" }, "Copy link");
+    copy2.addEventListener("click", () => {
+      void navigator.clipboard.writeText(invited.link).then(
+        () => announce("The join link is copied."),
+        () => announce("The link couldn't be copied. Select it and copy it by hand.")
+      );
+    });
+    return el(
+      "section",
+      { class: "record-section", "aria-labelledby": "invited" },
+      el("h2", { id: "invited" }, `Send ${invited.name} this link`),
+      el("p", { class: "muted" }, "It works once, within 24 hours. This page shows it only now."),
+      el("p", { class: "mono" }, invited.link),
+      copy2
+    );
+  }
+  function addMemberForm(held2, mine, added) {
+    let role = "member";
+    const name = el("input", { id: "member-name", type: "text", autocomplete: "off" });
+    const email = el("input", { id: "member-email", type: "email", autocomplete: "off", spellcheck: "false" });
+    const choices = roleChoices(mine);
+    const roles = choices.map((each) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === role) }, ROLE_WORDS[each]));
+    roles.forEach(
+      (button, at2) => button.addEventListener("click", () => {
+        role = choices[at2] ?? "member";
+        roles.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at2)));
+      })
+    );
+    const submit = el("button", { type: "submit", class: "primary" }, "Add member");
+    const said = el("div", { "aria-live": "polite" });
+    const form2 = el(
+      "form",
+      { class: "record-section", novalidate: "" },
+      el("h2", {}, "Add someone"),
+      el("div", { class: "field" }, el("label", { for: name.id }, "Name"), name),
+      el("div", { class: "field" }, el("label", { for: email.id }, "Work email"), email),
+      el("div", { class: "field" }, el("p", { class: "field-label", id: "member-role" }, "Role"), el("div", { class: "chips", role: "group", "aria-labelledby": "member-role" }, ...roles)),
+      submit,
+      said
+    );
+    form2.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (name.value.trim() === "" || email.value.trim() === "") {
+        fill(said, refusal(memberFailure({ ok: false, status: 400, code: "invalid", message: "" })));
+        (name.value.trim() === "" ? name : email).focus();
+        return;
+      }
+      submit.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Adding them."));
+      const path = `${companyPath(held2)}/members`;
+      void (async () => {
+        const made = await call("POST", path, readAdded, { body: { name: name.value.trim(), email: email.value.trim(), role } });
+        const link = made.ok ? await call("POST", `${path}/${made.value}/enrolment`, readToken) : made;
+        submit.disabled = false;
+        if (!link.ok) {
+          fill(said, refusal(memberFailure(link)));
+          return;
+        }
+        added({ name: name.value.trim(), link: joinLink(window.location.origin, window.location.pathname, link.value) });
+      })();
+    });
+    return form2;
+  }
+
+  // src/members/members-view.ts
+  var ROLE_WORDS2 = { owner: "Owner", admin: "Admin", member: "Member" };
+  async function drawMembers(main2, held2, notice2 = null, invited = null) {
     const title = heading("Members");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the members."));
     fill(main2, el("div", { class: "page-head" }, title), said);
@@ -3624,7 +3727,7 @@ ${END}
       });
     });
     const items = rows.map((row2) => {
-      const vouch = mayVouch && row2.state === "waiting" ? el("button", { type: "button", "aria-label": `Vouch for ${row2.label}'s key` }, "Vouch") : null;
+      const vouch = mayVouch && !row2.suspended && row2.state === "waiting" ? el("button", { type: "button", "aria-label": `Vouch for ${row2.label}'s key` }, "Vouch") : null;
       vouch?.addEventListener("click", () => {
         chosen = row2;
         fill(dialogTitle, `Vouch for “${row2.label}”'s key?`);
@@ -3636,8 +3739,8 @@ ${END}
         "li",
         { class: "share member" },
         el("div", {}, el("span", { class: "share-name" }, row2.account === held2.account ? `${row2.label} (you)` : row2.label), el("span", { class: "detail" }, row2.detail)),
-        el("span", { class: "muted" }, ROLE_WORDS[row2.role]),
-        el("span", { class: `state ${row2.state}` }, keyStateWords(row2.state)),
+        el("span", { class: "muted" }, ROLE_WORDS2[row2.role]),
+        row2.suspended ? el("span", { class: "state" }, "Suspended") : el("span", { class: `state ${row2.state}` }, keyStateWords(row2.state)),
         vouch ?? el("span", {})
       );
     });
@@ -3646,23 +3749,25 @@ ${END}
       main2,
       el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "Records are shared only with keys an owner or admin has vouched for, after comparing the key's fingerprint with its holder."))),
       notice2 === null ? null : refusal(notice2),
+      invited === null ? null : invitedBlock(invited),
       own === null ? null : el("section", { class: "record-section", "aria-labelledby": "own-key" }, el("h2", { id: "own-key" }, "Your key's fingerprint"), el("p", { class: "fingerprint" }, own)),
       el("section", { class: "record-section", "aria-labelledby": "everyone" }, el("h2", { id: "everyone" }, "Everyone in the company"), el("ul", { class: "shares" }, ...items)),
+      me === void 0 || !mayVouch ? null : addMemberForm(held2, me.role, (added) => void drawMembers(main2, held2, null, added)),
       dialog
     );
     title.focus();
   }
 
   // src/groups/group-members.ts
-  var isRecord7 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   var isId4 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   var isText5 = (v) => typeof v === "string" && v !== "";
   function readGroupMembers(v) {
-    if (!isRecord7(v) || !Array.isArray(v["members"])) {
+    if (!isRecord8(v) || !Array.isArray(v["members"])) {
       return null;
     }
     const members = v["members"].map(
-      (member) => isRecord7(member) && isId4(member["id"]) && isText5(member["email"]) && isText5(member["name"]) ? { account: member["id"], email: member["email"], name: member["name"] } : null
+      (member) => isRecord8(member) && isId4(member["id"]) && isText5(member["email"]) && isText5(member["name"]) ? { account: member["id"], email: member["email"], name: member["name"] } : null
     );
     return members.every((member) => member !== null) ? members : null;
   }
@@ -3688,15 +3793,15 @@ ${END}
 
   // src/groups/groups-model.ts
   var KEY_BYTES5 = 32;
-  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord9 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   var isId5 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   var isText6 = (v) => typeof v === "string" && v !== "";
   function readGroupRows(v) {
-    if (!isRecord8(v) || !Array.isArray(v["groups"])) {
+    if (!isRecord9(v) || !Array.isArray(v["groups"])) {
       return null;
     }
     const rows = v["groups"].map((group) => {
-      if (!isRecord8(group) || !isId5(group["id"]) || !isText6(group["name"]) || !isId5(group["parent"])) {
+      if (!isRecord9(group) || !isId5(group["id"]) || !isText6(group["name"]) || !isId5(group["parent"])) {
         return null;
       }
       const { kind } = group;
@@ -3711,11 +3816,11 @@ ${END}
     return [{ id: company.id, kind: "company", name: company.name, depth: 0 }, ...departments, ...teamsOf(company.id, 1)];
   }
   function readPending(v) {
-    if (!isRecord8(v) || !Array.isArray(v["pending"])) {
+    if (!isRecord9(v) || !Array.isArray(v["pending"])) {
       return null;
     }
     const keys = v["pending"].map((item) => {
-      if (!isRecord8(item) || !isId5(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
+      if (!isRecord9(item) || !isId5(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
         return null;
       }
       const keyId = keyIdBytes(item["key_id"]);
@@ -3737,7 +3842,7 @@ ${END}
     }
   }
   function readRotationDue(v) {
-    return isRecord8(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
+    return isRecord9(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
   }
 
   // src/groups/group-page.ts
@@ -4065,9 +4170,9 @@ ${END}
   }
 
   // src/join-model.ts
-  var isRecord9 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord10 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readAuthenticator(v) {
-    if (!isRecord9(v)) {
+    if (!isRecord10(v)) {
       return null;
     }
     const { secret, uri } = v;
@@ -4112,22 +4217,22 @@ ${END}
   }
 
   // src/sign-in-model.ts
-  var isRecord10 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord11 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readMethods(v) {
-    if (!isRecord10(v)) {
+    if (!isRecord11(v)) {
       return null;
     }
     const { password, passkey: passkey2, provider } = v;
     return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
   }
   function readChallenge(v) {
-    return isRecord10(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+    return isRecord11(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
   }
   function readSession(v) {
-    return isRecord10(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+    return isRecord11(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
   function readPasskeyRequest(v) {
-    return isRecord10(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+    return isRecord11(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
   function signInFailure(failure) {
     switch (failure.code) {

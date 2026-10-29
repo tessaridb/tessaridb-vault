@@ -19,26 +19,26 @@ export interface MemberRow {
   readonly detail: string;
   readonly role: ListedMember["role"];
   readonly state: KeyState;
+  /** Suspended members stay listed, marked, and cannot sign in until resumed. */
+  readonly suspended: boolean;
   /** The listed key's fingerprint, null with no key. */
   readonly fingerprint: string | null;
 }
 
-/** The active `members`, each with their listed key's state against `vouched`. */
+/** Every one of `members`, each with their listed key's state against `vouched`. */
 export async function memberRows(members: readonly ListedMember[], directory: ReadonlyMap<string, DirectoryKey>, vouched: Vouched): Promise<readonly MemberRow[]> {
   return Promise.all(
-    members
-      .filter((member) => member.active)
-      .map(async (member): Promise<MemberRow> => {
-        const listed = directory.get(member.account);
-        const base = { account: member.account, label: member.name, detail: member.email, role: member.role };
-        if (listed === undefined) {
-          return { ...base, state: "no-key", fingerprint: null };
-        }
-        const agreement = vouched.agreementKeyOf(member.account);
-        const signing = vouched.signingKeyOf(member.account);
-        const matches = agreement !== undefined && signing !== undefined && sameBytes(agreement, listed.agreementPublic) && sameBytes(signing, listed.signingPublic);
-        return { ...base, state: matches ? "vouched" : "waiting", fingerprint: await keyFingerprint(listed.agreementPublic, listed.signingPublic) };
-      }),
+    members.map(async (member): Promise<MemberRow> => {
+      const listed = directory.get(member.account);
+      const base = { account: member.account, label: member.name, detail: member.email, role: member.role, suspended: !member.active };
+      if (listed === undefined) {
+        return { ...base, state: "no-key", fingerprint: null };
+      }
+      const agreement = vouched.agreementKeyOf(member.account);
+      const signing = vouched.signingKeyOf(member.account);
+      const matches = agreement !== undefined && signing !== undefined && sameBytes(agreement, listed.agreementPublic) && sameBytes(signing, listed.signingPublic);
+      return { ...base, state: matches ? "vouched" : "waiting", fingerprint: await keyFingerprint(listed.agreementPublic, listed.signingPublic) };
+    }),
   );
 }
 

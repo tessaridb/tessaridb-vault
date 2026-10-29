@@ -1,5 +1,5 @@
 // The members page: everyone in the company with their key's state and fingerprint, the person's own fingerprint to
-// read out to an admin, and for owners and admins a way to vouch for a key that is waiting. Vouching is a statement the
+// read out to an admin, and for owners and admins a way to vouch for a key that is waiting and to add someone. Vouching is a statement the
 // browser signs and checks against the whole chain before the server keeps it.
 
 import { call, ignored } from "../api.ts";
@@ -15,11 +15,13 @@ import { readMemberList } from "../records/share-targets.ts";
 import { readDirectory } from "../records/shares-model.ts";
 import { memberRows, statementBody, vouchStatement, type MemberRow } from "./members-model.ts";
 import { keyStateWords, vouchFailure, vouchRefused } from "./members-words.ts";
+import { addMemberForm, invitedBlock, type Invited } from "./add-member.ts";
 
 const ROLE_WORDS = { owner: "Owner", admin: "Admin", member: "Member" } as const;
 
-/** Draws the members page into `main`; `notice` is said at its top, as after a vouch the chain had moved past. */
-export async function drawMembers(main: HTMLElement, held: Unlocked, notice: string | null = null): Promise<void> {
+/** Draws the members page into `main`; `notice` is said at its top, as after a vouch the chain had moved past, and
+ *  `invited` shows the join link of someone just added. */
+export async function drawMembers(main: HTMLElement, held: Unlocked, notice: string | null = null, invited: Invited | null = null): Promise<void> {
   const title = heading("Members");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the members."));
   fill(main, el("div", { class: "page-head" }, title), said);
@@ -96,7 +98,7 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, notice: str
   });
 
   const items = rows.map((row) => {
-    const vouch = mayVouch && row.state === "waiting" ? el("button", { type: "button", "aria-label": `Vouch for ${row.label}'s key` }, "Vouch") : null;
+    const vouch = mayVouch && !row.suspended && row.state === "waiting" ? el("button", { type: "button", "aria-label": `Vouch for ${row.label}'s key` }, "Vouch") : null;
     vouch?.addEventListener("click", () => {
       chosen = row;
       fill(dialogTitle, `Vouch for \u201C${row.label}\u201D's key?`);
@@ -109,7 +111,7 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, notice: str
       { class: "share member" },
       el("div", {}, el("span", { class: "share-name" }, row.account === held.account ? `${row.label} (you)` : row.label), el("span", { class: "detail" }, row.detail)),
       el("span", { class: "muted" }, ROLE_WORDS[row.role]),
-      el("span", { class: `state ${row.state}` }, keyStateWords(row.state)),
+      row.suspended ? el("span", { class: "state" }, "Suspended") : el("span", { class: `state ${row.state}` }, keyStateWords(row.state)),
       vouch ?? el("span", {}),
     );
   });
@@ -118,8 +120,10 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, notice: str
     main,
     el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "Records are shared only with keys an owner or admin has vouched for, after comparing the key's fingerprint with its holder."))),
     notice === null ? null : refusal(notice),
+    invited === null ? null : invitedBlock(invited),
     own === null ? null : el("section", { class: "record-section", "aria-labelledby": "own-key" }, el("h2", { id: "own-key" }, "Your key's fingerprint"), el("p", { class: "fingerprint" }, own)),
     el("section", { class: "record-section", "aria-labelledby": "everyone" }, el("h2", { id: "everyone" }, "Everyone in the company"), el("ul", { class: "shares" }, ...items)),
+    me === undefined || !mayVouch ? null : addMemberForm(held, me.role, (added) => void drawMembers(main, held, null, added)),
     dialog,
   );
   title.focus();
