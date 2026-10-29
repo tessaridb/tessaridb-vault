@@ -964,3 +964,11 @@ dialog.confirm .actions {
 .share-name {
   font-weight: 550;
 }
+
+/* A key's fingerprint, read aloud group by group: monospaced so the groups line up when two people compare them. */
+.fingerprint {
+  font-family: var(--mono);
+  font-size: var(--t-body);
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}

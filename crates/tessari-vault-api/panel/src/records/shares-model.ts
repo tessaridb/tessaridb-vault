@@ -46,10 +46,11 @@ export function readShares(v: unknown): ListedShares | null {
   return shares.every((share) => share !== null) ? { author: { account, keyId: authorKey }, shares } : null;
 }
 
-/** A member's listed key set: its id and its public agreement key. */
+/** A member's listed key set: its id and its public agreement and signing keys. */
 export interface DirectoryKey {
   readonly keyId: string;
   readonly agreementPublic: Bytes;
+  readonly signingPublic: Bytes;
 }
 
 /** The answer of `GET /api/companies/{company}/keys`, by account. */
@@ -58,11 +59,12 @@ export function readDirectory(v: unknown): ReadonlyMap<string, DirectoryKey> | n
     return null;
   }
   const entries = v["keys"].map((entry: unknown): readonly [string, DirectoryKey] | null => {
-    if (!isRecord(entry) || !isId(entry["account"]) || !isId(entry["key_id"]) || typeof entry["agreement_public"] !== "string") {
+    if (!isRecord(entry) || !isId(entry["account"]) || !isId(entry["key_id"]) || typeof entry["agreement_public"] !== "string" || typeof entry["signing_public"] !== "string") {
       return null;
     }
     const agreementPublic = decode(entry["agreement_public"]);
-    return agreementPublic !== null && agreementPublic.length === 32 ? [entry["account"], { keyId: entry["key_id"], agreementPublic }] : null;
+    const signingPublic = decode(entry["signing_public"]);
+    return agreementPublic?.length === 32 && signingPublic?.length === 32 ? [entry["account"], { keyId: entry["key_id"], agreementPublic, signingPublic }] : null;
   });
   return entries.every((entry) => entry !== null) ? new Map(entries) : null;
 }

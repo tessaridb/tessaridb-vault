@@ -15,6 +15,7 @@ export interface ListedMember {
   readonly account: string;
   readonly name: string;
   readonly email: string;
+  readonly role: "owner" | "admin" | "member";
   readonly active: boolean;
 }
 
@@ -28,7 +29,10 @@ export function readMemberList(v: unknown): readonly ListedMember[] | null {
       return null;
     }
     const { id, name, email } = member["account"];
-    return isId(id) && isText(name) && isText(email) ? { account: id, name, email, active: member["state"] === "active" } : null;
+    const { role } = member;
+    return isId(id) && isText(name) && isText(email) && (role === "owner" || role === "admin" || role === "member")
+      ? { account: id, name, email, role, active: member["state"] === "active" }
+      : null;
   });
   return members.every((member) => member !== null) ? members : null;
 }

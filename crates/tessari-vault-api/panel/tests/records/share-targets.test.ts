@@ -25,7 +25,7 @@ const GROUPS = readGroupList({
     { id: DEPT, kind: "department", name: "Engineering", parent: "" },
   ],
 });
-const DIRECTORY = new Map<string, DirectoryKey>([[ADMIN, { keyId: "55".repeat(16), agreementPublic: key(2) }]]);
+const DIRECTORY = new Map<string, DirectoryKey>([[ADMIN, { keyId: "55".repeat(16), agreementPublic: key(2), signingPublic: key(3) }]]);
 
 describe("share targets", () => {
   it("lists active members and groups but the author and the shared, each with its key or why it has none", () => {

@@ -582,7 +582,9 @@
     /** Ed25519 domain prefix of a vouching statement. */
     statement: `${PREFIX}statement`,
     /** Ed25519 domain prefix of a revision signature. */
-    revision: `${PREFIX}revision`
+    revision: `${PREFIX}revision`,
+    /** SHA-256 prefix of the key fingerprint two people compare before one vouches for the other's key. */
+    fingerprint: `${PREFIX}fingerprint`
   };
   var FORMAT_VERSION = 1;
   var ALGORITHM = {
@@ -1662,7 +1664,8 @@
         return null;
       }
       const { id, name, email } = member["account"];
-      return isId2(id) && isText4(name) && isText4(email) ? { account: id, name, email, active: member["state"] === "active" } : null;
+      const { role } = member;
+      return isId2(id) && isText4(name) && isText4(email) && (role === "owner" || role === "admin" || role === "member") ? { account: id, name, email, role, active: member["state"] === "active" } : null;
     });
     return members.every((member) => member !== null) ? members : null;
   }
@@ -1938,11 +1941,12 @@ ${target.detail}`.toLowerCase().includes(wanted));
       return null;
     }
     const entries = v["keys"].map((entry) => {
-      if (!isRecord6(entry) || !isId3(entry["account"]) || !isId3(entry["key_id"]) || typeof entry["agreement_public"] !== "string") {
+      if (!isRecord6(entry) || !isId3(entry["account"]) || !isId3(entry["key_id"]) || typeof entry["agreement_public"] !== "string" || typeof entry["signing_public"] !== "string") {
         return null;
       }
       const agreementPublic = decode(entry["agreement_public"]);
-      return agreementPublic !== null && agreementPublic.length === 32 ? [entry["account"], { keyId: entry["key_id"], agreementPublic }] : null;
+      const signingPublic = decode(entry["signing_public"]);
+      return agreementPublic?.length === 32 && signingPublic?.length === 32 ? [entry["account"], { keyId: entry["key_id"], agreementPublic, signingPublic }] : null;
     });
     return entries.every((entry) => entry !== null) ? new Map(entries) : null;
   }
@@ -2573,6 +2577,168 @@ ${target.detail}`.toLowerCase().includes(wanted));
     const shared = sharing === null ? [] : sharing.ok ? sharedWithSection(held2, id, sharing.rows, again) : [el("section", { class: "record-section" }, el("h2", {}, "Shared with"), refusal(sharing.words))];
     const actions = el("div", { class: "actions" }, el("a", { class: "button", href: editHref }, "Edit"), share2 ?? null, remove ?? null);
     fill(main2, toList, el("div", { class: "page-head" }, head, actions), ...sections, ...shared, dialog ?? null, shareDialog ?? null);
+    title.focus();
+  }
+
+  // src/crypto/fingerprint.ts
+  var SHOWN_BYTES = 16;
+  async function keyFingerprint(agreementPublic, signingPublic) {
+    const digest2 = new Uint8Array(await crypto.subtle.digest("SHA-256", concat(utf8(LABEL.fingerprint), field2(agreementPublic), field2(signingPublic))));
+    const digits = [...digest2.subarray(0, SHOWN_BYTES)].map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join("");
+    return digits.match(/.{4}/g)?.join(" ") ?? digits;
+  }
+
+  // src/members/members-model.ts
+  async function memberRows(members, directory, vouched) {
+    return Promise.all(
+      members.filter((member) => member.active).map(async (member) => {
+        const listed = directory.get(member.account);
+        const base = { account: member.account, label: member.name, detail: member.email, role: member.role };
+        if (listed === void 0) {
+          return { ...base, state: "no-key", fingerprint: null };
+        }
+        const agreement = vouched.agreementKeyOf(member.account);
+        const signing = vouched.signingKeyOf(member.account);
+        const matches2 = agreement !== void 0 && signing !== void 0 && sameBytes(agreement, listed.agreementPublic) && sameBytes(signing, listed.signingPublic);
+        return { ...base, state: matches2 ? "vouched" : "waiting", fingerprint: await keyFingerprint(listed.agreementPublic, listed.signingPublic) };
+      })
+    );
+  }
+  async function vouchStatement(company, ownerSigning, chain, signer, account, key) {
+    const statement = await appendStatement(company, chain.at(-1), { kind: "member", subject: account, agreementPublic: key.agreementPublic, signingPublic: key.signingPublic }, signer);
+    await verifyChain(company, ownerSigning, [...chain, statement]);
+    return statement;
+  }
+  var statementBody = (seq, statement) => ({
+    seq,
+    bytes: encode(statement.bytes),
+    signature: encode(statement.signature)
+  });
+
+  // src/members/members-words.ts
+  function keyStateWords(state) {
+    switch (state) {
+      case "vouched":
+        return "Key vouched for";
+      case "waiting":
+        return "Key waiting to be vouched for";
+      case "no-key":
+        return "Hasn't set an unlock password yet";
+    }
+  }
+  function vouchFailure(status, code, fallback) {
+    if (status === 403) {
+      return "Only the company's owner or an admin can vouch for keys.";
+    }
+    if (status === 409 && code === "stale_chain") {
+      return "Someone vouched for a key meanwhile. The list is shown again; vouch once more.";
+    }
+    return fallback;
+  }
+  function vouchRefused(reason) {
+    return reason === "unvouched-signer" ? "Only the company's owner or an admin the owner vouched for can vouch for keys, and your key isn't one of them yet." : "Your company's list of who may read what doesn't check out, so nothing was vouched for. Tell your company's owner.";
+  }
+
+  // src/members/members-view.ts
+  var ROLE_WORDS = { owner: "Owner", admin: "Admin", member: "Member" };
+  async function drawMembers(main2, held2, notice2 = null) {
+    const title = heading("Members");
+    const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the members."));
+    fill(main2, el("div", { class: "page-head" }, title), said);
+    const path = companyPath(held2);
+    const [members, directory, chain] = await Promise.all([
+      call("GET", `${path}/members`, readMemberList),
+      call("GET", `${path}/keys`, readDirectory),
+      call("GET", `${path}/statements`, readChain)
+    ]);
+    if (!members.ok || !directory.ok || !chain.ok) {
+      const failed2 = !members.ok ? members : !directory.ok ? directory : chain;
+      if (!failed2.ok) {
+        fill(said, refusal(loadFailure(failed2)));
+      }
+      return;
+    }
+    const owner = held2.keys.ownerSigningPublic;
+    const vouched = await verifyChain(held2.company, owner, chain.value.statements).catch(() => null);
+    if (vouched === null) {
+      fill(said, refusal(CHAIN_REFUSED));
+      return;
+    }
+    const rows = await memberRows(members.value, directory.value, vouched);
+    const me = rows.find((row2) => row2.account === held2.account);
+    const mayVouch = me?.role === "owner" || me?.role === "admin";
+    const again = (words = null) => void drawMembers(main2, held2, words);
+    const fingerprint = el("p", { class: "fingerprint" });
+    const dialogSaid = el("div", { "aria-live": "polite" });
+    const dialogTitle = el("h2", { id: "vouch-title" });
+    const notNow = el("button", { type: "button", autofocus: "" }, "Not now");
+    const confirm = el("button", { type: "button", class: "primary" }, "Vouch for this key");
+    const dialog = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": dialogTitle.id },
+      dialogTitle,
+      el("p", {}, "Ask them to read out the fingerprint on their own Members page, by phone or in person. Vouch only if every group matches."),
+      fingerprint,
+      dialogSaid,
+      el("div", { class: "actions" }, notNow, confirm)
+    );
+    let chosen = null;
+    notNow.addEventListener("click", () => dialog.close());
+    confirm.addEventListener("click", () => {
+      const row2 = chosen;
+      const key = row2 === null ? void 0 : directory.value.get(row2.account);
+      if (row2 === null || key === void 0) {
+        return;
+      }
+      confirm.disabled = true;
+      fill(dialogSaid, el("p", { class: "muted", role: "status" }, "Vouching for the key."));
+      const signer = { privateKey: held2.keys.signingPrivate, publicBytes: held2.keys.signingPublic };
+      void vouchStatement(held2.company, owner, chain.value.statements, signer, row2.account, key).then(async (statement) => {
+        const answer = await call("POST", `${path}/statements`, ignored, { body: statementBody(chain.value.statements.length + 1, statement) });
+        confirm.disabled = false;
+        if (answer.ok) {
+          dialog.close();
+          again();
+          return;
+        }
+        const words = vouchFailure(answer.status, answer.code, loadFailure(answer));
+        if (answer.code === "stale_chain") {
+          dialog.close();
+          again(words);
+          return;
+        }
+        fill(dialogSaid, refusal(words));
+      }).catch((problem2) => {
+        confirm.disabled = false;
+        fill(dialogSaid, refusal(vouchRefused(problem2 instanceof VaultCryptoError ? problem2.reason : "chain-broken")));
+      });
+    });
+    const items = rows.map((row2) => {
+      const vouch = mayVouch && row2.state === "waiting" ? el("button", { type: "button", "aria-label": `Vouch for ${row2.label}'s key` }, "Vouch") : null;
+      vouch?.addEventListener("click", () => {
+        chosen = row2;
+        fill(dialogTitle, `Vouch for “${row2.label}”'s key?`);
+        fill(fingerprint, row2.fingerprint ?? "");
+        fill(dialogSaid, null);
+        dialog.showModal();
+      });
+      return el(
+        "li",
+        { class: "share" },
+        el("div", {}, el("span", { class: "share-name" }, row2.account === held2.account ? `${row2.label} (you)` : row2.label), el("span", { class: "detail" }, `${row2.detail} · ${ROLE_WORDS[row2.role]}`)),
+        el("span", { class: "muted" }, keyStateWords(row2.state)),
+        vouch
+      );
+    });
+    const own = me?.fingerprint ?? null;
+    fill(
+      main2,
+      el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "Records are shared only with keys an owner or admin has vouched for, after comparing the key's fingerprint with its holder."))),
+      notice2 === null ? null : refusal(notice2),
+      own === null ? null : el("section", { class: "record-section", "aria-labelledby": "own-key" }, el("h2", { id: "own-key" }, "Your key's fingerprint"), el("p", { class: "fingerprint" }, own)),
+      el("section", { class: "record-section", "aria-labelledby": "everyone" }, el("h2", { id: "everyone" }, "Everyone in the company"), el("ul", { class: "shares" }, ...items)),
+      dialog
+    );
     title.focus();
   }
 
@@ -3312,6 +3478,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     newRecord: { path: "/records/new", query: { type: text }, guard: open2 },
     record: { path: "/records/:record", guard: open2 },
     editRecord: { path: "/records/:record/edit", guard: open2 },
+    members: { path: "/members", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
   });
@@ -3369,6 +3536,13 @@ ${target.detail}`.toLowerCase().includes(wanted));
         if (held2 !== null) {
           const record = outcome.match.params.record;
           void drawEdit(view2, held2, record, router.href("record", { record }), (saved) => go(router.href("record", { record: saved })));
+        }
+        break;
+      }
+      case "members": {
+        const held2 = unlocked();
+        if (held2 !== null) {
+          void drawMembers(view2, held2);
         }
         break;
       }

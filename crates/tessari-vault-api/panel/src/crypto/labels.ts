@@ -24,6 +24,8 @@ export const LABEL = {
   statement: `${PREFIX}statement`,
   /** Ed25519 domain prefix of a revision signature. */
   revision: `${PREFIX}revision`,
+  /** SHA-256 prefix of the key fingerprint two people compare before one vouches for the other's key. */
+  fingerprint: `${PREFIX}fingerprint`,
 } as const;
 
 /** The format version every sealed value starts with. */
