@@ -8,10 +8,10 @@ import { decode, encode } from "../../src/base64url.ts";
 import { hex, random } from "../../src/crypto/bytes.ts";
 import type { OpenKeySet } from "../../src/crypto/key-set.ts";
 import { generatePair, publicBytes } from "../../src/crypto/keys.ts";
-import { wrapToVouched } from "../../src/crypto/recipients.ts";
 import { appendStatement, verifyChain, type Statement } from "../../src/crypto/statements.ts";
 import type { RecordDocument } from "../../src/records/document.ts";
 import { openRecord, recordKeyOf } from "../../src/records/open-record.ts";
+import { shareBody } from "../../src/records/share-record.ts";
 import { memberKey } from "../../src/records/recipient-keys.ts";
 import { newRecord } from "../../src/records/save-record.ts";
 import { readOpened } from "../../src/records-model.ts";
@@ -54,9 +54,13 @@ describe("the record key a share wraps", () => {
     const asAuthor = readOpened({ ...parts, recipient: `member:${hex(author.keyId)}`, wrap: made.body["wrap"] });
     assert.ok(asAuthor !== null);
 
-    const raw = await recordKeyOf(COMPANY, vouched, memberKey(author), asAuthor);
-    const context = { company: COMPANY, wrappedKind: "record", wrappedKeyId: Uint8Array.from(Buffer.from(String(made.body["key_id"]), "hex")), recipientKind: "member", recipientKeyId: reader.keyId } as const;
-    const wrap = await wrapToVouched(vouched, { kind: "member", account: readerAccount }, reader.agreementPublic, context, raw);
+    const body = await shareBody(COMPANY, vouched, memberKey(author), asAuthor, {
+      recipient: { kind: "member", account: readerAccount },
+      keyId: reader.keyId,
+      listed: reader.agreementPublic,
+    }, "edit");
+    assert.deepEqual({ ...body, wrap: undefined }, { member: readerAccount, right: "edit", key_id: hex(reader.keyId), wrap: undefined });
+    const wrap = decode(String(body["wrap"])) ?? new Uint8Array();
     const asReader = readOpened({ ...parts, recipient: `member:${hex(reader.keyId)}`, wrap: encode(wrap) });
     assert.ok(asReader !== null);
     assert.deepEqual(await openRecord(COMPANY, vouched, memberKey(reader), asReader), DOCUMENT);
