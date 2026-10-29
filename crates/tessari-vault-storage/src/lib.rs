@@ -18,6 +18,7 @@ pub mod passkeys;
 pub mod record_types;
 pub mod records;
 pub mod recovery;
+pub mod recovery_requests;
 mod schema;
 pub mod sessions;
 pub mod shares;

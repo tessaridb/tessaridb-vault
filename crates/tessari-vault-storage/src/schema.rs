@@ -82,7 +82,10 @@ DEFINE TABLE IF NOT EXISTS recovery_keys (company string, key_id string, public 
 DEFINE TABLE IF NOT EXISTS escrows (company string, account string, recovery_key_id string, created int); \
 DEFINE TABLE IF NOT EXISTS recovery_notices (company string, account string, by_account string, kind string, \
 created int); \
-DEFINE INDEX IF NOT EXISTS by_member ON recovery_notices FIELDS company, account;";
+DEFINE INDEX IF NOT EXISTS by_member ON recovery_notices FIELDS company, account; \
+DEFINE TABLE IF NOT EXISTS recovery_requests (request_id string, company string, account string, handoff_public string, created int, \
+expires int, handed_by string, redeemed int, consumed int); \
+DEFINE INDEX IF NOT EXISTS by_company ON recovery_requests FIELDS company;";
 
 /// Declare the namespace and database of `place` and everything in them that is missing.
 ///

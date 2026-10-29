@@ -1,9 +1,10 @@
-//! The key routes of the table in `routes`: members' key sets, the vouching chain, group keys and the recovery key.
+//! The key routes of the table in `routes`: members' key sets, the vouching chain, group keys, the recovery key and
+//! recovery requests.
 
 use axum::http::Method;
 use axum::routing::{get, post, put};
 
-use crate::handlers::{group_keys, keys, recovery};
+use crate::handlers::{group_keys, keys, recovery, recovery_requests};
 use crate::routes::{Route, route};
 
 /// The key routes, which `routes::routes` serves with the rest.
@@ -38,6 +39,31 @@ pub(crate) fn routes() -> Vec<Route> {
             Method::GET,
             "/api/companies/{company}/notices/me",
             get(recovery::notices),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/recovery-requests",
+            post(recovery_requests::ask),
+        ),
+        route(
+            Method::GET,
+            "/api/companies/{company}/recovery-requests",
+            get(recovery_requests::list),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/recovery-requests/{request}/handoff",
+            post(recovery_requests::hand_over),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/recovery-requests/{request}/redeem",
+            post(recovery_requests::redeem),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/keys/me/rewrap",
+            post(recovery_requests::rewrap),
         ),
         route(
             Method::PUT,

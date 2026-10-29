@@ -19,3 +19,9 @@ pub const STATEMENT_SIGNATURE_BYTES: usize = 66;
 /// The longest chain a company keeps. A chain is read whole or not at all, because a client offered a prefix cannot
 /// tell it from a chain whose revocations were left off.
 pub const CHAIN_MAX: u64 = 10_000;
+
+/// How long a recovery request stays open after the member asks: 72 hours, then a new request is made.
+pub const RECOVERY_REQUEST_SECONDS: i64 = 259_200;
+
+/// The most open recovery requests one listing answers.
+pub const RECOVERY_REQUEST_LIST_MAX: i64 = 1_000;

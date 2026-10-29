@@ -13,6 +13,7 @@ pub(crate) mod passkeys;
 pub(crate) mod record_types;
 pub(crate) mod records;
 pub(crate) mod recovery;
+pub(crate) mod recovery_requests;
 pub(crate) mod shares;
 pub(crate) mod sign_in;
 

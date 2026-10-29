@@ -73,6 +73,15 @@ pub enum Conflict {
     /// The company has a recovery key already.
     #[error("the company has a recovery key already")]
     RecoveryKeyed,
+    /// The member keeps no escrow to be recovered from.
+    #[error("the member keeps no escrow")]
+    NoEscrow,
+    /// No owner has handed the member's keys over for this request yet.
+    #[error("the recovery is not handed over yet")]
+    NotHandedOver,
+    /// The recovery request was redeemed, used or has expired.
+    #[error("the recovery request is closed")]
+    RecoveryClosed,
     /// Another member's key set holds that key id.
     #[error("the key id is taken")]
     KeyTaken,

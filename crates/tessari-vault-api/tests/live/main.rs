@@ -65,7 +65,8 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         .replace("{account}", &cast.member_a_id)
         .replace("{record}", &cast.record_a)
         .replace("{file}", &cast.file_a)
-        .replace("{target}", &cast.owner_a_id);
+        .replace("{target}", &cast.owner_a_id)
+        .replace("{request}", &"e9".repeat(16));
     let manage = Some((Who::Member, StatusCode::FORBIDDEN));
     let hidden = Some((Who::OtherAdmin, StatusCode::NOT_FOUND));
     let not_author = Some((Who::Owner, StatusCode::NOT_FOUND));
@@ -216,6 +217,26 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ),
         ("GET", "/api/companies/{company}/keys/{account}/escrow") => row(None, manage, hidden),
         ("GET", "/api/companies/{company}/notices/me") => row(None, None, hidden),
+        // A member asks and redeems their own request; only an owner lists and hands one over.
+        ("POST", "/api/companies/{company}/recovery-requests") => row(
+            Some(json!({ "handoff_public": crate::records::encoded(&[0; 32]) })),
+            None,
+            hidden,
+        ),
+        ("GET", "/api/companies/{company}/recovery-requests") => row(None, manage, hidden),
+        ("POST", "/api/companies/{company}/recovery-requests/{request}/handoff") => {
+            row(Some(json!({ "wrap": "AA" })), manage, hidden)
+        }
+        ("POST", "/api/companies/{company}/recovery-requests/{request}/redeem") => {
+            row(None, None, hidden)
+        }
+        ("POST", "/api/companies/{company}/keys/me/rewrap") => row(
+            Some(json!({ "request": "e1".repeat(16), "wrapped": "AA",
+                         "kdf": { "salt": crate::records::encoded(&[0; 16]), "memory_kib": 47_104,
+                                  "passes": 2, "lanes": 1 } })),
+            None,
+            hidden,
+        ),
         ("GET", "/api/companies/{company}/groups/{group}/key") => row(None, None, hidden),
         ("GET", "/api/companies/{company}/groups/{group}/key/pending") => row(None, manage, hidden),
         ("POST", "/api/companies/{company}/groups/{group}/key/wraps") => {

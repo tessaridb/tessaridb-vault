@@ -17,10 +17,10 @@ use crate::state::AppState;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct KdfBody {
-    salt: String,
-    memory_kib: u32,
-    passes: u32,
-    lanes: u32,
+    pub(super) salt: String,
+    pub(super) memory_kib: u32,
+    pub(super) passes: u32,
+    pub(super) lanes: u32,
 }
 
 #[derive(Deserialize)]
