@@ -5,7 +5,7 @@ use tessari_vault_infrastructure::tessaridb::{Answer, Value};
 
 use crate::world::{Cast, World};
 
-fn vault(company: &str) -> String {
+pub(crate) fn vault(company: &str) -> String {
     format!("records_{company}")
 }
 

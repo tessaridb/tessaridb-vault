@@ -257,3 +257,117 @@ async fn the_store_passphrase_opens_no_company_vault() {
         );
     }
 }
+
+/// A snapshot restored into a clean store opens with the company key the service key derives and with nothing else:
+/// the backup alone holds no key, the key file alone holds no data. The restore is timed.
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_snapshot_restored_into_a_clean_store_opens_with_the_service_key_alone() {
+    use std::time::Instant;
+    use tessari_vault_infrastructure::tessaridb::{Database, StoreConfig};
+
+    let root = std::env::temp_dir().join(format!("vault-restore-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let (source, restored) = (root.join("source"), root.join("restored"));
+    let world = World::on_disk(&source).await;
+    let cast = Cast::new(&world).await;
+    let vault = crate::records::vault(&cast.company_a);
+    let key_a = world.vault_keys.company(&cast.company_a).expect("KV(A)");
+    world
+        .database
+        .run_presenting(
+            &world.place,
+            &format!("CREATE {vault}:'restore-probe' = {{ body: 'restored-canary' }};"),
+            Vec::new(),
+            &vault,
+            key_a,
+        )
+        .await
+        .expect("company A's key writes its vault");
+    let snapshot = reqwest::Client::new()
+        .get(format!("http://{}/backup", world.node.http))
+        .basic_auth(crate::world::STORE_USER, Some(crate::world::STORE_PASSWORD))
+        .send()
+        .await
+        .expect("the backup answers")
+        .bytes()
+        .await
+        .expect("its bytes");
+    let artifact = root.join("vault.tessarisnap");
+    std::fs::write(&artifact, &snapshot).expect("the artifact is written");
+
+    let started = Instant::now();
+    let ran = std::process::Command::new(std::env::var("TESSARIDB_BIN").expect("TESSARIDB_BIN"))
+        .arg(&restored)
+        .arg("--restore")
+        .arg(&artifact)
+        .output()
+        .expect("the engine runs");
+    let took = started.elapsed();
+    assert!(
+        ran.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    eprintln!(
+        "restore: {} bytes in {} ms",
+        snapshot.len(),
+        took.as_millis()
+    );
+
+    let node = crate::world::Node::start_in(Some(&restored)).await;
+    let database = Database::new(
+        StoreConfig {
+            address: node.wire.clone(),
+            user: crate::world::STORE_USER.to_owned(),
+            password: crate::world::STORE_PASSWORD.to_owned(),
+            authority: None,
+        },
+        2,
+    )
+    .expect("a loopback pool");
+    let reveal = format!("REVEAL body FROM {vault}:'restore-probe';");
+    let opened = database
+        .run_presenting(
+            &world.place,
+            &reveal,
+            Vec::new(),
+            &vault,
+            world
+                .vault_keys
+                .company(&cast.company_a)
+                .expect("KV(A) again"),
+        )
+        .await
+        .expect("the restored vault opens with the derived key");
+    let Some(Answer::Value {
+        value: StoreValue::Object(fields),
+        ..
+    }) = opened.last()
+    else {
+        panic!("expected the revealed body, got {opened:?}");
+    };
+    assert_eq!(
+        fields.get("body"),
+        Some(&StoreValue::from("restored-canary")),
+        "{fields:?}"
+    );
+    let key_b = world.vault_keys.company(&cast.company_b).expect("KV(B)");
+    let refused = database
+        .run_presenting(&world.place, &reveal, Vec::new(), &vault, key_b)
+        .await
+        .expect_err("another company's key opened the restored vault");
+    assert!(
+        refused.to_string().contains("the key is wrong"),
+        "{refused:?}"
+    );
+    assert!(
+        database
+            .run_at(&world.place, &reveal, Vec::new())
+            .await
+            .is_err(),
+        "the restored vault opened with no key presented"
+    );
+    drop((node, world));
+    let _ = std::fs::remove_dir_all(&root);
+}
