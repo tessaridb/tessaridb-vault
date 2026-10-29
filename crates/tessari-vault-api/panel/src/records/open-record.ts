@@ -27,7 +27,7 @@ async function unwrapped(company: string, vouched: Vouched, recipient: Recipient
   if (keyId === null || opened.recipient.kind !== recipient.kind || opened.recipient.keyId !== hex(recipient.keyId)) {
     throw new VaultCryptoError("key-mismatch");
   }
-  await verifyRevision(vouched, row.author, { company, record: row.id, revision: row.revision }, opened.body, opened.signature);
+  await verifyRevision(vouched, opened.revisedBy, { company, record: row.id, revision: row.revision }, opened.body, opened.signature);
   const raw = await unwrapSecret(
     recipient.agreementPrivate,
     recipient.agreementPublic,

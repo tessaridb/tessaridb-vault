@@ -55,7 +55,7 @@ describe("making a record", () => {
     );
     const vouched = await verifyChain(COMPANY, keys.signingPublic, [genesis]);
     const row = { id: made.id, record_type: "login", revision: 1, key_id: made.body["key_id"], author: account, created: 1, updated: 1, rotation_due: false };
-    const opened = readOpened({ record: row, body: made.body["body"], signature: made.body["signature"], author_key: made.body["author_key"], recipient: `member:${hex(keys.keyId)}`, wrap: made.body["wrap"], through: [] });
+    const opened = readOpened({ record: row, body: made.body["body"], signature: made.body["signature"], author_key: made.body["author_key"], recipient: `member:${hex(keys.keyId)}`, wrap: made.body["wrap"], through: [], revised_by: row.author });
     assert.notEqual(opened, null);
     if (opened !== null) {
       assert.deepEqual(await openRecord(COMPANY, vouched, memberKey(keys), opened), DOCUMENT);
@@ -98,7 +98,7 @@ describe("revising a record", () => {
     const wraps = body["wraps"] as { recipient: string; wrap: string }[];
     assert.deepEqual(wraps.map((each) => each.recipient), [`member:${hex(reader.keys.keyId)}`]);
     const next = { id: row.id, record_type: "login", revision: 3, key_id: body["key_id"], author: account, created: 1, updated: 3, rotation_due: false };
-    const parts = { record: next, body: body["body"], signature: body["signature"], author_key: body["author_key"], through: [] };
+    const parts = { record: next, body: body["body"], signature: body["signature"], author_key: body["author_key"], through: [], revised_by: row.author };
     const forReader = readOpened({ ...parts, recipient: `member:${hex(reader.keys.keyId)}`, wrap: wraps[0]?.wrap });
     const forAuthor = readOpened({ ...parts, recipient: `member:${hex(keys.keyId)}`, wrap: body["wrap"] });
     assert.ok(forReader !== null && forAuthor !== null);

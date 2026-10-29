@@ -517,7 +517,8 @@
     const [body, signature, wrap] = [v["body"], v["signature"], v["wrap"]].map((part) => isText2(part) ? decode(part) : null);
     const authorKey = v["author_key"];
     const through = v["through"];
-    return row2 !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey) && Array.isArray(through) && through.every(isId) ? { row: row2, body, signature, authorKey, recipient, wrap, through } : null;
+    const revisedBy = v["revised_by"];
+    return row2 !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey) && isId(revisedBy) && Array.isArray(through) && through.every(isId) ? { row: row2, body, signature, authorKey, revisedBy, recipient, wrap, through } : null;
   }
   function readOpenedPage(v) {
     if (!isRecord3(v) || !Array.isArray(v["records"])) {
@@ -1539,7 +1540,7 @@
     if (keyId === null || opened.recipient.kind !== recipient.kind || opened.recipient.keyId !== hex(recipient.keyId)) {
       throw new VaultCryptoError("key-mismatch");
     }
-    await verifyRevision(vouched, row2.author, { company, record: row2.id, revision: row2.revision }, opened.body, opened.signature);
+    await verifyRevision(vouched, opened.revisedBy, { company, record: row2.id, revision: row2.revision }, opened.body, opened.signature);
     const raw = await unwrapSecret(
       recipient.agreementPrivate,
       recipient.agreementPublic,

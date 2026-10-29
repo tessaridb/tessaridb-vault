@@ -50,7 +50,7 @@ describe("the record key a share wraps", () => {
     const vouched = await verifyChain(COMPANY, author.signingPublic, statements);
     const made = await newRecord(COMPANY, author, DOCUMENT);
     const row = { id: made.id, record_type: "login", revision: 1, key_id: made.body["key_id"], author: authorAccount, created: 1, updated: 1, rotation_due: false };
-    const parts = { record: row, body: made.body["body"], signature: made.body["signature"], author_key: made.body["author_key"], through: [] };
+    const parts = { record: row, body: made.body["body"], signature: made.body["signature"], author_key: made.body["author_key"], through: [], revised_by: row.author };
     const asAuthor = readOpened({ ...parts, recipient: `member:${hex(author.keyId)}`, wrap: made.body["wrap"] });
     assert.ok(asAuthor !== null);
 

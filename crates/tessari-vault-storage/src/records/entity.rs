@@ -173,6 +173,8 @@ pub struct OpenedRecord {
     pub recipient: String,
     /// The ids of the caller's own groups the record is shared with.
     pub through: Vec<String>,
+    /// The account that wrote the latest revision, whose key signed it.
+    pub revised_by: String,
 }
 
 /// A revision as the store opened it: the sealed body, the signature, the reviser's key, and every recipient.
@@ -181,6 +183,8 @@ pub(crate) struct OpenedRevision {
     pub(crate) body: Vec<u8>,
     pub(crate) signature: Vec<u8>,
     pub(crate) author_key: KeyId,
+    /// The account that wrote the revision, whose key signed it.
+    pub(crate) author: String,
     pub(crate) recipients: HashMap<String, Vec<u8>>,
 }
 

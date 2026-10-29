@@ -89,6 +89,7 @@ pub(crate) fn opened_from(mut answers: Vec<Answer>) -> Result<OpenedRevision> {
             .map_err(|_| unreadable("signature"))?,
         author_key: KeyId::parse(text(&row, "author_key")?)
             .map_err(|_| unreadable("author key"))?,
+        author: text(&row, "author")?.to_owned(),
         recipients,
     })
 }

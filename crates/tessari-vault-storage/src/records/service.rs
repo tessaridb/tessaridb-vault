@@ -188,12 +188,14 @@ impl RecordService {
                 self.vaults.key(company)?,
             )
             .await?;
+        let revised_by = opened.author.clone();
         let (recipient, sealed) = opened.for_caller(&reached, own_key.as_deref(), entity.rotate)?;
         Ok(OpenedRecord {
             record: entity.into_model()?,
             sealed,
             recipient,
             through: reached.through(),
+            revised_by,
         })
     }
 

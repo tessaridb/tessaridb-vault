@@ -426,6 +426,11 @@ async fn a_revision_keeps_a_wrap_for_every_share_and_an_editor_may_write_one() {
         .await;
     assert_eq!(read["record"]["revision"], 2);
     assert_eq!(read["wrap"], encoded(&[6; 82]));
+    assert_eq!(
+        read["revised_by"],
+        cast.member_a_id.as_str(),
+        "the author wrote revision 2"
+    );
 
     // The editor writes the next one, keeping the author's wrap; their own goes in the body.
     let keep_author = json!({ "recipient": author, "wrap": encoded(&[7; 82]) });
@@ -444,6 +449,8 @@ async fn a_revision_keeps_a_wrap_for_every_share_and_an_editor_may_write_one() {
     assert_eq!(read["record"]["revision"], 3);
     assert_eq!(read["wrap"], encoded(&[7; 82]));
     assert_eq!(read["author_key"], cast.admin_a_key.as_str());
+    // The signature is the editor's, so a reader checks it against the editor's key, not the record author's.
+    assert_eq!(read["revised_by"], cast.admin_a_id.as_str(), "{read}");
 }
 
 #[tokio::test]

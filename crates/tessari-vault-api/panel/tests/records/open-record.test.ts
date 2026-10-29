@@ -66,11 +66,11 @@ async function world(extra: (people: { mallory: Person }) => StatementFields[] =
   const vouched = await verifyChain(COMPANY, owner.signer.publicBytes, statements);
   const bobKey: RecipientKey = { kind: "member", keyId: random(16), agreementPrivate: bob.agreement.privateKey, agreementPublic: bob.agreementPublic };
   const teamKey: RecipientKey = { kind: "group", keyId: random(16), agreementPrivate: team.privateKey, agreementPublic: teamPublic };
-  return { alice, mallory, vouched, bobKey, teamKey };
+  return { alice, bob, mallory, vouched, bobKey, teamKey };
 }
 
 /** A revision `author` sealed and signed, wrapped for `reader`, as the opened page carries it. */
-async function sealed(author: Person, reader: RecipientKey, change: { author?: string; revision?: number } = {}): Promise<OpenedRecord> {
+async function sealed(author: Person, reader: RecipientKey, change: { author?: string; revisedBy?: string; revision?: number } = {}): Promise<OpenedRecord> {
   const keyId = random(16);
   const raw = random(32);
   const wrap = await wrapSecret(
@@ -91,7 +91,8 @@ async function sealed(author: Person, reader: RecipientKey, change: { author?: s
     updated: 2,
     rotationDue: false,
   };
-  return { row, body, signature, authorKey: "bb".repeat(16), recipient: { kind: reader.kind, keyId: hex(reader.keyId) }, wrap, through: [] };
+  const revisedBy = change.revisedBy ?? row.author;
+  return { row, body, signature, authorKey: "bb".repeat(16), revisedBy, recipient: { kind: reader.kind, keyId: hex(reader.keyId) }, wrap, through: [] };
 }
 
 describe("opening a record", () => {
@@ -106,6 +107,12 @@ describe("opening a record", () => {
     await refusedWith(openRecord(COMPANY, vouched, bobKey, await sealed(mallory, bobKey, { author: "mallory" })), "unvouched-signer");
     await refusedWith(openRecord(COMPANY, vouched, bobKey, await sealed(mallory, bobKey)), "bad-signature");
     await refusedWith(openRecord(COMPANY, vouched, bobKey, await sealed(alice, bobKey, { author: "bob" })), "bad-signature");
+  });
+
+  it("checks a revision an editor wrote against the editor's key, not the record author's", async () => {
+    const { bob, vouched, bobKey } = await world();
+    assert.deepEqual(await openRecord(COMPANY, vouched, bobKey, await sealed(bob, bobKey, { revisedBy: "bob" })), DOCUMENT);
+    await refusedWith(openRecord(COMPANY, vouched, bobKey, await sealed(bob, bobKey)), "bad-signature");
   });
 
   it("refuses a revision moved to another place or company", async () => {

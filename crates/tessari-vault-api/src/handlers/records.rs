@@ -55,6 +55,7 @@ pub(crate) struct Opened {
     recipient: String,
     wrap: String,
     through: Vec<String>,
+    revised_by: String,
 }
 
 impl From<&OpenedRecord> for Opened {
@@ -68,6 +69,7 @@ impl From<&OpenedRecord> for Opened {
             recipient: opened.recipient.clone(),
             wrap: base64url::encode(sealed.wrap()),
             through: opened.through.clone(),
+            revised_by: opened.revised_by.clone(),
         }
     }
 }
