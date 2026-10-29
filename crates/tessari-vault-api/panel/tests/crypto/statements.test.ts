@@ -62,6 +62,10 @@ async function world(): Promise<{ owner: Person; alice: Person; bob: Person; car
   return { owner, alice, bob, carol, dave, group, chain };
 }
 
+function recovery(keyId: string, agreementPublic: Bytes): StatementFields {
+  return { kind: "recovery", subject: keyId, agreementPublic, signingPublic: new Uint8Array(0) };
+}
+
 const REVISION: RevisionContext = { company: COMPANY, record: "record-1", revision: 3 };
 const BODY = utf8("sealed body bytes");
 
@@ -73,6 +77,25 @@ describe("the vouching chain", () => {
     assert.equal(toHex(vouched.agreementKeyOf("carol") ?? new Uint8Array()), toHex(carol.agreementPublic));
     assert.equal(toHex(vouched.groupKeyOf("group-1") ?? new Uint8Array()), toHex(group));
     assert.equal(vouched.signingKeyOf("dave"), undefined);
+  });
+
+  it("vouches for the recovery key only the owner signed, the latest one standing", async () => {
+    const { owner, chain } = await world();
+    const first = await publicBytes((await generatePair("X25519")).publicKey);
+    const second = await publicBytes((await generatePair("X25519")).publicKey);
+    assert.equal((await verifyChain(COMPANY, owner.signer.publicBytes, chain)).recoveryKey(), undefined);
+    chain.push(await appendStatement(COMPANY, chain.at(-1), recovery("aa".repeat(16), first), owner.signer));
+    chain.push(await appendStatement(COMPANY, chain.at(-1), recovery("bb".repeat(16), second), owner.signer));
+    const standing = (await verifyChain(COMPANY, owner.signer.publicBytes, chain)).recoveryKey();
+    assert.equal(standing?.keyId, "bb".repeat(16));
+    assert.equal(toHex(standing?.agreementPublic ?? new Uint8Array()), toHex(second));
+  });
+
+  it("refuses a recovery key vouched by an admin", async () => {
+    const { owner, bob, chain } = await world();
+    const key = await publicBytes((await generatePair("X25519")).publicKey);
+    chain.push(await appendStatement(COMPANY, chain.at(-1), recovery("aa".repeat(16), key), bob.signer));
+    await refusedWith(verifyChain(COMPANY, owner.signer.publicBytes, chain), "unvouched-signer");
   });
 
   it("drops a revoked member's keys", async () => {

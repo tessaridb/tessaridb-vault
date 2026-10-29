@@ -70,6 +70,9 @@ pub enum Conflict {
     /// The member keeps a key set in this company already.
     #[error("the member keeps a key set already")]
     KeysExist,
+    /// The company has a recovery key already.
+    #[error("the company has a recovery key already")]
+    RecoveryKeyed,
     /// Another member's key set holds that key id.
     #[error("the key id is taken")]
     KeyTaken,

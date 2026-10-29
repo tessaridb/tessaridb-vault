@@ -10,4 +10,4 @@ mod tessaridb;
 pub(crate) use entity::Revocation;
 pub use entity::{GroupKey, MemberWrap, NewGroupKey};
 pub use service::GroupKeyService;
-pub(crate) use tessaridb::TessaridbGroupKeyRepository;
+pub(crate) use tessaridb::{TessaridbGroupKeyRepository, recipient_wraps, recipients};

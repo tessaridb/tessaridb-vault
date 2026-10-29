@@ -47,8 +47,9 @@ const MANAGING: [Action; 14] = [
     Action::ReadAudit,
 ];
 
-const OWNER_ONLY: [Action; 6] = [
+const OWNER_ONLY: [Action; 7] = [
     Action::Vouch { genesis: true },
+    Action::KeyRecovery,
     Action::AddMember { role: Role::Owner },
     Action::ChangeMember {
         from: Role::Owner,

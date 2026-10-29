@@ -24,9 +24,9 @@ pub(crate) struct WrapBody {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct GroupKeyBody {
-    key_id: String,
-    public: String,
-    wraps: Vec<WrapBody>,
+    pub(super) key_id: String,
+    pub(super) public: String,
+    pub(super) wraps: Vec<WrapBody>,
 }
 
 #[derive(Deserialize)]
@@ -65,15 +65,15 @@ pub(crate) struct Pending {
     pending: Vec<PendingKey>,
 }
 
-fn decoded(text: &str) -> Result<Vec<u8>, ApiError> {
+pub(super) fn decoded(text: &str) -> Result<Vec<u8>, ApiError> {
     base64url::decode(text).map_err(|_| ApiError::INVALID)
 }
 
-fn key_id(text: &str) -> Result<KeyId, ApiError> {
+pub(super) fn key_id(text: &str) -> Result<KeyId, ApiError> {
     KeyId::parse(text).map_err(|_| ApiError::INVALID)
 }
 
-fn wraps(bodies: Vec<WrapBody>) -> Result<Vec<MemberWrap>, ApiError> {
+pub(super) fn wraps(bodies: Vec<WrapBody>) -> Result<Vec<MemberWrap>, ApiError> {
     bodies
         .into_iter()
         .map(|body| {

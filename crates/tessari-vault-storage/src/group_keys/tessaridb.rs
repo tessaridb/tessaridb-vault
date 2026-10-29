@@ -30,15 +30,12 @@ fn vid(group: &GroupId) -> String {
     format!("group.{}", group.as_str())
 }
 
-fn unreadable(what: &str) -> Error {
-    Error::Unreadable {
-        record: "group key",
-        reason: format!("{what} did not read back as written"),
-    }
-}
-
-/// The statements adding each wrap as a recipient `member:<key id>`, with their bound values.
-fn recipients(vault: &str, wraps: &[MemberWrap]) -> (String, Vec<(String, Value)>) {
+/// The statements adding each wrap as a recipient `<prefix><key id>` of `<vault>:$vid`, with their bound values.
+pub(crate) fn recipients(
+    vault: &str,
+    prefix: &str,
+    wraps: &[MemberWrap],
+) -> (String, Vec<(String, Value)>) {
     let mut script = String::new();
     let mut parameters = Vec::new();
     for (index, wrap) in wraps.iter().enumerate() {
@@ -47,11 +44,42 @@ fn recipients(vault: &str, wraps: &[MemberWrap]) -> (String, Vec<(String, Value)
         ));
         parameters.push(bind(
             &format!("name{index}"),
-            format!("{MEMBER}{}", wrap.key_id().as_str()).as_str(),
+            format!("{prefix}{}", wrap.key_id().as_str()).as_str(),
         ));
         parameters.push(bind(&format!("wrap{index}"), wrap.wrap().to_vec()));
     }
     (script, parameters)
+}
+
+/// The wraps an `INFO FOR RECIPIENTS` answer holds under `prefix`, by the key id after it.
+pub(crate) fn recipient_wraps(
+    answers: Vec<Answer>,
+    prefix: &str,
+    record: &'static str,
+) -> Result<Vec<(String, Vec<u8>)>> {
+    let unreadable = |what: &str| Error::Unreadable {
+        record,
+        reason: format!("{what} did not read back as written"),
+    };
+    let Some(Answer::Value {
+        value: Value::Object(mut answer),
+        ..
+    }) = answers.into_iter().last()
+    else {
+        return Err(unreadable("recipients"));
+    };
+    let Some(Value::Object(named)) = answer.remove("recipients") else {
+        return Err(unreadable("recipients"));
+    };
+    named
+        .into_iter()
+        .filter_map(|(name, material)| {
+            name.strip_prefix(prefix).map(|key| match material {
+                Value::Bytes(wrap) => Ok((key.to_owned(), wrap)),
+                _ => Err(unreadable("a wrap")),
+            })
+        })
+        .collect()
 }
 
 #[async_trait]
@@ -97,25 +125,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
             .run_presenting(place, &script, parameters, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
-        let Some(Answer::Value {
-            value: Value::Object(mut answer),
-            ..
-        }) = answers.into_iter().last()
-        else {
-            return Err(unreadable("recipients"));
-        };
-        let Some(Value::Object(named)) = answer.remove("recipients") else {
-            return Err(unreadable("recipients"));
-        };
-        named
-            .into_iter()
-            .filter_map(|(name, material)| {
-                name.strip_prefix(MEMBER).map(|key| match material {
-                    Value::Bytes(wrap) => Ok((key.to_owned(), wrap)),
-                    _ => Err(unreadable("a wrap")),
-                })
-            })
-            .collect()
+        recipient_wraps(answers, MEMBER, "group key")
     }
 
     async fn keep(
@@ -128,7 +138,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
         vault_key: VaultKey,
     ) -> Result<()> {
         let vault = RecordVaults::name(company);
-        let (added, wraps) = recipients(&vault, key.wraps());
+        let (added, wraps) = recipients(&vault, MEMBER, key.wraps());
         guard.extend(wraps);
         guard.extend([
             bind("company", company.as_str()),
@@ -160,7 +170,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
         vault_key: VaultKey,
     ) -> Result<()> {
         let vault = RecordVaults::name(company);
-        let (added, wraps) = recipients(&vault, key.wraps());
+        let (added, wraps) = recipients(&vault, MEMBER, key.wraps());
         guard.extend(wraps);
         guard.extend([
             bind("company", company.as_str()),
@@ -195,7 +205,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
         vault_key: VaultKey,
     ) -> Result<()> {
         let vault = RecordVaults::name(company);
-        let (added, parameters) = recipients(&vault, wraps);
+        let (added, parameters) = recipients(&vault, MEMBER, wraps);
         guard.extend(parameters);
         guard.push(bind("vid", vid(group).as_str()));
         let script = format!("BEGIN; {GUARD}{added} {RECORD} COMMIT;");

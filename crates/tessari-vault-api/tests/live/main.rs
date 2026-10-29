@@ -21,6 +21,7 @@ mod oidc;
 mod passkeys;
 mod record_types;
 mod records;
+mod recovery;
 mod revocation;
 mod rules;
 mod shares;
@@ -196,6 +197,17 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             manage,
             hidden,
         ),
+        // Owners keep the recovery key; every member reads its public half, and an owner their own wrap of it.
+        ("POST", "/api/companies/{company}/recovery-key") => row(
+            Some(
+                json!({ "key_id": "e1".repeat(16), "public": crate::records::encoded(&[0; 32]),
+                         "wraps": [] }),
+            ),
+            manage,
+            hidden,
+        ),
+        ("GET", "/api/companies/{company}/recovery-key") => row(None, None, hidden),
+        ("GET", "/api/companies/{company}/recovery-key/mine") => row(None, manage, hidden),
         ("GET", "/api/companies/{company}/groups/{group}/key") => row(None, None, hidden),
         ("GET", "/api/companies/{company}/groups/{group}/key/pending") => row(None, manage, hidden),
         ("POST", "/api/companies/{company}/groups/{group}/key/wraps") => {

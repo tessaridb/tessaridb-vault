@@ -77,7 +77,8 @@ DEFINE INDEX IF NOT EXISTS by_key ON group_keys FIELDS company, key_id UNIQUE; \
 DEFINE TABLE IF NOT EXISTS shares (company string, record string, target_kind string, target string, access string, \
 recipient string, by_account string, created int); \
 DEFINE INDEX IF NOT EXISTS by_record ON shares FIELDS record; \
-DEFINE INDEX IF NOT EXISTS by_target ON shares FIELDS company, target;";
+DEFINE INDEX IF NOT EXISTS by_target ON shares FIELDS company, target; \
+DEFINE TABLE IF NOT EXISTS recovery_keys (company string, key_id string, public string, created datetime);";
 
 /// Declare the namespace and database of `place` and everything in them that is missing.
 ///

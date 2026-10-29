@@ -247,6 +247,7 @@ pub(crate) fn thrown(error: Error) -> Error {
         ("stale revision", Conflict::StaleRevision),
         ("out of order", Conflict::OutOfOrder),
         ("keys exist", Conflict::KeysExist),
+        ("recovery keyed", Conflict::RecoveryKeyed),
         ("stale chain", Conflict::StaleChain),
         ("unknown key", Conflict::UnknownKey),
         ("no key", Conflict::NoKey),

@@ -8,7 +8,7 @@ import type { Vouched } from "./statements.ts";
 import { wrapSecret, type WrapContext } from "./wraps.ts";
 
 /** Whom a key is wrapped to. */
-export type Recipient = { kind: "member"; account: string } | { kind: "group"; group: string };
+export type Recipient = { kind: "member"; account: string } | { kind: "group"; group: string } | { kind: "recovery" };
 
 function vouchedKey(chain: Vouched, recipient: Recipient): Bytes | undefined {
   switch (recipient.kind) {
@@ -16,6 +16,8 @@ function vouchedKey(chain: Vouched, recipient: Recipient): Bytes | undefined {
       return chain.agreementKeyOf(recipient.account);
     case "group":
       return chain.groupKeyOf(recipient.group);
+    case "recovery":
+      return chain.recoveryKey()?.agreementPublic;
   }
 }
 

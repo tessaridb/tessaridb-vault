@@ -18,6 +18,7 @@ use crate::keys::{KeyService, TessaridbKeyRepository};
 use crate::passkeys::PasskeyService;
 use crate::record_types::{RecordTypeService, TessaridbRecordTypeRepository};
 use crate::records::{RecordService, RecordVaults, TessaridbRecordRepository};
+use crate::recovery::{RecoveryService, TessaridbRecoveryRepository};
 use crate::sessions::SessionService;
 use crate::shares::{Reach, ShareService, TessaridbShareRepository};
 use crate::signin::{SignInParts, SignInService};
@@ -58,6 +59,8 @@ pub struct Storage {
     pub identities: Arc<IdentityService>,
     /// Members' key sets.
     pub keys: Arc<KeyService>,
+    /// The company recovery keys.
+    pub recovery: Arc<RecoveryService>,
     /// Passkeys and their ceremonies.
     pub passkeys: Arc<PasskeyService>,
     /// Record types the company defined.
@@ -112,6 +115,12 @@ impl Storage {
         ));
         let group_keys = Arc::new(GroupKeyService::new(
             Arc::new(TessaridbGroupKeyRepository::new(database.clone())),
+            Arc::clone(&vaults),
+            database.clone(),
+            place.clone(),
+        ));
+        let recovery = Arc::new(RecoveryService::new(
+            Arc::new(TessaridbRecoveryRepository::new(database.clone())),
             Arc::clone(&vaults),
             database.clone(),
             place.clone(),
@@ -199,6 +208,7 @@ impl Storage {
             identities,
             keys,
             passkeys,
+            recovery,
             record_types,
             records,
             shares,

@@ -38,12 +38,16 @@ async function vouched(then: (add: (fields: StatementFields) => Promise<void>) =
   alice: Keys;
   team: CryptoKeyPair;
   teamPublic: Bytes;
+  rescue: CryptoKeyPair;
+  rescuePublic: Bytes;
   chain: Vouched;
 }> {
   const owner = await keys();
   const alice = await keys();
   const team = await generatePair("X25519");
   const teamPublic = await publicBytes(team.publicKey);
+  const rescue = await generatePair("X25519");
+  const rescuePublic = await publicBytes(rescue.publicKey);
   const statements: Statement[] = [];
   const add = async (fields: StatementFields): Promise<void> => {
     statements.push(await appendStatement(COMPANY, statements.at(-1), fields, owner.signer));
@@ -51,16 +55,18 @@ async function vouched(then: (add: (fields: StatementFields) => Promise<void>) =
   await add(member("owner", owner));
   await add(member("alice", alice));
   await add({ kind: "group", subject: "team-1", agreementPublic: teamPublic, signingPublic: new Uint8Array(0) });
+  await add({ kind: "recovery", subject: "cc".repeat(16), agreementPublic: rescuePublic, signingPublic: new Uint8Array(0) });
   await then(add);
-  return { alice, team, teamPublic, chain: await verifyChain(COMPANY, owner.signer.publicBytes, statements) };
+  return { alice, team, teamPublic, rescue, rescuePublic, chain: await verifyChain(COMPANY, owner.signer.publicBytes, statements) };
 }
 
-function context(recipientKind: "member" | "group"): WrapContext {
+function context(recipientKind: "member" | "group" | "recovery"): WrapContext {
   return { company: COMPANY, wrappedKind: "record", wrappedKeyId: noise(16), recipientKind, recipientKeyId: noise(16) };
 }
 
 const ALICE: Recipient = { kind: "member", account: "alice" };
 const TEAM: Recipient = { kind: "group", group: "team-1" };
+const RESCUE: Recipient = { kind: "recovery" };
 
 describe("wrapping to a recipient", () => {
   it("wraps to the member key and the group key the chain vouches for", async () => {
@@ -72,6 +78,16 @@ describe("wrapping to a recipient", () => {
     const toTeam = context("group");
     const teamWrap = await wrapToVouched(chain, TEAM, teamPublic, toTeam, secret);
     assert.equal(toHex(await unwrapSecret(team.privateKey, teamPublic, toTeam, teamWrap)), toHex(secret));
+  });
+
+  it("wraps a member's keys to the recovery key the owner vouched, and to no other", async () => {
+    const { rescue, rescuePublic, chain } = await vouched();
+    const secret = noise(32);
+    const toRescue = context("recovery");
+    const wrap = await wrapToVouched(chain, RESCUE, rescuePublic, toRescue, secret);
+    assert.equal(toHex(await unwrapSecret(rescue.privateKey, rescuePublic, toRescue, wrap)), toHex(secret));
+    const substituted = await publicBytes((await generatePair("X25519")).publicKey);
+    await refusedWith(wrapToVouched(chain, RESCUE, substituted, toRescue, secret), "unvouched-recipient");
   });
 
   it("refuses a key the server lists in place of the vouched one", async () => {

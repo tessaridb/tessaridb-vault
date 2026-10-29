@@ -14,16 +14,17 @@ import { sign, verify } from "./signatures.ts";
 
 const KEY_BYTES = 32;
 const DIGEST_BYTES = 32;
-const KINDS = ["member", "admin", "group", "revoke"] as const;
+// New kinds go at the end: a kind is encoded by its position.
+const KINDS = ["member", "admin", "group", "revoke", "recovery"] as const;
 
 export type StatementKind = (typeof KINDS)[number];
 
 /** What a statement says; the chain position and the signer are added by `appendStatement`. */
 export interface StatementFields {
   kind: StatementKind;
-  /** An account id (member, admin, revoke) or a group id (group, revoke). */
+  /** An account id (member, admin, revoke), a group id (group, revoke) or a recovery key id in hex (recovery). */
   subject: string;
-  /** The subject's X25519 public key: required for member and group, empty otherwise. */
+  /** The subject's X25519 public key: required for member, group and recovery, empty otherwise. */
   agreementPublic: Bytes;
   /** The subject's Ed25519 public key: required for member, empty otherwise. */
   signingPublic: Bytes;
@@ -51,14 +52,26 @@ interface MemberKeys {
   signing: Bytes;
 }
 
-/** The keys a verified chain vouches for, by account or group id. */
+/** The company recovery key: only the owner key vouches for one, and the latest statement stands. */
+export interface RecoveryKey {
+  keyId: string;
+  agreementPublic: Bytes;
+}
+
+/** The keys a verified chain vouches for, by account or group id, and the company recovery key. */
 export class Vouched {
   readonly #members: ReadonlyMap<string, MemberKeys>;
   readonly #groups: ReadonlyMap<string, Bytes>;
+  readonly #recovery: RecoveryKey | undefined;
 
-  constructor(members: ReadonlyMap<string, MemberKeys>, groups: ReadonlyMap<string, Bytes>) {
+  constructor(members: ReadonlyMap<string, MemberKeys>, groups: ReadonlyMap<string, Bytes>, recovery?: RecoveryKey) {
     this.#members = members;
     this.#groups = groups;
+    this.#recovery = recovery;
+  }
+
+  recoveryKey(): RecoveryKey | undefined {
+    return this.#recovery;
   }
 
   signingKeyOf(account: string): Bytes | undefined {
@@ -146,6 +159,7 @@ function hasShape(statement: Decoded): boolean {
     case "member":
       return agreement === KEY_BYTES && signing === KEY_BYTES;
     case "group":
+    case "recovery":
       return agreement === KEY_BYTES && signing === 0;
     case "admin":
     case "revoke":
@@ -169,6 +183,7 @@ export async function verifyChain(company: string, ownerSigningPublic: Bytes, ch
     }
     return members.delete(subject);
   };
+  let recovery: RecoveryKey | undefined;
   let expectedPrev: Bytes = new Uint8Array(DIGEST_BYTES);
   let ownerAccount = "";
   for (const [index, statement] of chain.entries()) {
@@ -203,6 +218,13 @@ export async function verifyChain(company: string, ownerSigningPublic: Bytes, ch
       case "group":
         groups.set(decoded.subject, decoded.agreementPublic);
         break;
+      case "recovery":
+        // Escrow to this key reaches every member's keys, so no admin may name it.
+        if (!byOwner) {
+          throw new VaultCryptoError("unvouched-signer");
+        }
+        recovery = { keyId: decoded.subject, agreementPublic: decoded.agreementPublic };
+        break;
       case "revoke":
         if (decoded.subject === ownerAccount || (!forget(decoded.subject) && !groups.delete(decoded.subject))) {
           throw new VaultCryptoError("chain-broken");
@@ -211,5 +233,5 @@ export async function verifyChain(company: string, ownerSigningPublic: Bytes, ch
     }
     expectedPrev = await digest(statement);
   }
-  return new Vouched(members, groups);
+  return new Vouched(members, groups, recovery);
 }
