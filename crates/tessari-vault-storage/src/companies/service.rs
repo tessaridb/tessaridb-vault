@@ -17,6 +17,7 @@ use crate::enrolments::{EnrolmentService, EnrolmentToken};
 use crate::records::RecordVaults;
 use crate::{Error, Result};
 
+#[path = "service_members.rs"]
 mod members;
 
 /// Companies and memberships.
