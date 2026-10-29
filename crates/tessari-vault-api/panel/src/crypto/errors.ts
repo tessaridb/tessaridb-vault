@@ -10,6 +10,7 @@ export type Refusal =
   | "unauthentic"
   | "wrap-bound"
   | "unvouched-signer"
+  | "unvouched-recipient"
   | "chain-broken"
   | "bad-signature"
   | "weak-shared-secret"
