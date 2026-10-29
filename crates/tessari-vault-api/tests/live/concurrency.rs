@@ -86,3 +86,36 @@ async fn concurrent_requests_on_one_company_all_answer() {
         assert_eq!(status, StatusCode::CREATED, "a concurrent change: {body}");
     }
 }
+
+/// One counter taken by many requests at once — one address sending in parallel — answers every one of them and
+/// lets exactly the limit through: a write the store refused for contention is sent again rather than refused.
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn one_throttle_counter_taken_at_once_answers_every_request_and_counts_each() {
+    // On disk, where a commit waits for the drive and contending writes overlap; three rounds, kept small so the
+    // suite's other binaries still start beside it.
+    let directory = std::env::temp_dir().join(format!("vault-throttle-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    let world = World::on_disk(&directory).await;
+    let limit = 20_u32;
+    for round in 0..3 {
+        let key = format!("probe:{round}");
+        let mut running = tokio::task::JoinSet::new();
+        for _ in 0..64 {
+            let throttle = std::sync::Arc::clone(&world.storage.throttle);
+            let key = key.clone();
+            running.spawn(async move { throttle.allow(&key, limit).await });
+        }
+        let mut allowed = 0;
+        while let Some(done) = running.join_next().await {
+            let answered = done.expect("the call ran");
+            assert!(answered.is_ok(), "round {round}: {answered:?}");
+            if answered.is_ok_and(|through| through) {
+                allowed += 1;
+            }
+        }
+        assert_eq!(allowed, limit, "round {round}");
+    }
+    drop(world);
+    let _ = std::fs::remove_dir_all(&directory);
+}

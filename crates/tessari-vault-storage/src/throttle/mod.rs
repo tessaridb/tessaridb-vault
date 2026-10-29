@@ -33,20 +33,26 @@ impl ThrottleService {
             seconds: i64::try_from(RATE_WINDOW_SECONDS).unwrap_or(i64::MAX),
             nanos: 0,
         };
+        // Requests from one address at once contend on this counter, and the store refuses the loser rather than
+        // waiting: the pair is sent again, which counts once because `SET … IF ABSENT` changes nothing a second time.
         let answers = self
             .database
-            .run_at(
+            .run_again_at(
                 &self.place,
                 "SET throttles:$key = 0 IF ABSENT EXPIRE $window; INCR throttles:$key;",
                 vec![bind("key", key), ("window".to_owned(), window)],
             )
             .await?;
-        match answers.into_iter().nth(1) {
-            Some(Answer::Value {
+        let counted = answers.into_iter().rev().find_map(|answer| match answer {
+            Answer::Value {
                 value: Value::Number(Number::Integer(count)),
                 ..
-            }) => Ok(count <= i64::from(limit)),
-            _ => Err(Error::Unreadable {
+            } => Some(count),
+            _ => None,
+        });
+        match counted {
+            Some(count) => Ok(count <= i64::from(limit)),
+            None => Err(Error::Unreadable {
                 record: "throttle",
                 reason: "a counter answered something other than a count".to_owned(),
             }),

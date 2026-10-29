@@ -82,6 +82,24 @@ impl Database {
             .await
     }
 
+    /// Run `script`, each statement of which may be sent again without changing what it did — a counter set if
+    /// absent, then incremented — at `place`, sending it again while the store answers `retry`: the statement it
+    /// refused wrote nothing, and the ones before it change nothing a second time.
+    ///
+    /// # Errors
+    ///
+    /// As [`Database::transact_at`].
+    pub async fn run_again_at(
+        &self,
+        place: &Place,
+        script: &str,
+        parameters: Vec<(String, Value)>,
+    ) -> Result<Vec<Answer>> {
+        let preamble = place.preamble();
+        self.until_landed(&bound(format!("{preamble} {script}"), parameters))
+            .await
+    }
+
     async fn each_until_landed(
         &self,
         requests: impl Iterator<Item = Request>,
