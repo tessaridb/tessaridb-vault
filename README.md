@@ -63,7 +63,9 @@ exist.
    a strict content security policy and will publish the hash of every release's assets so that a change can be
    noticed, but a web client cannot prove to you that it is honest.
 3. **The server host.** Someone with control of the host can read the database-side keys and session tokens in the
-   service's memory and see everything in item 5. Without your unlock password they still cannot decrypt a record.
+   service's memory, the sign-in passwords people send while they hold it (a request's bytes stay in memory until
+   later requests reuse it), and everything in item 5. Without your unlock password, which never reaches the
+   server, they still cannot decrypt a record.
 4. **Your company's owners and admins.** Owners hold the company's recovery key, so they can restore any member's
    access and can therefore read every record shared with members of that company. Admins hold the keys of the
    company's departments and teams, so they can read every record shared with a department, a team or the whole
