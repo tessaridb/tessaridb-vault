@@ -347,7 +347,12 @@ pub struct Cast {
     pub member_a_key: String,
 }
 
-async fn company(world: &World, platform: &str, name: &str, owner: &str) -> (String, String) {
+pub(crate) async fn company(
+    world: &World,
+    platform: &str,
+    name: &str,
+    owner: &str,
+) -> (String, String) {
     let (status, body) = world
         .call(
             Method::POST,

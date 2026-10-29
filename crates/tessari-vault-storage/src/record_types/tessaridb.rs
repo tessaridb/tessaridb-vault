@@ -49,7 +49,8 @@ impl RecordTypeRepository for TessaridbRecordTypeRepository {
             .database
             .run_at(
                 place,
-                "SELECT * FROM record_types WHERE type_id = $type AND company = $company USING INDEX by_id;",
+                // By address, as records are read.
+                "SELECT * FROM (SELECT * FROM record_types:$type LIMIT 2) WHERE company = $company;",
                 vec![bind("type", id.as_str()), bind("company", company.as_str())],
             )
             .await?;

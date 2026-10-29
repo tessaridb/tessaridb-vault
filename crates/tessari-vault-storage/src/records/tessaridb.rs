@@ -149,7 +149,9 @@ impl RecordRepository for TessaridbRecordRepository {
             .database
             .run_at(
                 place,
-                "SELECT * FROM records WHERE record_id = $record AND company = $company USING INDEX by_id;",
+                // By address, which no index can stand in for; an address holds one record, so a ceiling of two
+                // is never reached.
+                "SELECT * FROM (SELECT * FROM records:$record LIMIT 2) WHERE company = $company;",
                 vec![
                     bind("record", record.as_str()),
                     bind("company", company.as_str()),

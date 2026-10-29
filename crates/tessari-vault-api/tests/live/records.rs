@@ -91,7 +91,7 @@ fn new_record(body: &[u8]) -> serde_json::Value {
     })
 }
 
-fn revision(expected: i64, body: &[u8]) -> serde_json::Value {
+pub(crate) fn revision(expected: i64, body: &[u8]) -> serde_json::Value {
     serde_json::json!({
         "revision": expected,
         "key_id": "33".repeat(16),

@@ -77,8 +77,8 @@ impl FileRepository for TessaridbFiles {
             .database
             .run_at(
                 place,
-                "SELECT * FROM files WHERE file_id = $file AND record = $record AND company = $company \
-                 USING INDEX by_id;",
+                // By address, as records are read.
+                "SELECT * FROM (SELECT * FROM files:$file LIMIT 2) WHERE record = $record AND company = $company;",
                 located(at),
             )
             .await?;

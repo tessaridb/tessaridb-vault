@@ -14,6 +14,7 @@ mod canaries;
 mod enrolment;
 mod files;
 mod group_keys;
+mod identity_reads;
 mod issuer;
 mod keyed_vault;
 mod keys;

@@ -63,8 +63,8 @@ impl GroupRepository for TessaridbGroupRepository {
             .database
             .run_at(
                 place,
-                "SELECT * FROM groups WHERE group_id = $group AND company = $company AND kind != 'company' \
-                 USING INDEX by_id;",
+                // By address, as records are read.
+                "SELECT * FROM (SELECT * FROM groups:$group LIMIT 2) WHERE company = $company AND kind != 'company';",
                 vec![bind("group", group.as_str()), bind("company", company.as_str())],
             )
             .await?;
