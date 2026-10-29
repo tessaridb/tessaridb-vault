@@ -17,10 +17,10 @@ use crate::{Conflict, Error, Result};
 
 /// The company recovery key.
 pub struct RecoveryService {
-    repository: Arc<dyn RecoveryRepository>,
-    vaults: Arc<RecordVaults>,
-    database: Database,
-    place: Place,
+    pub(super) repository: Arc<dyn RecoveryRepository>,
+    pub(super) vaults: Arc<RecordVaults>,
+    pub(super) database: Database,
+    pub(super) place: Place,
 }
 
 impl RecoveryService {

@@ -4,12 +4,14 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use tessari_vault_constants::MAX_WRAPPED_KEYS_BYTES;
 use tessari_vault_storage::group_keys::NewGroupKey;
+use tessari_vault_storage::recovery::Notice;
 use tessari_vault_types::base64url;
 
-use super::company_id;
 use super::group_keys::{GroupKeyBody, decoded, key_id, wraps};
+use super::{account_id, company_id};
 use crate::ApiError;
 use crate::caller::{Body, Caller};
 use crate::state::AppState;
@@ -24,6 +26,35 @@ pub(crate) struct RecoveryKeyItem {
 pub(crate) struct OwnWrap {
     key_id: String,
     wrap: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Escrow {
+    recovery_key_id: String,
+    wrap: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct NoticeItem {
+    by: String,
+    kind: String,
+    at: i64,
+}
+
+impl From<Notice> for NoticeItem {
+    fn from(notice: Notice) -> Self {
+        Self {
+            by: notice.by.to_string(),
+            kind: notice.kind,
+            at: notice.at,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub(crate) struct Notices {
+    notices: Vec<NoticeItem>,
 }
 
 pub(crate) async fn keep(
@@ -66,5 +97,54 @@ pub(crate) async fn mine(
     Ok(Json(OwnWrap {
         key_id: key_id.to_string(),
         wrap: base64url::encode(&wrap),
+    }))
+}
+
+pub(crate) async fn escrow(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(company): Path<String>,
+    Body(body): Body<Escrow>,
+) -> Result<StatusCode, ApiError> {
+    let company = company_id(&company)?;
+    let wrap = decoded(&body.wrap)?;
+    if wrap.is_empty() || wrap.len() > MAX_WRAPPED_KEYS_BYTES {
+        return Err(ApiError::INVALID);
+    }
+    state
+        .storage
+        .recovery
+        .escrow(&actor, &company, &key_id(&body.recovery_key_id)?, &wrap)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(crate) async fn escrow_of(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path((company, account)): Path<(String, String)>,
+) -> Result<Json<Escrow>, ApiError> {
+    let company = company_id(&company)?;
+    let account = account_id(&account)?;
+    let (key_id, wrap) = state
+        .storage
+        .recovery
+        .escrow_of(&actor, &company, &account)
+        .await?;
+    Ok(Json(Escrow {
+        recovery_key_id: key_id.to_string(),
+        wrap: base64url::encode(&wrap),
+    }))
+}
+
+pub(crate) async fn notices(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(company): Path<String>,
+) -> Result<Json<Notices>, ApiError> {
+    let company = company_id(&company)?;
+    let notices = state.storage.recovery.notices(&actor, &company).await?;
+    Ok(Json(Notices {
+        notices: notices.into_iter().map(NoticeItem::from).collect(),
     }))
 }

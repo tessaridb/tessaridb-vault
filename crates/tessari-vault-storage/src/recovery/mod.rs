@@ -2,10 +2,11 @@
 //! wraps to the owners' own key sets; the server keeps the public half and the wraps, never the key.
 
 mod entity;
+mod escrow;
 mod repository;
 mod service;
 mod tessaridb;
 
-pub use entity::RecoveryKey;
+pub use entity::{Notice, RecoveryKey};
 pub use service::RecoveryService;
 pub(crate) use tessaridb::TessaridbRecoveryRepository;

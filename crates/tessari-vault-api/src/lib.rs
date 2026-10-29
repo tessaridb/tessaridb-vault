@@ -3,6 +3,7 @@
 mod caller;
 mod error;
 mod handlers;
+mod key_routes;
 mod routes;
 mod state;
 

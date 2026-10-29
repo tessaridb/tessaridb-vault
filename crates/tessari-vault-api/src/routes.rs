@@ -9,9 +9,10 @@ use axum::http::Method;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handlers::{
-    audit, companies, enrolment, files, group_keys, groups, keys, members, oidc, passkeys,
-    record_types, records, recovery, shares, sign_in,
+    audit, companies, enrolment, files, groups, members, oidc, passkeys, record_types, records,
+    shares, sign_in,
 };
+use crate::key_routes;
 use crate::state::AppState;
 use tessari_vault_constants::FILE_PART_MAX_BYTES;
 
@@ -24,7 +25,7 @@ pub struct Route {
     handler: MethodRouter<AppState>,
 }
 
-fn route(method: Method, path: &'static str, handler: MethodRouter<AppState>) -> Route {
+pub(crate) fn route(method: Method, path: &'static str, handler: MethodRouter<AppState>) -> Route {
     Route {
         method,
         path,
@@ -35,7 +36,7 @@ fn route(method: Method, path: &'static str, handler: MethodRouter<AppState>) ->
 /// Every route the API serves.
 #[must_use]
 pub fn routes() -> Vec<Route> {
-    vec![
+    let mut table = vec![
         route(Method::GET, "/api/me", get(companies::me)),
         route(Method::GET, "/api/companies", get(companies::list)),
         route(Method::POST, "/api/companies", post(companies::create)),
@@ -194,66 +195,6 @@ pub fn routes() -> Vec<Route> {
         ),
         route(
             Method::POST,
-            "/api/companies/{company}/recovery-key",
-            post(recovery::keep),
-        ),
-        route(
-            Method::GET,
-            "/api/companies/{company}/recovery-key",
-            get(recovery::read),
-        ),
-        route(
-            Method::GET,
-            "/api/companies/{company}/recovery-key/mine",
-            get(recovery::mine),
-        ),
-        route(
-            Method::PUT,
-            "/api/companies/{company}/groups/{group}/key",
-            put(group_keys::keep),
-        ),
-        route(
-            Method::GET,
-            "/api/companies/{company}/groups/{group}/key",
-            get(group_keys::read),
-        ),
-        route(
-            Method::GET,
-            "/api/companies/{company}/groups/{group}/key/pending",
-            get(group_keys::pending),
-        ),
-        route(
-            Method::POST,
-            "/api/companies/{company}/groups/{group}/key/wraps",
-            post(group_keys::add_wraps),
-        ),
-        route(
-            Method::PUT,
-            "/api/companies/{company}/keys/me",
-            put(keys::keep),
-        ),
-        route(
-            Method::GET,
-            "/api/companies/{company}/keys/me",
-            get(keys::mine),
-        ),
-        route(
-            Method::GET,
-            "/api/companies/{company}/keys",
-            get(keys::directory),
-        ),
-        route(
-            Method::GET,
-            "/api/companies/{company}/statements",
-            get(keys::chain),
-        ),
-        route(
-            Method::POST,
-            "/api/companies/{company}/statements",
-            post(keys::append),
-        ),
-        route(
-            Method::POST,
             "/api/companies/{company}/records/{record}/files",
             post(files::create),
         ),
@@ -267,7 +208,9 @@ pub fn routes() -> Vec<Route> {
             "/api/companies/{company}/records/{record}/files/{file}",
             get(files::read),
         ),
-    ]
+    ];
+    table.extend(key_routes::routes());
+    table
 }
 
 /// The largest file part a request body may carry.

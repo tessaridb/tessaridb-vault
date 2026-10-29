@@ -4,10 +4,17 @@ use async_trait::async_trait;
 use tessari_vault_infrastructure::tessaridb::{Place, Value, VaultKey};
 use tessari_vault_types::{AccountId, CompanyId};
 
-use super::entity::RecoveryKeyEntity;
+use super::entity::{NoticeEntity, RecoveryKeyEntity};
 use crate::Result;
 use crate::group_keys::NewGroupKey;
 use crate::keys::KeyEntity;
+
+/// A member's private keys wrapped by their browser to the recovery key `recovery_key_id`.
+pub(crate) struct Escrowed<'a> {
+    pub(crate) account: &'a AccountId,
+    pub(crate) recovery_key_id: &'a str,
+    pub(crate) wrap: &'a [u8],
+}
 
 #[async_trait]
 pub(crate) trait RecoveryRepository: Send + Sync {
@@ -43,4 +50,32 @@ pub(crate) trait RecoveryRepository: Send + Sync {
         company: &CompanyId,
         account: &AccountId,
     ) -> Result<Option<String>>;
+
+    /// Keep a member's escrow, replacing an earlier one.
+    async fn keep_escrow(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        company: &CompanyId,
+        escrow: Escrowed<'_>,
+        vault_key: VaultKey,
+    ) -> Result<()>;
+
+    /// `account`'s escrow, read by `by`: the read and a notice to `account` commit before it is opened.
+    async fn read_escrow(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        company: &CompanyId,
+        account: &AccountId,
+        vault_key: VaultKey,
+    ) -> Result<(String, Vec<u8>)>;
+
+    /// The notices about `account` in the company, oldest first.
+    async fn notices(
+        &self,
+        place: &Place,
+        company: &CompanyId,
+        account: &AccountId,
+    ) -> Result<Vec<NoticeEntity>>;
 }
