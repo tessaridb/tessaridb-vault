@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tessari_vault_infrastructure::tessaridb::{Place, Value, VaultKey};
 use tessari_vault_types::{AccountId, CompanyId};
 
-use super::entity::{NoticeEntity, RecoveryKeyEntity};
+use super::entity::{EscrowEntity, NoticeEntity, RecoveryKeyEntity};
 use crate::Result;
 use crate::group_keys::NewGroupKey;
 use crate::keys::KeyEntity;
@@ -60,6 +60,14 @@ pub(crate) trait RecoveryRepository: Send + Sync {
         escrow: Escrowed<'_>,
         vault_key: VaultKey,
     ) -> Result<()>;
+
+    /// `account`'s escrow row, if they keep one: the recovery key it is wrapped to, never the wrap.
+    async fn escrow_row(
+        &self,
+        place: &Place,
+        company: &CompanyId,
+        account: &AccountId,
+    ) -> Result<Option<EscrowEntity>>;
 
     /// `account`'s escrow, read by `by`: the read and a notice to `account` commit before it is opened.
     async fn read_escrow(

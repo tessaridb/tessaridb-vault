@@ -63,6 +63,31 @@ impl RecoveryService {
             .await
     }
 
+    /// The recovery key the caller's own escrow is wrapped to, so their browser escrows again only when it moved.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Refused`] per the decision; [`Error::NotFound`] when the caller keeps no escrow here.
+    pub async fn escrowed_to(&self, actor: &Actor, company: &CompanyId) -> Result<KeyId> {
+        access::authorize(
+            &self.database,
+            &self.place,
+            actor,
+            company,
+            Action::KeepKeys,
+        )
+        .await?;
+        let row = self
+            .repository
+            .escrow_row(&self.place, company, actor.account())
+            .await?
+            .ok_or(Error::NotFound)?;
+        KeyId::parse(&row.recovery_key_id).map_err(|_| Error::Unreadable {
+            record: "escrow",
+            reason: "the recovery key id did not read back as written".to_owned(),
+        })
+    }
+
     /// `account`'s escrow and the recovery key it is wrapped to, for an owner; `account` is told.
     ///
     /// # Errors

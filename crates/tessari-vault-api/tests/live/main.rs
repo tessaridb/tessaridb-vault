@@ -236,12 +236,14 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ),
         ("GET", "/api/companies/{company}/recovery-key") => row(None, None, hidden),
         ("GET", "/api/companies/{company}/recovery-key/mine") => row(None, manage, hidden),
-        // A member escrows their own keys; only an owner reads an escrow; each member reads the notices about them.
+        // A member escrows their own keys and reads which key they escrowed to; only an owner reads an escrow; each
+        // member reads the notices about them.
         ("PUT", "/api/companies/{company}/keys/me/escrow") => row(
             Some(json!({ "recovery_key_id": "e1".repeat(16), "wrap": "AA" })),
             None,
             hidden,
         ),
+        ("GET", "/api/companies/{company}/keys/me/escrow") => row(None, None, hidden),
         ("GET", "/api/companies/{company}/keys/{account}/escrow") => row(None, manage, hidden),
         ("GET", "/api/companies/{company}/notices/me") => row(None, None, hidden),
         // A member asks and redeems their own request; only an owner lists and hands one over.

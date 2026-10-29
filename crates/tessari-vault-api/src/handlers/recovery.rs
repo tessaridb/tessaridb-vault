@@ -119,6 +119,23 @@ pub(crate) async fn escrow(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Serialize)]
+pub(crate) struct OwnEscrow {
+    recovery_key_id: String,
+}
+
+pub(crate) async fn own_escrow(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(company): Path<String>,
+) -> Result<Json<OwnEscrow>, ApiError> {
+    let company = company_id(&company)?;
+    let key_id = state.storage.recovery.escrowed_to(&actor, &company).await?;
+    Ok(Json(OwnEscrow {
+        recovery_key_id: key_id.to_string(),
+    }))
+}
+
 pub(crate) async fn escrow_of(
     State(state): State<AppState>,
     Caller(actor): Caller,

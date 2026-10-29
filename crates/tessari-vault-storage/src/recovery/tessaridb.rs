@@ -6,7 +6,7 @@ use tessari_vault_constants::KEY_LIST_MAX;
 use tessari_vault_infrastructure::tessaridb::{Answer, Database, Place, Value, VaultKey};
 use tessari_vault_types::{AccountId, CompanyId, base64url};
 
-use super::entity::{NoticeEntity, RecoveryKeyEntity};
+use super::entity::{EscrowEntity, NoticeEntity, RecoveryKeyEntity};
 use super::repository::{Escrowed, RecoveryRepository};
 use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
@@ -166,6 +166,23 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
+    }
+
+    async fn escrow_row(
+        &self,
+        place: &Place,
+        company: &CompanyId,
+        account: &AccountId,
+    ) -> Result<Option<EscrowEntity>> {
+        let answers = self
+            .database
+            .read_at(
+                place,
+                "SELECT recovery_key_id FROM escrows:$keys;",
+                vec![bind("keys", membership_id(company, account).as_str())],
+            )
+            .await?;
+        answers::single(answers, "escrow")
     }
 
     async fn read_escrow(

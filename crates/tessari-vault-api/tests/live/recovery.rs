@@ -243,6 +243,35 @@ async fn only_an_owner_reads_an_escrow_and_only_to_the_standing_key() {
     assert!(notices(&world, &cast, &cast.member_a).await.is_empty());
 }
 
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_member_reads_which_key_their_own_escrow_is_wrapped_to() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let mine = escrow_path(&cast, "me");
+    let own = |caller| world.call(Method::GET, &mine, Some(caller), None);
+    let (status, refused) = own(&cast.member_a).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{refused}");
+    keyed(&world, &cast).await;
+    let escrow = json!({ "recovery_key_id": "e1".repeat(16), "wrap": encoded(&[0xe3; 160]) });
+    let (status, body) = world
+        .call(
+            Method::PUT,
+            &escrow_path(&cast, "me"),
+            Some(&cast.member_a),
+            Some(escrow),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (status, read) = own(&cast.member_a).await;
+    assert_eq!(status, StatusCode::OK, "{read}");
+    assert_eq!(read, json!({ "recovery_key_id": "e1".repeat(16) }));
+    // Another member's escrow is not the caller's, and asking leaves nobody a notice.
+    let (status, refused) = own(&cast.admin_a).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{refused}");
+    assert!(notices(&world, &cast, &cast.member_a).await.is_empty());
+}
+
 fn requests_path(cast: &Cast, tail: &str) -> String {
     format!("/api/companies/{}/recovery-requests{tail}", cast.company_a)
 }

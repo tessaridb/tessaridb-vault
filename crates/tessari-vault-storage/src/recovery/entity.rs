@@ -21,6 +21,20 @@ impl FromRecord for RecoveryKeyEntity {
     }
 }
 
+/// A member's `escrows` row: which recovery key their escrow is wrapped to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EscrowEntity {
+    pub(crate) recovery_key_id: String,
+}
+
+impl FromRecord for EscrowEntity {
+    fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
+        Ok(Self {
+            recovery_key_id: row.take("recovery_key_id")?,
+        })
+    }
+}
+
 /// The company's recovery key as a member reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveryKey {

@@ -32,6 +32,11 @@ pub(crate) fn routes() -> Vec<Route> {
         ),
         route(
             Method::GET,
+            "/api/companies/{company}/keys/me/escrow",
+            get(recovery::own_escrow),
+        ),
+        route(
+            Method::GET,
             "/api/companies/{company}/keys/{account}/escrow",
             get(recovery::escrow_of),
         ),
