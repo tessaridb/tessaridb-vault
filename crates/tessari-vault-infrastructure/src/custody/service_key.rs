@@ -51,7 +51,20 @@ impl hkdf::KeyType for KeyLength {
     }
 }
 
-const fn refuse(reason: &'static str) -> Error {
+/// The bytes of `path`, refused unless only its owner can read it.
+pub(super) fn read_private(path: &Path) -> Result<Zeroizing<Vec<u8>>> {
+    let metadata = std::fs::metadata(path).map_err(|_| refuse("the file cannot be read"))?;
+    if metadata.permissions().mode() & OTHERS_MASK != 0 {
+        return Err(refuse(
+            "readable by group or others; it must be mode 600 or 400",
+        ));
+    }
+    Ok(Zeroizing::new(
+        std::fs::read(path).map_err(|_| refuse("the file cannot be read"))?,
+    ))
+}
+
+pub(super) const fn refuse(reason: &'static str) -> Error {
     Error::InvalidConfig {
         field: VARIABLE,
         reason,
@@ -66,15 +79,12 @@ impl ServiceKey {
     /// [`Error::InvalidConfig`] for `TESSARIDB_VAULT_SERVICE_KEY_FILE` when the file cannot be read, any group or
     /// other permission bit is set, or it is not 64 hexadecimal characters with at most one trailing newline.
     pub fn load(path: &Path) -> Result<Self> {
-        let metadata = std::fs::metadata(path).map_err(|_| refuse("the file cannot be read"))?;
-        if metadata.permissions().mode() & OTHERS_MASK != 0 {
-            return Err(refuse(
-                "readable by group or others; it must be mode 600 or 400",
-            ));
-        }
-        let text =
-            Zeroizing::new(std::fs::read(path).map_err(|_| refuse("the file cannot be read"))?);
-        let digits = text.strip_suffix(b"\n").unwrap_or(&text);
+        let text = read_private(path)?;
+        Self::parse(text.strip_suffix(b"\n").unwrap_or(&text))
+    }
+
+    /// The key 64 hexadecimal `digits` spell.
+    pub(super) fn parse(digits: &[u8]) -> Result<Self> {
         let shape = "64 hexadecimal characters, as `openssl rand -hex 32` writes";
         if digits.len() != SERVICE_KEY_BYTES.saturating_mul(2) {
             return Err(refuse(shape));
