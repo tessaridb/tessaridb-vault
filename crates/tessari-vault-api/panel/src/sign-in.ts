@@ -18,8 +18,8 @@ import {
   type PasskeyRequest,
 } from "./sign-in-model.ts";
 
-/** The card every step of signing in is drawn in. */
-function card(title: string, lead: string, ...body: HTMLElement[]): HTMLElement {
+/** The card every step of signing in, and of joining, is drawn in. */
+export function card(title: string, lead: string, ...body: HTMLElement[]): HTMLElement {
   return el(
     "div",
     { class: "gate" },

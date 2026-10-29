@@ -4064,23 +4064,70 @@ ${END}
     return el("div", { class: "choice" }, radio, el("label", { for: id }, row2.name, el("span", { class: "detail" }, KIND_WORDS2[row2.kind])));
   }
 
-  // src/sign-in-model.ts
+  // src/join-model.ts
   var isRecord9 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  function readMethods(v) {
+  function readAuthenticator(v) {
     if (!isRecord9(v)) {
+      return null;
+    }
+    const { secret, uri } = v;
+    return typeof secret === "string" && secret !== "" && typeof uri === "string" && uri.startsWith("otpauth://totp/") ? { secret, uri } : null;
+  }
+  var groupedKey = (secret) => (secret.match(/.{1,4}/g) ?? []).join(" ");
+  function tokenFrom(typed) {
+    const text3 = typed.trim();
+    const at2 = text3.indexOf("token=");
+    if (at2 < 0) {
+      return text3;
+    }
+    const carried = text3.slice(at2 + "token=".length).split("&")[0] ?? "";
+    try {
+      return decodeURIComponent(carried);
+    } catch {
+      return carried;
+    }
+  }
+  function passwordProblem(password, again) {
+    const length = [...password.normalize("NFC")].length;
+    if (length < 8 || length > 256) {
+      return "A sign-in password is 8 to 256 characters.";
+    }
+    return password === again ? null : "The two passwords don't match. Type the same one twice.";
+  }
+  function joinFailure(failure) {
+    switch (failure.code) {
+      case "not_found":
+        return "This link was used already or has expired. Ask your admin for a new one.";
+      case "wrong_code":
+        return "That code didn't match. Use the newest code from your authenticator app.";
+      case "weak_password":
+        return "That password can't be used: 8 to 256 characters, without your email address or the part before the @.";
+      case "throttled":
+        return "Too many tries from here. Wait a few minutes, then try again.";
+      case "network":
+        return "The vault didn't answer. Check your connection, then try again.";
+      default:
+        return "The vault couldn't finish setting up your account. Try again; if it keeps failing, tell your admin.";
+    }
+  }
+
+  // src/sign-in-model.ts
+  var isRecord10 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  function readMethods(v) {
+    if (!isRecord10(v)) {
       return null;
     }
     const { password, passkey: passkey2, provider } = v;
     return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
   }
   function readChallenge(v) {
-    return isRecord9(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+    return isRecord10(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
   }
   function readSession(v) {
-    return isRecord9(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+    return isRecord10(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
   function readPasskeyRequest(v) {
-    return isRecord9(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+    return isRecord10(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
   function signInFailure(failure) {
     switch (failure.code) {
@@ -4262,6 +4309,81 @@ ${END}
       return null;
     }
     return signInFailure(answer);
+  }
+
+  // src/join.ts
+  function setUp(main2, token2, made, done) {
+    const key = el("p", { class: "fingerprint", id: "setup-key" }, groupedKey(made.secret));
+    const app = el("a", { href: made.uri }, "Open in your authenticator app");
+    const password = field("new-password", "Sign-in password", { type: "password", autocomplete: "new-password", required: "" }, "8 to 256 characters, without your email address.");
+    const again = field("password-again", "Type it again", { type: "password", autocomplete: "new-password", required: "" });
+    const code = field(
+      "code",
+      "Code from your authenticator app",
+      { inputmode: "numeric", autocomplete: "one-time-code", pattern: "[0-9]{6}", maxlength: "6", required: "", spellcheck: "false" },
+      "Six digits, after you add the vault to the app."
+    );
+    const submit = el("button", { type: "submit", class: "primary" }, "Join");
+    const said = el("div", {});
+    const view2 = card(
+      "Set up your sign-in",
+      "Add the vault to your authenticator app with this key, or open the link on this device.",
+      el("div", { class: "field" }, el("p", { class: "field-label" }, "Setup key"), key, app),
+      password.row,
+      again.row,
+      code.row,
+      submit,
+      said
+    );
+    view2.querySelector("form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const problem2 = passwordProblem(password.input.value, again.input.value);
+      if (problem2 !== null) {
+        password.input.setAttribute("aria-invalid", "true");
+        fill(said, refusal(problem2));
+        password.input.focus();
+        return;
+      }
+      submit.disabled = true;
+      const answer = await call("POST", "/api/enrolment/complete", readSession, {
+        body: { token: token2, password: password.input.value, code: code.input.value.trim() }
+      });
+      submit.disabled = false;
+      code.input.value = "";
+      if (answer.ok) {
+        password.input.value = "";
+        again.input.value = "";
+        keep(answer.value);
+        done();
+        return;
+      }
+      fill(said, refusal(joinFailure(answer)));
+      (answer.code === "weak_password" ? password.input : code.input).focus();
+    });
+    fill(main2, view2);
+    password.input.focus();
+  }
+  function join(main2, carried, done) {
+    const token2 = field("token", "Enrolment link or code", { autocomplete: "off", required: "", spellcheck: "false" }, "From the message your admin sent.");
+    token2.input.value = carried;
+    const submit = el("button", { type: "submit", class: "primary" }, "Continue");
+    const said = el("div", {});
+    const view2 = card("Join TessariDB Vault", "Your admin added you. Set up your sign-in to start.", token2.row, submit, said);
+    view2.querySelector("form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const value = tokenFrom(token2.input.value);
+      submit.disabled = true;
+      const answer = await call("POST", "/api/enrolment/begin", readAuthenticator, { body: { token: value } });
+      submit.disabled = false;
+      if (answer.ok) {
+        setUp(main2, value, answer.value, done);
+        return;
+      }
+      fill(said, refusal(joinFailure(answer)));
+      token2.input.focus();
+    });
+    fill(main2, view2);
+    token2.input.focus();
   }
 
   // src/crypto/unlock.ts
@@ -4855,6 +4977,7 @@ ${END}
     groups: { path: "/groups", guard: open2 },
     group: { path: "/groups/:group", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
+    join: { path: "/join", query: { token: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
   });
   function heading2(view2, title, lead) {
@@ -4944,6 +5067,15 @@ ${END}
         const next = outcome.match.query.next;
         signIn(view2, () => go(afterSignIn(next)), notice);
         notice = null;
+        break;
+      }
+      case "join": {
+        window.history.replaceState(null, "", `${window.location.pathname}${router.href("join", {})}`);
+        if (signedIn()) {
+          go(router.href("records", {}));
+          return;
+        }
+        join(view2, outcome.match.query.token ?? "", () => go(router.href("records", {})));
         break;
       }
       case "unlock": {

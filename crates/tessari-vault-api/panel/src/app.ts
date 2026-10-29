@@ -17,6 +17,7 @@ import { drawMembers } from "./members/members-view.ts";
 import { drawGroup } from "./groups/group-page.ts";
 import { drawGroups } from "./groups/groups-view.ts";
 import { bearer, forget } from "./session.ts";
+import { join } from "./join.ts";
 import { providerReturned, signIn } from "./sign-in.ts";
 import { unlock } from "./unlock.ts";
 import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked } from "./vault.ts";
@@ -42,6 +43,7 @@ const routes = defineRoutes({
   groups: { path: "/groups", guard: open },
   group: { path: "/groups/:group", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
+  join: { path: "/join", query: { token: text } },
   unlock: { path: "/unlock", query: { next: text }, guard: session },
 });
 
@@ -141,6 +143,16 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
       const next = outcome.match.query.next;
       signIn(view, () => go(afterSignIn(next)), notice);
       notice = null;
+      break;
+    }
+    case "join": {
+      // The link is single-use: it leaves the address bar and the history entry before anything else.
+      window.history.replaceState(null, "", `${window.location.pathname}${router.href("join", {})}`);
+      if (signedIn()) {
+        go(router.href("records", {}));
+        return;
+      }
+      join(view, outcome.match.query.token ?? "", () => go(router.href("records", {})));
       break;
     }
     case "unlock": {
