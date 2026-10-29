@@ -20,6 +20,7 @@ import { unlock } from "./unlock.ts";
 import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked } from "./vault.ts";
 import { installTips } from "./icon-action.ts";
 import { decorateShell, setIcon } from "./shell-icons.ts";
+import { freshPane } from "./pane.ts";
 
 const history = browserHistory(window);
 /** What the identity provider's return refused, said once on the sign-in page. */
@@ -64,8 +65,9 @@ const go = (href: string): void => {
   window.location.hash = href;
 };
 
-function draw(outcome: Outcome<Routes>, view: HTMLElement, router: Router<Routes>): void {
+function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes>): void {
   stopView();
+  const view = freshPane(main, () => document.createElement("div"));
   // Before signing in and while locked there is nothing to navigate: the card is the page.
   document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
   showCompany();

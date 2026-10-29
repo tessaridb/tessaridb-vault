@@ -3757,6 +3757,13 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
   }
 
+  // src/pane.ts
+  function freshPane(view2, make) {
+    const pane = make();
+    view2.replaceChildren(pane);
+    return pane;
+  }
+
   // src/app.ts
   var history = browserHistory(window);
   var notice = null;
@@ -3790,8 +3797,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
   var go = (href) => {
     window.location.hash = href;
   };
-  function draw(outcome, view2, router) {
+  function draw(outcome, main2, router) {
     stopView();
+    const view2 = freshPane(main2, () => document.createElement("div"));
     document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
     showCompany();
     if (outcome.kind !== "matched") {
