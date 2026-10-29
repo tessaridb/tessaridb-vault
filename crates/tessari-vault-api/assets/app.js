@@ -1873,7 +1873,7 @@
       });
     });
     const head = el("div", { class: "page-head" }, el("div", {}, heading(title), el("p", { class: "lede" }, typeName(document2.type))));
-    fill(main2, el("a", { href: back, class: "back" }, "All records"), head, body);
+    fill(main2, el("a", { href: back.href, class: "back" }, back.label), head, body);
     name.focus();
   }
   function drawNew(main2, held2, type, back, opened, newOf) {
@@ -1883,7 +1883,7 @@
       fill(main2, el("a", { href: back, class: "back" }, "All records"), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
       return;
     }
-    form(main2, "New record", recordFromTemplate(template, ""), back, async (made) => {
+    form(main2, "New record", recordFromTemplate(template, ""), { href: back, label: "All records" }, async (made) => {
       const record = await newRecord(held2.company, held2.keys, made);
       const answer = await call("POST", `${companyPath(held2)}/records`, readRow, { body: record.body });
       if (!answer.ok) {
@@ -1910,7 +1910,7 @@
       return;
     }
     const row2 = item.row;
-    form(main2, "Edit record", item.document, back, async (made) => {
+    form(main2, "Edit record", item.document, { href: back, label: "Back to the record" }, async (made) => {
       const revision = await revisedRecord(held2.company, held2.keys, chain.vouched, row2, made, []);
       const saved = await call("PUT", `${companyPath(held2)}/records/${encodeURIComponent(id)}`, readRow, { body: revision });
       if (!saved.ok) {

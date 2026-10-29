@@ -76,7 +76,7 @@ function saveFailure(code: string, fallback: string): string {
 }
 
 /** The form for `document`; `save` seals and sends it and answers a refusal in words, or null when it is kept. */
-function form(main: HTMLElement, title: string, document: RecordDocument, back: string, save: (made: RecordDocument) => Promise<string | null>): void {
+function form(main: HTMLElement, title: string, document: RecordDocument, back: { readonly href: string; readonly label: string }, save: (made: RecordDocument) => Promise<string | null>): void {
   const name = el("input", { id: "record-title", type: "text", autocomplete: "off", value: document.title });
   const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
   nameHint.hidden = true;
@@ -125,7 +125,7 @@ function form(main: HTMLElement, title: string, document: RecordDocument, back: 
     });
   });
   const head = el("div", { class: "page-head" }, el("div", {}, heading(title), el("p", { class: "lede" }, typeName(document.type))));
-  fill(main, el("a", { href: back, class: "back" }, "All records"), head, body);
+  fill(main, el("a", { href: back.href, class: "back" }, back.label), head, body);
   name.focus();
 }
 
@@ -137,7 +137,7 @@ export function drawNew(main: HTMLElement, held: Unlocked, type: string | null, 
     fill(main, el("a", { href: back, class: "back" }, "All records"), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
     return;
   }
-  form(main, "New record", recordFromTemplate(template, ""), back, async (made) => {
+  form(main, "New record", recordFromTemplate(template, ""), { href: back, label: "All records" }, async (made) => {
     const record = await newRecord(held.company, held.keys, made);
     const answer = await call("POST", `${companyPath(held)}/records`, readRow, { body: record.body });
     if (!answer.ok) {
@@ -166,7 +166,7 @@ export async function drawEdit(main: HTMLElement, held: Unlocked, id: string, ba
     return;
   }
   const row: RecordRow = item.row;
-  form(main, "Edit record", item.document, back, async (made) => {
+  form(main, "Edit record", item.document, { href: back, label: "Back to the record" }, async (made) => {
     const revision = await revisedRecord(held.company, held.keys, chain.vouched, row, made, []);
     const saved = await call("PUT", `${companyPath(held)}/records/${encodeURIComponent(id)}`, readRow, { body: revision });
     if (!saved.ok) {
