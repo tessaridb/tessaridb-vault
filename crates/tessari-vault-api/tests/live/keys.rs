@@ -5,6 +5,7 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 
 use crate::records::{count, encoded, files_under, signature};
+use crate::statements::{Growing, Says, Signer};
 use crate::world::{Cast, World};
 
 /// A member's key set as the browser registers one; `seed` makes each set's bytes its own.
@@ -132,8 +133,17 @@ async fn the_chain_grows_one_statement_at_a_time_from_an_owners_genesis() {
                 .await
         }
     };
-    let mut genesis = statement(1, 1);
-    genesis["owner_signing"] = json!(encoded(&[3; 32]));
+    let (owner, admin) = (Signer::new(), Signer::new());
+    let mut growing = Growing::new(&cast.company_a);
+    let none: &[u8] = &[];
+    let owner_member = Says {
+        kind: 1,
+        subject: "owner",
+        agreement: &[1; 32],
+        signing: &owner.public(),
+    };
+    let (mut genesis, after_genesis) = growing.next(&owner_member, &owner);
+    genesis["owner_signing"] = json!(encoded(&owner.public()));
 
     let (status, refused) = post(cast.member_a.clone(), genesis.clone()).await;
     assert_eq!(
@@ -154,51 +164,109 @@ async fn the_chain_grows_one_statement_at_a_time_from_an_owners_genesis() {
         "a statement before the genesis: {gap}"
     );
     assert_eq!(gap["error_code"], "stale_chain");
-    let (status, unpinned) = post(cast.owner_a.clone(), statement(1, 1)).await;
+    let mut unpinned = genesis.clone();
+    unpinned
+        .as_object_mut()
+        .expect("an object")
+        .remove("owner_signing");
+    let (status, refused) = post(cast.owner_a.clone(), unpinned).await;
     assert_eq!(
         status,
         StatusCode::BAD_REQUEST,
-        "a genesis with no pin: {unpinned}"
+        "a genesis with no pin: {refused}"
     );
+    // A genesis signed by another key than the one it pins.
+    let (mut forged, _) = growing.next(&owner_member, &admin);
+    forged["owner_signing"] = json!(encoded(&owner.public()));
+    let (status, refused) = post(cast.owner_a.clone(), forged).await;
+    assert_eq!(status, StatusCode::CONFLICT, "a forged genesis: {refused}");
+    assert_eq!(refused["error_code"], "unverified_statement");
+
     let (status, body) = post(cast.owner_a.clone(), genesis.clone()).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+    growing.accepted(after_genesis);
     let (status, twice) = post(cast.owner_a.clone(), genesis.clone()).await;
     assert_eq!(status, StatusCode::CONFLICT, "a second genesis: {twice}");
-    let mut pinned_later = statement(2, 2);
-    pinned_later["owner_signing"] = json!(encoded(&[4; 32]));
+
+    // The admin signs before the chain names their key: refused, and nothing is written.
+    let group = Says {
+        kind: 3,
+        subject: "group-1",
+        agreement: &[3; 32],
+        signing: none,
+    };
+    let (early, _) = growing.next(&group, &admin);
+    let (status, refused) = post(cast.admin_a.clone(), early).await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "an unvouched admin key: {refused}"
+    );
+    assert_eq!(refused["error_code"], "unverified_statement");
+    let (mut pinned_later, _) = growing.next(&group, &owner);
+    pinned_later["owner_signing"] = json!(encoded(&owner.public()));
     let (status, refused) = post(cast.owner_a.clone(), pinned_later).await;
     assert_eq!(
         status,
         StatusCode::BAD_REQUEST,
         "a pin after the genesis: {refused}"
     );
-    let (status, body) = post(cast.admin_a.clone(), statement(2, 2)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let (status, refused) = post(cast.member_a.clone(), statement(3, 3)).await;
+
+    let mut posted = vec![genesis];
+    for (says, by, token) in [
+        (
+            Says {
+                kind: 1,
+                subject: "admin",
+                agreement: &[2; 32],
+                signing: &admin.public(),
+            },
+            &owner,
+            &cast.owner_a,
+        ),
+        (
+            Says {
+                kind: 2,
+                subject: "admin",
+                agreement: none,
+                signing: none,
+            },
+            &owner,
+            &cast.owner_a,
+        ),
+        (group, &admin, &cast.admin_a),
+    ] {
+        let (body, after) = growing.next(&says, by);
+        let (status, answer) = post(token.clone(), body.clone()).await;
+        assert_eq!(status, StatusCode::CREATED, "{answer}");
+        growing.accepted(after);
+        posted.push(body);
+    }
+    let (status, refused) = post(cast.member_a.clone(), statement(5, 5)).await;
     assert_eq!(
         status,
         StatusCode::FORBIDDEN,
         "a member extended the chain: {refused}"
     );
-    let (status, ahead) = post(cast.owner_a.clone(), statement(4, 4)).await;
+    let (status, ahead) = post(cast.owner_a.clone(), statement(7, 7)).await;
     assert_eq!(
         status,
         StatusCode::CONFLICT,
         "a statement past the end: {ahead}"
     );
+    assert_eq!(ahead["error_code"], "stale_chain");
 
     let (status, read) = world
         .call(Method::GET, &chain, Some(&cast.member_a), None)
         .await;
     assert_eq!(status, StatusCode::OK, "{read}");
-    assert_eq!(read["owner_signing"], encoded(&[3; 32]));
+    assert_eq!(read["owner_signing"], encoded(&owner.public()));
     let statements = read["statements"].as_array().expect("a list");
-    assert_eq!(statements.len(), 2, "{read}");
-    for (at, seed) in [(0_usize, 1_u8), (1, 2)] {
-        let expected = statement(u64::from(seed), seed);
-        assert_eq!(statements[at]["seq"], expected["seq"]);
-        assert_eq!(statements[at]["bytes"], expected["bytes"]);
-        assert_eq!(statements[at]["signature"], expected["signature"]);
+    assert_eq!(statements.len(), 4, "{read}");
+    for (stored, sent) in statements.iter().zip(&posted) {
+        for field in ["seq", "bytes", "signature"] {
+            assert_eq!(stored[field], sent[field], "{field}");
+        }
     }
     let (status, _) = world
         .call(

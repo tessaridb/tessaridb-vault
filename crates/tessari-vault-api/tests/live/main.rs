@@ -32,6 +32,7 @@ mod rules;
 mod share_list;
 mod shares;
 mod sign_in;
+mod statements;
 mod world;
 
 use axum::http::{Method, StatusCode};

@@ -91,6 +91,10 @@ pub enum Conflict {
     /// The statement is not the next one in the chain; nothing was written.
     #[error("the statement is not the next one in the chain")]
     StaleChain,
+    /// The statement is in place but the chain with it would not verify (a signature, a signer the chain does not
+    /// make owner or admin, or a step its rules forbid); nothing was written.
+    #[error("the chain with the statement does not verify")]
+    UnverifiedStatement,
     /// A wrap names a key set outside the group's reach, or one that holds a wrap already; nothing was written.
     #[error("a wrap names a key set outside the group's reach or one already wrapped")]
     OutsideReach,

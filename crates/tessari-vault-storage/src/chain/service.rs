@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use tessari_vault_core::access::Action;
+use tessari_vault_core::chain::{self, Signed};
 use tessari_vault_infrastructure::tessaridb::{Database, Place, RefusalClass};
 use tessari_vault_types::CompanyId;
 
@@ -102,6 +103,8 @@ impl ChainService {
         } else {
             None
         };
+        self.check_extends(company, &statement, owner_signing.as_deref())
+            .await?;
         let appended = self
             .repository
             .append(
@@ -130,5 +133,42 @@ impl ChainService {
             })) => Err(Error::Conflict(Conflict::StaleChain)),
             other => other,
         }
+    }
+
+    /// Refuse `statement` unless the chain with it appended verifies the way every member's browser verifies it, so
+    /// one bad append cannot break the chain for the whole company. A statement out of place, a genesis without a pin
+    /// and a second genesis are left to the compare-and-set, which answers them as before.
+    async fn check_extends(
+        &self,
+        company: &CompanyId,
+        statement: &Statement,
+        pinned: Option<&[u8]>,
+    ) -> Result<()> {
+        let (chain, rows) = self.repository.read(&self.place, company).await?;
+        let owner = match (&chain, pinned) {
+            (None, Some(pinned)) => pinned.to_vec(),
+            (Some(chain), None) => chain.owner_signing()?,
+            _ => return Ok(()),
+        };
+        let stored = rows
+            .into_iter()
+            .map(StatementEntity::into_model)
+            .collect::<Result<Vec<_>>>()?;
+        let next = u64::try_from(stored.len())
+            .ok()
+            .and_then(|length| length.checked_add(1));
+        if Some(statement.seq()) != next {
+            return Ok(());
+        }
+        let signed = stored
+            .iter()
+            .chain(std::iter::once(statement))
+            .map(|statement| Signed {
+                bytes: statement.bytes(),
+                signature: statement.signature(),
+            })
+            .collect::<Vec<_>>();
+        chain::verify(company.as_str(), &owner, &signed)
+            .map_err(|_| Error::Conflict(Conflict::UnverifiedStatement))
     }
 }

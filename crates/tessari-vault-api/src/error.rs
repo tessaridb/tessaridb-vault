@@ -199,6 +199,10 @@ const fn conflicted(conflict: Conflict) -> ApiError {
             "stale_chain",
             "the statement is not the next one in the chain; read the chain again",
         ),
+        Conflict::UnverifiedStatement => (
+            "unverified_statement",
+            "the chain with this statement does not verify; sign it with a key the chain makes owner or admin",
+        ),
         Conflict::OutsideReach => (
             "outside_reach",
             "a wrap names a key set outside the group's reach, or one that holds a wrap already",
