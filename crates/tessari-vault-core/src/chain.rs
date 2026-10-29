@@ -133,7 +133,11 @@ fn decode(bytes: &[u8]) -> Result<Decoded<'_>, ChainRefused> {
     }
 }
 
-fn verify_signature(signer: &[u8], message: &[u8], stored: &[u8]) -> Result<(), ChainRefused> {
+pub(crate) fn verify_signature(
+    signer: &[u8],
+    message: &[u8],
+    stored: &[u8],
+) -> Result<(), ChainRefused> {
     let mut reader = Reader(stored);
     if reader.byte()? != FORMAT_VERSION {
         return Err(ChainRefused::UnknownVersion);

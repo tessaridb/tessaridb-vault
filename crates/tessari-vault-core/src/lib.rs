@@ -2,6 +2,7 @@
 
 pub mod access;
 pub mod chain;
+pub mod company_drop;
 mod error;
 pub mod totp;
 pub mod webauthn;

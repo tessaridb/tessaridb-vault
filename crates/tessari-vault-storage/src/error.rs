@@ -54,6 +54,9 @@ pub enum Conflict {
     /// The account already has a sign-in credential; a new one is recovery, which an enrolment link never is.
     #[error("the account is already enrolled")]
     Enrolled,
+    /// A drop statement not signed, within ten minutes of now, by the caller's registered key for this company.
+    #[error("the statement is not signed now by the caller's registered key")]
+    DropUnsigned,
     /// The account's sign-in still opens under the key file, so its member can sign in and move it; nothing changed.
     #[error("the sign-in still opens under the key file")]
     SignInCurrent,

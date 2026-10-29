@@ -7,6 +7,7 @@ mod answers;
 pub mod audit;
 pub mod chain;
 pub mod companies;
+pub mod company_drops;
 pub mod enrolments;
 mod error;
 pub mod files;

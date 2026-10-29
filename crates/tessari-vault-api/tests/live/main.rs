@@ -11,6 +11,7 @@ mod audit_reads;
 mod authenticator;
 mod binary;
 mod canaries;
+mod company_drop;
 mod concurrency;
 mod enrolment;
 mod files;
@@ -131,6 +132,12 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ("POST", "/api/companies/{company}/suspend" | "/api/companies/{company}/resume") => {
             row(None, platform, other_platform)
         }
+        // An owner's alone; the signature is checked after the decision, so this unsigned body is never judged.
+        ("POST", "/api/companies/{company}/drop") => row(
+            Some(json!({ "at": 0, "signature": crate::records::encoded(&[0; 66]) })),
+            manage,
+            hidden,
+        ),
         // A sign-in belongs to the person, not to one company: the platform admin's alone.
         ("POST", "/api/accounts/{account}/sign-in/reset") => row(None, platform, other_platform),
         ("GET", "/api/companies/{company}/members" | "/api/companies/{company}/groups") => {

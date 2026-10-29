@@ -9,6 +9,7 @@ use crate::accounts::{AccountService, TessaridbAccountRepository};
 use crate::audit::AuditService;
 use crate::chain::{ChainService, TessaridbChainRepository};
 use crate::companies::{CompanyService, TessaridbCompanyRepository};
+use crate::company_drops::CompanyDropService;
 use crate::enrolments::EnrolmentService;
 use crate::files::{FileService, TessaridbFiles};
 use crate::group_keys::{GroupKeyService, TessaridbGroupKeyRepository};
@@ -49,6 +50,8 @@ pub struct Storage {
     pub chain: Arc<ChainService>,
     /// Companies and memberships.
     pub companies: Arc<CompanyService>,
+    /// Deleting a company: an owner's signed request, the platform admin's confirmation, a waiting period.
+    pub company_drops: Arc<CompanyDropService>,
     /// Enrolment links and the credentials they create.
     pub enrolments: Arc<EnrolmentService>,
     /// Encrypted files on records.
@@ -99,6 +102,7 @@ impl Storage {
             Arc::clone(&vault_keys),
             Arc::clone(&seal),
         ));
+        let company_drops = Arc::new(CompanyDropService::new(database.clone(), place.clone()));
         let vaults = Arc::new(RecordVaults::new(database.clone(), vault_keys));
         let accounts = Arc::new(AccountService::new(
             Arc::new(TessaridbAccountRepository::new(database.clone())),
@@ -219,6 +223,7 @@ impl Storage {
             audit: Arc::new(AuditService::new(database.clone(), place.clone())),
             chain,
             companies,
+            company_drops,
             enrolments,
             files,
             group_keys,

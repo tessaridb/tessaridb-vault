@@ -79,6 +79,8 @@ pub enum Action {
     KeyGroup,
     /// Keep the company's recovery key wrapped to its owners, and read one's own wrap of it.
     KeyRecovery,
+    /// Ask for the company's deletion, or cancel a deletion still waiting.
+    DropCompany,
     /// Extend the company's vouching chain; the `genesis` statement begins it.
     Vouch {
         /// Whether this statement begins the chain.
@@ -136,6 +138,7 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::RemoveMember { role: Role::Owner }
         | Action::Vouch { genesis: true }
         | Action::KeyRecovery
+        | Action::DropCompany
         | Action::ChangeMember {
             from: Role::Owner, ..
         }

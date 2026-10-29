@@ -2,6 +2,7 @@
 
 pub(crate) mod audit;
 pub(crate) mod companies;
+pub(crate) mod company_drop;
 pub(crate) mod enrolment;
 pub(crate) mod files;
 pub(crate) mod group_keys;

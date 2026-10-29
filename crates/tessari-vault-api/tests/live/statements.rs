@@ -20,6 +20,13 @@ impl Signer {
     pub(crate) fn public(&self) -> Vec<u8> {
         self.0.public_key().as_ref().to_vec()
     }
+
+    /// `bytes` signed and stored as the browser stores a signature: [version] ‖ [0x04] ‖ the 64 bytes.
+    pub(crate) fn stored(&self, bytes: &[u8]) -> Vec<u8> {
+        let mut signature = vec![1, 0x04];
+        signature.extend(self.0.sign(bytes).as_ref());
+        signature
+    }
 }
 
 /// What a statement says: its kind's position (member 1, admin 2, group 3, revoke 4, recovery 5) and fields.
