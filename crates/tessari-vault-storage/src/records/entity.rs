@@ -171,6 +171,8 @@ pub struct OpenedRecord {
     pub sealed: Sealed,
     /// The recipient that wrap is kept under: `member:<key id>` or `group:<key id>`.
     pub recipient: String,
+    /// The ids of the caller's own groups the record is shared with.
+    pub through: Vec<String>,
 }
 
 /// A revision as the store opened it: the sealed body, the signature, the reviser's key, and every recipient.

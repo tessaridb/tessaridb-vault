@@ -516,7 +516,8 @@
     const recipient = readRecipient(v["recipient"]);
     const [body, signature, wrap] = [v["body"], v["signature"], v["wrap"]].map((part) => isText2(part) ? decode(part) : null);
     const authorKey = v["author_key"];
-    return row2 !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey) ? { row: row2, body, signature, authorKey, recipient, wrap } : null;
+    const through = v["through"];
+    return row2 !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey) && Array.isArray(through) && through.every(isId) ? { row: row2, body, signature, authorKey, recipient, wrap, through } : null;
   }
   function readOpenedPage(v) {
     if (!isRecord3(v) || !Array.isArray(v["records"])) {
@@ -888,6 +889,21 @@
   }
 
   // src/records/listing.ts
+  function inScope(item, scope, me) {
+    switch (scope.kind) {
+      case "all":
+        return true;
+      case "mine":
+        return item.row.author === me;
+      case "group":
+        return item.through.includes(scope.group);
+    }
+  }
+  var KIND_ORDER = ["company", "department", "team"];
+  function scopeGroups(items, groups) {
+    const present = new Set(items.flatMap((item) => item.through));
+    return groups.filter((group) => present.has(group.id)).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.name.localeCompare(b.name));
+  }
   function matches(item, query, type) {
     if (type !== null && item.row.recordType !== type) {
       return false;
@@ -1599,9 +1615,9 @@
     async open(opened) {
       try {
         const key = await this.keyFor(opened);
-        return { row: opened.row, document: await openRecord(this.#held.company, this.#vouched, key, opened) };
+        return { row: opened.row, through: opened.through, document: await openRecord(this.#held.company, this.#vouched, key, opened) };
       } catch (problem2) {
-        return { row: opened.row, problem: problem2 instanceof VaultCryptoError ? problem2.reason : "malformed" };
+        return { row: opened.row, through: opened.through, problem: problem2 instanceof VaultCryptoError ? problem2.reason : "malformed" };
       }
     }
     /** The person's own key or the group key `opened`'s wrap is kept for; a share re-opens that wrap with it. */
@@ -1633,11 +1649,75 @@
     }
   };
 
+  // src/records/share-targets.ts
+  var isRecord5 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isId2 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isText4 = (v) => typeof v === "string" && v !== "";
+  function readMemberList(v) {
+    if (!isRecord5(v) || !Array.isArray(v["members"])) {
+      return null;
+    }
+    const members = v["members"].map((member) => {
+      if (!isRecord5(member) || !isRecord5(member["account"]) || typeof member["state"] !== "string") {
+        return null;
+      }
+      const { id, name, email } = member["account"];
+      return isId2(id) && isText4(name) && isText4(email) ? { account: id, name, email, active: member["state"] === "active" } : null;
+    });
+    return members.every((member) => member !== null) ? members : null;
+  }
+  function readGroupList(v) {
+    if (!isRecord5(v) || !Array.isArray(v["groups"])) {
+      return null;
+    }
+    const groups = v["groups"].map((group) => {
+      if (!isRecord5(group) || !isId2(group["id"]) || !isText4(group["name"])) {
+        return null;
+      }
+      const { kind } = group;
+      return kind === "company" || kind === "department" || kind === "team" ? { id: group["id"], kind, name: group["name"] } : null;
+    });
+    return groups.every((group) => group !== null) ? groups : null;
+  }
+  function shareTargets(members, groups, directory, groupKeys, author, shared) {
+    const open3 = (id) => id !== author && !shared.includes(id);
+    const people = members.filter((member) => member.active && open3(member.account)).map((member) => {
+      const listed = directory.get(member.account);
+      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
+      return listed === void 0 || keyId === null ? { id: member.account, label: member.name, detail: member.email, recipient: null, missing: "hasn't set an unlock password yet" } : { id: member.account, label: member.name, detail: member.email, recipient: { recipient: { kind: "member", account: member.account }, keyId, listed: listed.agreementPublic } };
+    });
+    const teams = groups.filter((group) => open3(group.id)).map((group) => {
+      const listed = groupKeys.get(group.id);
+      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
+      const detail = groupDetail(group.kind);
+      return listed === void 0 || keyId === null ? { id: group.id, label: group.name, detail, recipient: null, missing: "has no key yet" } : { id: group.id, label: group.name, detail, recipient: { recipient: { kind: "group", group: group.id }, keyId, listed: listed.public } };
+    });
+    return [...people, ...teams];
+  }
+  function filterTargets(targets, text2) {
+    const wanted = text2.trim().toLowerCase();
+    return targets.filter((target) => `${target.label}
+${target.detail}`.toLowerCase().includes(wanted));
+  }
+  function sharedRows(shares, members, groups) {
+    return shares.map((share2) => {
+      const { target, right } = share2;
+      if (share2.kind === "member") {
+        const member = members.find((each) => each.account === target);
+        return member === void 0 ? { target, label: "A member no longer listed", detail: "", right } : { target, label: member.name, detail: member.email, right };
+      }
+      const group = groups.find((each) => each.id === target);
+      return group === void 0 ? { target, label: "A group no longer listed", detail: "", right } : { target, label: group.name, detail: groupDetail(group.kind), right };
+    });
+  }
+  var groupDetail = (kind) => kind === "company" ? "Everyone in the company" : kind === "department" ? "Department" : "Team";
+
   // src/records/list-view.ts
   var when = new Intl.DateTimeFormat(void 0, { dateStyle: "medium", timeStyle: "short" });
   var loadFailure = (failure) => failure.code === "network" ? "The vault didn't answer. Check your connection, then try again." : "The vault couldn't load your records. Try again in a minute.";
   var SKELETON_AFTER_MS = 200;
   var CHAIN_REFUSED = "Your company's list of who may read what doesn't check out against the owner key your keys trust, so nothing is opened. Tell your company's owner.";
+  var sameScope = (a, b) => a.kind === b.kind && (a.kind !== "group" || b.kind === "group" && a.group === b.group);
   function row(item, href) {
     const changed = el("span", { class: "muted" }, `Changed ${when.format(new Date(item.row.updated * 1e3))}`);
     if (!("document" in item)) {
@@ -1669,7 +1749,8 @@
       skeleton.remove();
     };
     stops2.push(loaded);
-    const chain = await vouchedChain(held2);
+    const [chain, listedGroups] = await Promise.all([vouchedChain(held2), call("GET", `${companyPath(held2)}/groups`, readGroupList)]);
+    const groups = listedGroups.ok ? listedGroups.value : [];
     if (!chain.ok) {
       loaded();
       fill(said, refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
@@ -1679,6 +1760,7 @@
     const items = [];
     let next = null;
     let type = null;
+    let scope = { kind: "all" };
     const search = el("input", { id: "record-filter", type: "search", autocomplete: "off", "aria-keyshortcuts": "Control+K Meta+K" });
     const toFilter = (event) => {
       if (findsRecords(event) && !filter.hidden) {
@@ -1688,6 +1770,7 @@
     };
     document.addEventListener("keydown", toFilter);
     stops2.push(() => document.removeEventListener("keydown", toFilter));
+    const scopes = el("div", { class: "chips", role: "group", "aria-label": "Show" });
     const types = el("div", { class: "chips", role: "group", "aria-label": "Type" });
     const list = el("ul", { class: "records", "aria-label": "Records" });
     const more = el("button", { type: "button", class: "quiet" }, "Load more");
@@ -1696,11 +1779,28 @@
     const render = () => {
       filter.hidden = items.length === 0;
       types.hidden = items.length === 0;
+      scopes.hidden = items.length === 0;
+      const offered = [
+        [{ kind: "all" }, "All"],
+        [{ kind: "mine" }, "Mine"],
+        ...scopeGroups(items, groups).map((group) => [{ kind: "group", group: group.id }, group.name])
+      ];
+      fill(
+        scopes,
+        ...offered.map(([each, words]) => {
+          const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(sameScope(each, scope)) }, words);
+          chip.addEventListener("click", () => {
+            scope = each;
+            render();
+          });
+          return chip;
+        })
+      );
       const present = [...new Set(items.map((item) => item.row.recordType))];
       fill(
         types,
         ...[null, ...present].map((id) => {
-          const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(type === id) }, id === null ? "All" : typeName(id));
+          const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(type === id) }, id === null ? "All types" : typeName(id));
           chip.addEventListener("click", () => {
             type = id;
             render();
@@ -1708,7 +1808,7 @@
           return chip;
         })
       );
-      const kept = items.filter((item) => matches(item, search.value, type));
+      const kept = items.filter((item) => inScope(item, scope, held2.account) && matches(item, search.value, type));
       fill(list, ...kept.map((item) => row(item, href)));
       list.hidden = kept.length === 0;
       if (items.length === 0) {
@@ -1718,10 +1818,12 @@
         clear.addEventListener("click", () => {
           search.value = "";
           type = null;
+          scope = { kind: "all" };
           render();
           search.focus();
         });
-        fill(said, el("p", {}, `No records match "${search.value.trim()}".`), clear);
+        const query = search.value.trim();
+        fill(said, el("p", {}, query === "" ? "No records match these filters." : `No records match "${query}".`), clear);
       } else {
         fill(said);
       }
@@ -1748,7 +1850,7 @@
     }
     search.addEventListener("input", render);
     more.addEventListener("click", () => void load().then((loaded2) => loaded2 && render()));
-    fill(main2, head, filter, types, said, list, tail);
+    fill(main2, head, filter, scopes, types, said, list, tail);
     render();
     title.focus();
   }
@@ -1812,18 +1914,18 @@
   }
 
   // src/records/shares-model.ts
-  var isRecord5 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  var isId2 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isRecord6 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isId3 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   function readShares(v) {
-    if (!isRecord5(v) || !isRecord5(v["author"]) || !Array.isArray(v["shares"])) {
+    if (!isRecord6(v) || !isRecord6(v["author"]) || !Array.isArray(v["shares"])) {
       return null;
     }
     const { account, key_id: authorKey } = v["author"];
-    if (!isId2(account) || authorKey !== null && !isId2(authorKey)) {
+    if (!isId3(account) || authorKey !== null && !isId3(authorKey)) {
       return null;
     }
     const shares = v["shares"].map((share2) => {
-      if (!isRecord5(share2) || !isId2(share2["target"]) || !isId2(share2["key_id"])) {
+      if (!isRecord6(share2) || !isId3(share2["target"]) || !isId3(share2["key_id"])) {
         return null;
       }
       const { kind, right } = share2;
@@ -1832,11 +1934,11 @@
     return shares.every((share2) => share2 !== null) ? { author: { account, keyId: authorKey }, shares } : null;
   }
   function readDirectory(v) {
-    if (!isRecord5(v) || !Array.isArray(v["keys"])) {
+    if (!isRecord6(v) || !Array.isArray(v["keys"])) {
       return null;
     }
     const entries = v["keys"].map((entry) => {
-      if (!isRecord5(entry) || !isId2(entry["account"]) || !isId2(entry["key_id"]) || typeof entry["agreement_public"] !== "string") {
+      if (!isRecord6(entry) || !isId3(entry["account"]) || !isId3(entry["key_id"]) || typeof entry["agreement_public"] !== "string") {
         return null;
       }
       const agreementPublic = decode(entry["agreement_public"]);
@@ -2196,69 +2298,6 @@
       wipe(raw);
     }
   }
-
-  // src/records/share-targets.ts
-  var isRecord6 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  var isId3 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
-  var isText4 = (v) => typeof v === "string" && v !== "";
-  function readMemberList(v) {
-    if (!isRecord6(v) || !Array.isArray(v["members"])) {
-      return null;
-    }
-    const members = v["members"].map((member) => {
-      if (!isRecord6(member) || !isRecord6(member["account"]) || typeof member["state"] !== "string") {
-        return null;
-      }
-      const { id, name, email } = member["account"];
-      return isId3(id) && isText4(name) && isText4(email) ? { account: id, name, email, active: member["state"] === "active" } : null;
-    });
-    return members.every((member) => member !== null) ? members : null;
-  }
-  function readGroupList(v) {
-    if (!isRecord6(v) || !Array.isArray(v["groups"])) {
-      return null;
-    }
-    const groups = v["groups"].map((group) => {
-      if (!isRecord6(group) || !isId3(group["id"]) || !isText4(group["name"])) {
-        return null;
-      }
-      const { kind } = group;
-      return kind === "company" || kind === "department" || kind === "team" ? { id: group["id"], kind, name: group["name"] } : null;
-    });
-    return groups.every((group) => group !== null) ? groups : null;
-  }
-  function shareTargets(members, groups, directory, groupKeys, author, shared) {
-    const open3 = (id) => id !== author && !shared.includes(id);
-    const people = members.filter((member) => member.active && open3(member.account)).map((member) => {
-      const listed = directory.get(member.account);
-      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
-      return listed === void 0 || keyId === null ? { id: member.account, label: member.name, detail: member.email, recipient: null, missing: "hasn't set an unlock password yet" } : { id: member.account, label: member.name, detail: member.email, recipient: { recipient: { kind: "member", account: member.account }, keyId, listed: listed.agreementPublic } };
-    });
-    const teams = groups.filter((group) => open3(group.id)).map((group) => {
-      const listed = groupKeys.get(group.id);
-      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
-      const detail = groupDetail(group.kind);
-      return listed === void 0 || keyId === null ? { id: group.id, label: group.name, detail, recipient: null, missing: "has no key yet" } : { id: group.id, label: group.name, detail, recipient: { recipient: { kind: "group", group: group.id }, keyId, listed: listed.public } };
-    });
-    return [...people, ...teams];
-  }
-  function filterTargets(targets, text2) {
-    const wanted = text2.trim().toLowerCase();
-    return targets.filter((target) => `${target.label}
-${target.detail}`.toLowerCase().includes(wanted));
-  }
-  function sharedRows(shares, members, groups) {
-    return shares.map((share2) => {
-      const { target, right } = share2;
-      if (share2.kind === "member") {
-        const member = members.find((each) => each.account === target);
-        return member === void 0 ? { target, label: "A member no longer listed", detail: "", right } : { target, label: member.name, detail: member.email, right };
-      }
-      const group = groups.find((each) => each.id === target);
-      return group === void 0 ? { target, label: "A group no longer listed", detail: "", right } : { target, label: group.name, detail: groupDetail(group.kind), right };
-    });
-  }
-  var groupDetail = (kind) => kind === "company" ? "Everyone in the company" : kind === "department" ? "Department" : "Team";
 
   // src/records/share-words.ts
   var REOPEN = "This record or its sharing changed while you were deciding. Open it again, then share it.";
@@ -3130,7 +3169,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
           fill(said, refusal(CHAIN_FAILURE));
           return;
         }
-        hold({ company: company.id, account: me.account, keys });
+        hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, keys });
         done();
       } catch (problem2) {
         password.input.value = "";
@@ -3197,7 +3236,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
           onward.focus();
           return;
         }
-        hold({ company: company.id, account: me.account, keys: made.open });
+        hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, keys: made.open });
         done();
       } catch (problemMaking) {
         fill(said, refusal(unlockFailure(problemMaking)));
@@ -3296,6 +3335,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   function draw(outcome, view2, router) {
     stopView();
     document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
+    showCompany();
     if (outcome.kind !== "matched") {
       heading2(view2, "Not found", "This address names no page of the vault.");
       return;
@@ -3363,6 +3403,24 @@ ${target.detail}`.toLowerCase().includes(wanted));
       }
     }
   }
+  function showCompany() {
+    const held2 = unlocked();
+    const name = document.getElementById("company");
+    const switcher = document.getElementById("switch-company");
+    if (name !== null) {
+      name.textContent = held2?.companyName ?? "";
+      name.hidden = held2 === null;
+    }
+    if (switcher !== null) {
+      switcher.hidden = held2?.otherCompanies !== true;
+    }
+  }
+  function switchButton() {
+    document.getElementById("switch-company")?.addEventListener("click", () => {
+      lock();
+      go(`#/unlock?next=${encodeURIComponent("/")}`);
+    });
+  }
   function themed() {
     const button = document.getElementById("theme");
     const root = document.documentElement;
@@ -3406,6 +3464,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   if (view !== null) {
     themed();
     signOutButton();
+    switchButton();
     locking();
     void providerReturned().then((refused) => {
       notice = refused;

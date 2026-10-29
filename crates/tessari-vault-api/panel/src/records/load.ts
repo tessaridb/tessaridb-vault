@@ -42,9 +42,9 @@ export class Opener {
   async open(opened: OpenedRecord): Promise<Listed> {
     try {
       const key = await this.keyFor(opened);
-      return { row: opened.row, document: await openRecord(this.#held.company, this.#vouched, key, opened) };
+      return { row: opened.row, through: opened.through, document: await openRecord(this.#held.company, this.#vouched, key, opened) };
     } catch (problem) {
-      return { row: opened.row, problem: problem instanceof VaultCryptoError ? problem.reason : "malformed" };
+      return { row: opened.row, through: opened.through, problem: problem instanceof VaultCryptoError ? problem.reason : "malformed" };
     }
   }
 

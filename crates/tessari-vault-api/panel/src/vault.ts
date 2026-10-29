@@ -8,6 +8,10 @@ import type { OpenKeySet } from "./crypto/key-set.ts";
 /** An unlocked company: whose keys, in which company. */
 export interface Unlocked {
   readonly company: string;
+  /** The company's name, shown while it is unlocked. */
+  readonly companyName: string;
+  /** Whether the person is in other companies too, which "Switch company" leads to. */
+  readonly otherCompanies: boolean;
   readonly account: string;
   readonly keys: OpenKeySet;
 }

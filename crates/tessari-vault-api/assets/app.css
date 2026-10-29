@@ -346,6 +346,21 @@ code {
   font-weight: 650;
 }
 
+/* The product, and under it the company whose records are open: the one place the page says which company it is. */
+.identity {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.company {
+  margin: 0;
+  padding-inline: var(--s-2);
+  font-size: var(--t-data);
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 .brand b {
   color: var(--accent-text);
 }

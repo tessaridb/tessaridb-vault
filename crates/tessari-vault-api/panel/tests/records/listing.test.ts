@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { COPY_CLEARS_AFTER_MS, copier, findsRecords, matches, typeName, unreadableWords, type Listed } from "../../src/records/listing.ts";
+import { COPY_CLEARS_AFTER_MS, copier, findsRecords, inScope, matches, scopeGroups, typeName, unreadableWords, type Listed } from "../../src/records/listing.ts";
+import type { ListedGroup } from "../../src/records/share-targets.ts";
 import type { RecordRow } from "../../src/records-model.ts";
 
 const row = (recordType: string): RecordRow => ({
@@ -17,9 +18,9 @@ const row = (recordType: string): RecordRow => ({
   updated: 2,
   rotationDue: false,
 });
-const login: Listed = { row: row("login"), document: { v: 1, type: "login", title: "Mail Admin", sections: [] } };
-const note: Listed = { row: row("secure-note"), document: { v: 1, type: "secure-note", title: "Door codes", sections: [] } };
-const broken: Listed = { row: row("login"), problem: "bad-signature" };
+const login: Listed = { row: row("login"), through: [], document: { v: 1, type: "login", title: "Mail Admin", sections: [] } };
+const note: Listed = { row: row("secure-note"), through: [], document: { v: 1, type: "secure-note", title: "Door codes", sections: [] } };
+const broken: Listed = { row: row("login"), through: [], problem: "bad-signature" };
 
 describe("the records filter", () => {
   it("keeps every record for an empty query and no type", () => {
@@ -31,6 +32,34 @@ describe("the records filter", () => {
     assert.deepEqual([login, note, broken].filter((item) => matches(item, "", "secure-note")), [note]);
     assert.deepEqual([login, note, broken].filter((item) => matches(item, "", "login")), [login, broken]);
     assert.deepEqual([login, note, broken].filter((item) => matches(item, "door", "login")), []);
+  });
+});
+
+describe("which records a scope shows", () => {
+  const [ME, TEAM, DEPT, COMPANY, OTHER] = ["3", "a", "b", "c", "d"].map((c) => c.repeat(32)) as [string, string, string, string, string];
+  const groups: readonly ListedGroup[] = [
+    { id: TEAM, kind: "team", name: "Platform" },
+    { id: OTHER, kind: "team", name: "Billing" },
+    { id: DEPT, kind: "department", name: "Engineering" },
+    { id: COMPANY, kind: "company", name: "Northwind" },
+  ];
+  const mine: Listed = { row: row("login"), through: [TEAM], document: { v: 1, type: "login", title: "Mine", sections: [] } };
+  const team: Listed = { row: { ...row("login"), author: "9".repeat(32) }, through: [TEAM, DEPT], document: { v: 1, type: "login", title: "Team", sections: [] } };
+  const direct: Listed = { row: { ...row("login"), author: "9".repeat(32) }, through: [], problem: "bad-signature" };
+  const everyone: Listed = { row: { ...row("login"), author: "9".repeat(32) }, through: [COMPANY], document: { v: 1, type: "login", title: "All", sections: [] } };
+  const items = [mine, team, direct, everyone];
+
+  it("keeps all, the person's own, or what one group brings them", () => {
+    assert.deepEqual(items.filter((item) => inScope(item, { kind: "all" }, ME)), items);
+    assert.deepEqual(items.filter((item) => inScope(item, { kind: "mine" }, ME)), [mine]);
+    assert.deepEqual(items.filter((item) => inScope(item, { kind: "group", group: TEAM }, ME)), [mine, team]);
+    assert.deepEqual(items.filter((item) => inScope(item, { kind: "group", group: DEPT }, ME)), [team]);
+    assert.deepEqual(items.filter((item) => inScope(item, { kind: "group", group: OTHER }, ME)), []);
+  });
+
+  it("offers the groups the records come through, the company first, then departments, then teams", () => {
+    assert.deepEqual(scopeGroups(items, groups).map((group) => group.name), ["Northwind", "Engineering", "Platform"]);
+    assert.deepEqual(scopeGroups([direct], groups), []);
   });
 });
 

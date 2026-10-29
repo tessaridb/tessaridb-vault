@@ -137,7 +137,7 @@ describe("the vault", () => {
     const stop = onLock(() => {
       told += 1;
     });
-    hold({ company: "c1", account: "a1", keys });
+    hold({ company: "c1", companyName: "Northwind", otherCompanies: false, account: "a1", keys });
     assert.equal(unlocked()?.company, "c1");
     lock();
     lock();
@@ -149,7 +149,7 @@ describe("the vault", () => {
   it("locks fifteen minutes after unlocking when nothing is touched", () => {
     const clock = manualClock();
     const stop = lockWhenIdle(new EventTarget(), 15, clock);
-    hold({ company: "c1", account: "a1", keys });
+    hold({ company: "c1", companyName: "Northwind", otherCompanies: false, account: "a1", keys });
     clock.pass(15 * 60_000);
     assert.equal(unlocked(), null);
     stop();
@@ -159,7 +159,7 @@ describe("the vault", () => {
     const clock = manualClock();
     const target = new EventTarget();
     const stop = lockWhenIdle(target, 15, clock);
-    hold({ company: "c1", account: "a1", keys });
+    hold({ company: "c1", companyName: "Northwind", otherCompanies: false, account: "a1", keys });
     clock.pass(14 * 60_000);
     target.dispatchEvent(new Event("keydown"));
     clock.pass(14 * 60_000);

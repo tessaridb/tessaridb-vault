@@ -64,6 +64,7 @@ function draw(outcome: Outcome<Routes>, view: HTMLElement, router: Router<Routes
   stopView();
   // Before signing in and while locked there is nothing to navigate: the card is the page.
   document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
+  showCompany();
   if (outcome.kind !== "matched") {
     heading(view, "Not found", "This address names no page of the vault.");
     return;
@@ -133,6 +134,28 @@ function mark(outcome: Outcome<Routes>): void {
   }
 }
 
+/** The unlocked company's name in the sidebar, and "Switch company" when the person is in others too. */
+function showCompany(): void {
+  const held = unlocked();
+  const name = document.getElementById("company");
+  const switcher = document.getElementById("switch-company");
+  if (name !== null) {
+    name.textContent = held?.companyName ?? "";
+    name.hidden = held === null;
+  }
+  if (switcher !== null) {
+    switcher.hidden = held?.otherCompanies !== true;
+  }
+}
+
+/** Switching company locks this one's keys and asks which company to unlock, starting from its records. */
+function switchButton(): void {
+  document.getElementById("switch-company")?.addEventListener("click", () => {
+    lock();
+    go(`#/unlock?next=${encodeURIComponent("/")}`);
+  });
+}
+
 /** The person's choice of theme, kept on <html> and in this browser only. */
 function themed(): void {
   const button = document.getElementById("theme");
@@ -183,6 +206,7 @@ const view = document.getElementById("view");
 if (view !== null) {
   themed();
   signOutButton();
+  switchButton();
   locking();
   // An identity provider's return is finished before any route is drawn, so the sign-in page never flashes first.
   void providerReturned().then((refused) => {

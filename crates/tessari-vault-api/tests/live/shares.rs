@@ -7,6 +7,18 @@ use serde_json::{Value, json};
 use crate::records::encoded;
 use crate::world::{Cast, World, sealed_record};
 
+/// The groups an opened record says it reaches the caller through, in a stable order.
+fn through(read: &Value) -> Vec<String> {
+    let mut groups: Vec<String> = read["through"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no `through` on {read}"))
+        .iter()
+        .map(|group| group.as_str().unwrap_or_default().to_owned())
+        .collect();
+    groups.sort_unstable();
+    groups
+}
+
 /// Put `account` into team A, as an admin does.
 pub(crate) async fn into_team(world: &World, cast: &Cast, account: &str) {
     let (status, body) = world
@@ -121,6 +133,11 @@ async fn a_record_shared_with_a_team_reaches_its_members_and_nobody_else() {
     assert_eq!(status, StatusCode::OK, "{read}");
     assert_eq!(read["recipient"], format!("group:{team_key}"));
     assert_eq!(read["wrap"], encoded(&[7; 82]));
+    assert_eq!(
+        through(&read),
+        std::slice::from_ref(&cast.team_a),
+        "the team it reaches them through"
+    );
     assert!(
         listed(&world, &cast, &cast.admin_a)
             .await
@@ -131,6 +148,10 @@ async fn a_record_shared_with_a_team_reaches_its_members_and_nobody_else() {
         .call(Method::GET, &path, Some(&cast.member_a), None)
         .await;
     assert_eq!(own["recipient"], format!("member:{}", cast.member_a_key));
+    assert!(
+        through(&own).is_empty(),
+        "no group brings the author their own record: {own}"
+    );
 
     // The owner is in the company, not the team.
     let (status, _) = world
@@ -205,6 +226,7 @@ async fn a_record_shared_with_the_department_the_company_or_one_member_reaches_t
         )
         .await;
     assert_eq!(read["recipient"], format!("group:{department_key}"));
+    assert_eq!(through(&read), std::slice::from_ref(&cast.department_a));
 
     let company_key = "d3".repeat(16);
     keyed(
@@ -236,6 +258,7 @@ async fn a_record_shared_with_the_department_the_company_or_one_member_reaches_t
         .await;
     assert_eq!(status, StatusCode::OK, "{read}");
     assert_eq!(read["recipient"], format!("group:{company_key}"));
+    assert_eq!(through(&read), std::slice::from_ref(&cast.company_a));
 
     let direct =
         crate::records::create(&world, &cast.company_a, &cast.member_a, b"for the owner").await;
@@ -258,6 +281,10 @@ async fn a_record_shared_with_the_department_the_company_or_one_member_reaches_t
         .await;
     assert_eq!(read["recipient"], format!("member:{}", cast.owner_a_key));
     assert_eq!(read["wrap"], encoded(&[4; 82]));
+    assert!(
+        through(&read).is_empty(),
+        "a direct share is no group's: {read}"
+    );
     let (status, _) = world
         .call(
             Method::GET,

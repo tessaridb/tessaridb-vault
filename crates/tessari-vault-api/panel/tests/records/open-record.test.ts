@@ -91,7 +91,7 @@ async function sealed(author: Person, reader: RecipientKey, change: { author?: s
     updated: 2,
     rotationDue: false,
   };
-  return { row, body, signature, authorKey: "bb".repeat(16), recipient: { kind: reader.kind, keyId: hex(reader.keyId) }, wrap };
+  return { row, body, signature, authorKey: "bb".repeat(16), recipient: { kind: reader.kind, keyId: hex(reader.keyId) }, wrap, through: [] };
 }
 
 describe("opening a record", () => {

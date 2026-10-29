@@ -193,6 +193,7 @@ impl RecordService {
             record: entity.into_model()?,
             sealed,
             recipient,
+            through: reached.through(),
         })
     }
 

@@ -53,6 +53,8 @@ export interface OpenedRecord {
   readonly authorKey: string;
   readonly recipient: Recipient;
   readonly wrap: Bytes;
+  /** The ids of the person's own groups the record is shared with. */
+  readonly through: readonly string[];
 }
 
 export function readOpened(v: unknown): OpenedRecord | null {
@@ -63,8 +65,9 @@ export function readOpened(v: unknown): OpenedRecord | null {
   const recipient = readRecipient(v["recipient"]);
   const [body, signature, wrap] = [v["body"], v["signature"], v["wrap"]].map((part) => (isText(part) ? decode(part) : null));
   const authorKey = v["author_key"];
-  return row !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey)
-    ? { row, body, signature, authorKey, recipient, wrap }
+  const through = v["through"];
+  return row !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey) && Array.isArray(through) && through.every(isId)
+    ? { row, body, signature, authorKey, recipient, wrap, through }
     : null;
 }
 

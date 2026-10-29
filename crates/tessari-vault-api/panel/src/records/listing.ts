@@ -4,10 +4,38 @@
 import type { Refusal } from "../crypto/errors.ts";
 import type { RecordRow } from "../records-model.ts";
 import type { RecordDocument } from "./document.ts";
+import type { ListedGroup } from "./share-targets.ts";
 import { BUILT_IN_TYPES } from "./types.ts";
 
-/** A record of the list: opened, or refused with the reason it would not open. */
-export type Listed = { readonly row: RecordRow; readonly document: RecordDocument } | { readonly row: RecordRow; readonly problem: Refusal };
+/** A record of the list: opened, or refused with the reason it would not open; `through` names the person's groups it is shared with. */
+export type Listed =
+  | { readonly row: RecordRow; readonly through: readonly string[]; readonly document: RecordDocument }
+  | { readonly row: RecordRow; readonly through: readonly string[]; readonly problem: Refusal };
+
+/** Which records the list shows: every one, the person's own, or the ones a group of theirs is given. */
+export type Scope = { readonly kind: "all" } | { readonly kind: "mine" } | { readonly kind: "group"; readonly group: string };
+
+/** Whether `item` is in `scope` for the person `me`. */
+export function inScope(item: Listed, scope: Scope, me: string): boolean {
+  switch (scope.kind) {
+    case "all":
+      return true;
+    case "mine":
+      return item.row.author === me;
+    case "group":
+      return item.through.includes(scope.group);
+  }
+}
+
+const KIND_ORDER: readonly ListedGroup["kind"][] = ["company", "department", "team"];
+
+/** The groups `items` come to the person through, named from `groups`: the company, then departments, then teams, by name. */
+export function scopeGroups(items: readonly Listed[], groups: readonly ListedGroup[]): readonly ListedGroup[] {
+  const present = new Set(items.flatMap((item) => item.through));
+  return groups
+    .filter((group) => present.has(group.id))
+    .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.name.localeCompare(b.name));
+}
 
 /** Whether `item` is kept by a title query and a type; a record that would not open is kept only with no query. */
 export function matches(item: Listed, query: string, type: string | null): boolean {

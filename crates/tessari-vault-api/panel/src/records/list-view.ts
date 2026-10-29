@@ -7,8 +7,9 @@ import { openedPagePath, readOpenedPage } from "../records-model.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import type { Stops } from "./field-view.ts";
-import { findsRecords, matches, typeName, unreadableWords, type Listed } from "./listing.ts";
-import { Opener, vouchedChain } from "./load.ts";
+import { findsRecords, inScope, matches, scopeGroups, typeName, unreadableWords, type Listed, type Scope } from "./listing.ts";
+import { Opener, companyPath, vouchedChain } from "./load.ts";
+import { readGroupList, type ListedGroup } from "./share-targets.ts";
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -22,6 +23,8 @@ const SKELETON_AFTER_MS = 200;
 
 export const CHAIN_REFUSED =
   "Your company's list of who may read what doesn't check out against the owner key your keys trust, so nothing is opened. Tell your company's owner.";
+
+const sameScope = (a: Scope, b: Scope): boolean => a.kind === b.kind && (a.kind !== "group" || (b.kind === "group" && a.group === b.group));
 
 function row(item: Listed, href: (record: string) => string): HTMLElement {
   const changed = el("span", { class: "muted" }, `Changed ${when.format(new Date(item.row.updated * 1000))}`);
@@ -57,7 +60,9 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
     skeleton.remove();
   };
   stops.push(loaded);
-  const chain = await vouchedChain(held);
+  const [chain, listedGroups] = await Promise.all([vouchedChain(held), call("GET", `${companyPath(held)}/groups`, readGroupList)]);
+  // Without the groups' names the list still shows every record; only the group chips are left out.
+  const groups: readonly ListedGroup[] = listedGroups.ok ? listedGroups.value : [];
   if (!chain.ok) {
     loaded();
     fill(said, refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
@@ -67,6 +72,7 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
   const items: Listed[] = [];
   let next: string | null = null;
   let type: string | null = null;
+  let scope: Scope = { kind: "all" };
   const search = el("input", { id: "record-filter", type: "search", autocomplete: "off", "aria-keyshortcuts": "Control+K Meta+K" });
   const toFilter = (event: KeyboardEvent): void => {
     if (findsRecords(event) && !filter.hidden) {
@@ -76,6 +82,7 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
   };
   document.addEventListener("keydown", toFilter);
   stops.push(() => document.removeEventListener("keydown", toFilter));
+  const scopes = el("div", { class: "chips", role: "group", "aria-label": "Show" });
   const types = el("div", { class: "chips", role: "group", "aria-label": "Type" });
   const list = el("ul", { class: "records", "aria-label": "Records" });
   const more = el("button", { type: "button", class: "quiet" }, "Load more");
@@ -84,11 +91,28 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
   const render = (): void => {
     filter.hidden = items.length === 0;
     types.hidden = items.length === 0;
+    scopes.hidden = items.length === 0;
+    const offered: readonly (readonly [Scope, string])[] = [
+      [{ kind: "all" }, "All"],
+      [{ kind: "mine" }, "Mine"],
+      ...scopeGroups(items, groups).map((group) => [{ kind: "group", group: group.id }, group.name] as const),
+    ];
+    fill(
+      scopes,
+      ...offered.map(([each, words]) => {
+        const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(sameScope(each, scope)) }, words);
+        chip.addEventListener("click", () => {
+          scope = each;
+          render();
+        });
+        return chip;
+      }),
+    );
     const present = [...new Set(items.map((item) => item.row.recordType))];
     fill(
       types,
       ...[null, ...present].map((id) => {
-        const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(type === id) }, id === null ? "All" : typeName(id));
+        const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(type === id) }, id === null ? "All types" : typeName(id));
         chip.addEventListener("click", () => {
           type = id;
           render();
@@ -96,7 +120,7 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
         return chip;
       }),
     );
-    const kept = items.filter((item) => matches(item, search.value, type));
+    const kept = items.filter((item) => inScope(item, scope, held.account) && matches(item, search.value, type));
     fill(list, ...kept.map((item) => row(item, href)));
     list.hidden = kept.length === 0;
     if (items.length === 0) {
@@ -106,10 +130,12 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
       clear.addEventListener("click", () => {
         search.value = "";
         type = null;
+        scope = { kind: "all" };
         render();
         search.focus();
       });
-      fill(said, el("p", {}, `No records match "${search.value.trim()}".`), clear);
+      const query = search.value.trim();
+      fill(said, el("p", {}, query === "" ? "No records match these filters." : `No records match "${query}".`), clear);
     } else {
       fill(said);
     }
@@ -136,7 +162,7 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
   }
   search.addEventListener("input", render);
   more.addEventListener("click", () => void load().then((loaded) => loaded && render()));
-  fill(main, head, filter, types, said, list, tail);
+  fill(main, head, filter, scopes, types, said, list, tail);
   render();
   title.focus();
 }

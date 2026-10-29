@@ -24,6 +24,7 @@ const opened = {
   author_key: ID("4"),
   recipient: `member:${ID("5")}`,
   wrap: encode(Uint8Array.of(6)),
+  through: [ID("b")],
 };
 
 describe("the records readers", () => {
@@ -45,6 +46,9 @@ describe("the records readers", () => {
     assert.ok(read !== null);
     assert.deepEqual(read.body, Uint8Array.of(1, 2, 3));
     assert.deepEqual(read.recipient, { kind: "member", keyId: ID("5") });
+    assert.deepEqual(read.through, [ID("b")]);
+    assert.equal(readOpened({ ...opened, through: ["team"] }), null);
+    assert.equal(readOpened({ ...opened, through: undefined }), null);
     assert.equal(readOpened({ ...opened, wrap: "not base64url!" }), null);
     assert.equal(readOpened({ ...opened, record: { ...row, author: "x" } }), null);
   });

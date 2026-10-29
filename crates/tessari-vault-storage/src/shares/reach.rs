@@ -43,6 +43,18 @@ impl Reached {
             .find_map(|name| recipients.remove(&name).map(|wrap| (name, wrap)))
     }
 
+    /// The groups among the record's shares that reach the account: which of their own company, departments and
+    /// teams the record comes to them through, and nothing about any other share.
+    pub(crate) fn through(&self) -> Vec<String> {
+        self.shares
+            .iter()
+            .filter(|share| {
+                share.recipient.starts_with("group:") && self.targets.contains(&share.target)
+            })
+            .map(|share| share.target.clone())
+            .collect()
+    }
+
     /// Refuses unless the account may change the record: readers read.
     pub(crate) const fn editing(&self) -> Result<()> {
         match self.access {

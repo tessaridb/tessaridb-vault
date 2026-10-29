@@ -13,12 +13,16 @@
     <a id="skip" class="skip" href="#view">Skip to content</a>
     <div class="shell">
       <aside class="side">
-        <p class="brand"><img class="logo" src="/favicon.svg" alt="" width="28" height="28" /><span>TessariDB Vault</span></p>
+        <div class="identity">
+          <p class="brand"><img class="logo" src="/favicon.svg" alt="" width="28" height="28" /><span>TessariDB Vault</span></p>
+          <p id="company" class="company" hidden></p>
+        </div>
         <nav aria-label="Sections">
           <a href="#/" data-section="records">Records</a>
         </nav>
         <div class="side-foot">
           <button id="theme" type="button" class="quiet">Dark theme</button>
+          <button id="switch-company" type="button" class="quiet" hidden>Switch company</button>
           <button id="lock" type="button" class="quiet">Lock</button>
           <button id="sign-out" type="button" class="quiet">Sign out</button>
         </div>

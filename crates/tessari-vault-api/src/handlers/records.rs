@@ -54,6 +54,7 @@ pub(crate) struct Opened {
     author_key: String,
     recipient: String,
     wrap: String,
+    through: Vec<String>,
 }
 
 impl From<&OpenedRecord> for Opened {
@@ -66,6 +67,7 @@ impl From<&OpenedRecord> for Opened {
             author_key: sealed.author_key().to_string(),
             recipient: opened.recipient.clone(),
             wrap: base64url::encode(sealed.wrap()),
+            through: opened.through.clone(),
         }
     }
 }
