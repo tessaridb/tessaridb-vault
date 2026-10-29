@@ -1768,6 +1768,85 @@
     return { revision: row2.revision, ...await sealed(company, keys, row2.id, row2.revision + 1, document2, vouched, others) };
   }
 
+  // src/records/shares-model.ts
+  var isRecord5 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isId2 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  function readShares(v) {
+    if (!isRecord5(v) || !isRecord5(v["author"]) || !Array.isArray(v["shares"])) {
+      return null;
+    }
+    const { account, key_id: authorKey } = v["author"];
+    if (!isId2(account) || authorKey !== null && !isId2(authorKey)) {
+      return null;
+    }
+    const shares = v["shares"].map((share) => {
+      if (!isRecord5(share) || !isId2(share["target"]) || !isId2(share["key_id"])) {
+        return null;
+      }
+      const { kind, right } = share;
+      return (kind === "member" || kind === "group") && (right === "read" || right === "edit") ? { kind, target: share["target"], right, keyId: share["key_id"] } : null;
+    });
+    return shares.every((share) => share !== null) ? { author: { account, keyId: authorKey }, shares } : null;
+  }
+  function readDirectory(v) {
+    if (!isRecord5(v) || !Array.isArray(v["keys"])) {
+      return null;
+    }
+    const entries = v["keys"].map((entry) => {
+      if (!isRecord5(entry) || !isId2(entry["account"]) || !isId2(entry["key_id"]) || typeof entry["agreement_public"] !== "string") {
+        return null;
+      }
+      const agreementPublic = decode(entry["agreement_public"]);
+      return agreementPublic !== null && agreementPublic.length === 32 ? [entry["account"], { keyId: entry["key_id"], agreementPublic }] : null;
+    });
+    return entries.every((entry) => entry !== null) ? new Map(entries) : null;
+  }
+  function revisionRecipients(listed, directory, groups, own) {
+    const wanted = [
+      ...listed.author.keyId === null ? [] : [{ kind: "member", target: listed.author.account, right: "edit", keyId: listed.author.keyId }],
+      ...listed.shares
+    ];
+    const recipients = [];
+    for (const share of wanted.filter((each) => !(each.kind === "member" && each.keyId === own))) {
+      const keyId = keyIdBytes(share.keyId);
+      const member = share.kind === "member" ? directory.get(share.target) : void 0;
+      const key = share.kind === "member" ? member?.keyId === share.keyId ? member.agreementPublic : void 0 : groups.get(share.target);
+      if (keyId === null || key === void 0) {
+        return null;
+      }
+      recipients.push({
+        recipient: share.kind === "member" ? { kind: "member", account: share.target } : { kind: "group", group: share.target },
+        keyId,
+        listed: key
+      });
+    }
+    return recipients;
+  }
+
+  // src/records/share-recipients.ts
+  var MOVED = "This record's sharing changed while it was open. Open it again, then make your change.";
+  async function sharedWith(held2, id) {
+    const path = companyPath(held2);
+    const listed = await call("GET", `${path}/records/${encodeURIComponent(id)}/shares`, readShares);
+    if (!listed.ok) {
+      return { ok: false, words: listed.status === 403 ? "You can read this record but not change it." : loadFailure(listed) };
+    }
+    const directory = await call("GET", `${path}/keys`, readDirectory);
+    if (!directory.ok) {
+      return { ok: false, words: loadFailure(directory) };
+    }
+    const groups = /* @__PURE__ */ new Map();
+    for (const share of listed.value.shares.filter((each) => each.kind === "group")) {
+      const key = await call("GET", `${path}/groups/${encodeURIComponent(share.target)}/key`, readGroupKey);
+      if (!key.ok) {
+        return { ok: false, words: key.status === 404 ? MOVED : loadFailure(key) };
+      }
+      groups.set(share.target, key.value.public);
+    }
+    const recipients = revisionRecipients(listed.value, directory.value, groups, hex(held2.keys.keyId));
+    return recipients === null ? { ok: false, words: MOVED } : { ok: true, recipients };
+  }
+
   // src/records/edit-view.ts
   var INPUT = {
     text: "text",
@@ -1819,7 +1898,7 @@
       case "stale_revision":
         return "This record changed since you opened it. Open it again to see the newer version, then make your change.";
       case "stale_shares":
-        return "This record is shared, and this page can't yet carry a change to the people it is shared with.";
+        return "This record's sharing changed while it was open. Open it again, then make your change.";
       default:
         return fallback;
     }
@@ -1911,7 +1990,11 @@
     }
     const row2 = item.row;
     form(main2, "Edit record", item.document, { href: back, label: "Back to the record" }, async (made) => {
-      const revision = await revisedRecord(held2.company, held2.keys, chain.vouched, row2, made, []);
+      const sharing = await sharedWith(held2, id);
+      if (!sharing.ok) {
+        return sharing.words;
+      }
+      const revision = await revisedRecord(held2.company, held2.keys, chain.vouched, row2, made, sharing.recipients);
       const saved = await call("PUT", `${companyPath(held2)}/records/${encodeURIComponent(id)}`, readRow, { body: revision });
       if (!saved.ok) {
         return saveFailure(saved.code, loadFailure(saved));
@@ -2094,22 +2177,22 @@
   }
 
   // src/sign-in-model.ts
-  var isRecord5 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord6 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readMethods(v) {
-    if (!isRecord5(v)) {
+    if (!isRecord6(v)) {
       return null;
     }
     const { password, passkey: passkey2, provider } = v;
     return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
   }
   function readChallenge(v) {
-    return isRecord5(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+    return isRecord6(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
   }
   function readSession(v) {
-    return isRecord5(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+    return isRecord6(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
   function readPasskeyRequest(v) {
-    return isRecord5(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+    return isRecord6(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
   function signInFailure(failure) {
     switch (failure.code) {

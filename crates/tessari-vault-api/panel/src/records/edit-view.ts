@@ -14,6 +14,7 @@ import { CHAIN_REFUSED, loadFailure } from "./list-view.ts";
 import { typeName, unreadableWords } from "./listing.ts";
 import { Opener, companyPath, vouchedChain } from "./load.ts";
 import { newRecord, revisedRecord } from "./save-record.ts";
+import { sharedWith } from "./share-recipients.ts";
 import { BUILT_IN_TYPES, recordFromTemplate } from "./types.ts";
 
 const INPUT: Partial<Record<Field["type"], string>> = {
@@ -69,7 +70,7 @@ function saveFailure(code: string, fallback: string): string {
     case "stale_revision":
       return "This record changed since you opened it. Open it again to see the newer version, then make your change.";
     case "stale_shares":
-      return "This record is shared, and this page can't yet carry a change to the people it is shared with.";
+      return "This record's sharing changed while it was open. Open it again, then make your change.";
     default:
       return fallback;
   }
@@ -167,7 +168,11 @@ export async function drawEdit(main: HTMLElement, held: Unlocked, id: string, ba
   }
   const row: RecordRow = item.row;
   form(main, "Edit record", item.document, { href: back, label: "Back to the record" }, async (made) => {
-    const revision = await revisedRecord(held.company, held.keys, chain.vouched, row, made, []);
+    const sharing = await sharedWith(held, id);
+    if (!sharing.ok) {
+      return sharing.words;
+    }
+    const revision = await revisedRecord(held.company, held.keys, chain.vouched, row, made, sharing.recipients);
     const saved = await call("PUT", `${companyPath(held)}/records/${encodeURIComponent(id)}`, readRow, { body: revision });
     if (!saved.ok) {
       return saveFailure(saved.code, loadFailure(saved));
