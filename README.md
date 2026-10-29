@@ -103,7 +103,7 @@ docker compose up -d --wait
 docker compose run --rm vault enrolment-link
 ```
 
-The database (`tessaridb/tessaridb:0.39.5`; the server needs 0.39.3 or later, and 0.39.4 is withdrawn) declares its
+The database (`tessaridb/tessaridb:0.39.6`; the server needs 0.39.3 or later, and 0.39.4 is withdrawn) declares its
 owner from `.env` on first start, and its port is not published: the server runs in the database container's
 network namespace and reaches it at `127.0.0.1`, the only place the server speaks to a store without TLS. A one-shot
 `vault-account` step (`docker/vault-account.sh`) signs in as that owner once to declare the `vault` namespace and the

@@ -14,7 +14,7 @@ name: tessaridb-vault
 
 services:
   tessaridb:
-    image: tessaridb/tessaridb:0.39.5
+    image: tessaridb/tessaridb:0.39.6
     restart: unless-stopped
     environment:
       # The first start declares this store-wide owner; a store with no user
@@ -31,7 +31,7 @@ services:
   # Declares the vault's own database account, as the owner, and exits: the
   # vault signs in as an editor of its one namespace and never as the owner.
   vault-account:
-    image: tessaridb/tessaridb:0.39.5
+    image: tessaridb/tessaridb:0.39.6
     entrypoint: ["/bin/bash", "/vault-account.sh"]
     depends_on:
       tessaridb:
@@ -49,7 +49,7 @@ services:
 
   # Writes the service key into its own volume once, readable by the vault alone.
   service-key:
-    image: tessaridb/tessaridb:0.39.5
+    image: tessaridb/tessaridb:0.39.6
     entrypoint: ["/bin/bash", "/service-key.sh"]
     user: "0"
     volumes:
