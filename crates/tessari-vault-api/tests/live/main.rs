@@ -7,6 +7,7 @@
 #![cfg(test)]
 
 mod audit;
+mod audit_reads;
 mod authenticator;
 mod binary;
 mod canaries;
