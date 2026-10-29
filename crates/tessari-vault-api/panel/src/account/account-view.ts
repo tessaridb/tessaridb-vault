@@ -20,8 +20,9 @@ async function addPasskey(held: Unlocked): Promise<Failure | null> {
   let credential: Credential | null;
   try {
     credential = await navigator.credentials.create({ publicKey: creationOptions(begun.value, held.name) });
-  } catch {
-    return cancelled;
+  } catch (problem) {
+    // The browser says InvalidStateError when this device already holds one of the person's passkeys.
+    return problem instanceof DOMException && problem.name === "InvalidStateError" ? { ...cancelled, code: "passkey_registered" } : cancelled;
   }
   if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAttestationResponse)) {
     return cancelled;

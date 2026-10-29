@@ -36,7 +36,7 @@ pub struct PasskeyParty {
     pub origin: String,
 }
 
-/// The relying party of `public_url`: https, or http to a loopback address; a bare origin with no path or user.
+/// The relying party of `public_url`: https, or http to `localhost` or a loopback address; a bare origin with no path or user.
 fn passkey_party(public_url: &str) -> Result<PasskeyParty> {
     let refuse = |reason| Error::InvalidConfig {
         field: "TESSARIDB_VAULT_PUBLIC_URL",
@@ -44,13 +44,16 @@ fn passkey_party(public_url: &str) -> Result<PasskeyParty> {
     };
     let url = url::Url::parse(public_url).map_err(|_| refuse("an absolute URL"))?;
     let host = url.host_str().ok_or(refuse("a URL with a host"))?;
-    let loopback = host
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .parse::<std::net::IpAddr>()
-        .is_ok_and(|address| address.is_loopback());
+    // `localhost` counts too: it is the only plain-http origin a browser both trusts and accepts as a passkey's
+    // relying-party id, which an IP address never is.
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
     if !(url.scheme() == "https" || (url.scheme() == "http" && loopback)) {
-        return Err(refuse("https, or http to a loopback address"));
+        return Err(refuse("https, or http to localhost or a loopback address"));
     }
     if url.path() != "/"
         || url.query().is_some()

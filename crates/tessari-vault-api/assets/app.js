@@ -4557,8 +4557,8 @@ ${END}
     let credential;
     try {
       credential = await navigator.credentials.create({ publicKey: creationOptions(begun.value, held2.name) });
-    } catch {
-      return cancelled;
+    } catch (problem2) {
+      return problem2 instanceof DOMException && problem2.name === "InvalidStateError" ? { ...cancelled, code: "passkey_registered" } : cancelled;
     }
     if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAttestationResponse)) {
       return cancelled;

@@ -132,6 +132,13 @@ fn the_public_url_names_the_passkey_relying_party_and_must_be_https_or_loopback(
             "127.0.0.1",
             "http://127.0.0.1:47999",
         ),
+        // A browser refuses an IP address as a relying-party id, so plain-http development reaches passkeys only
+        // through `localhost`, which browsers treat as a secure origin.
+        (
+            "http://localhost:47999",
+            "localhost",
+            "http://localhost:47999",
+        ),
     ] {
         let mut pairs = STORE.to_vec();
         pairs.push(("TESSARIDB_VAULT_PUBLIC_URL", url));
@@ -147,6 +154,8 @@ fn the_public_url_names_the_passkey_relying_party_and_must_be_https_or_loopback(
     }
     for url in [
         "http://vault.example.com",
+        "http://localhost.example.com",
+        "http://notlocalhost:47999",
         "https://vault.example.com/vault",
         "https://user@vault.example.com",
         "not a url",
