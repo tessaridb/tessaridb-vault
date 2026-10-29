@@ -1,10 +1,11 @@
 //! Sharing a record with a group or a member (C4). The browser wraps the record key to the target's key; the server
 //! keeps the wrap and the share together and reads neither the key nor the record.
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::Deserialize;
-use tessari_vault_storage::shares::{Access, NewShare, ShareTarget};
+use serde::{Deserialize, Serialize};
+use tessari_vault_storage::shares::{Access, ListedShares, NewShare, ShareTarget};
 use tessari_vault_types::KeyId;
 
 use super::records::{decoded, record_id};
@@ -62,4 +63,65 @@ pub(crate) async fn remove(
         .remove(&actor, &company, &record, &target)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// A record's author and its key set, as a revision wraps to them.
+#[derive(Serialize)]
+pub(crate) struct AuthorItem {
+    account: String,
+    key_id: Option<String>,
+}
+
+/// One share: `kind` is `group` or `member`, `target` its id, `right` what it lets them do, `key_id` the key a
+/// revision wraps the record key to for them, under the recipient name `<kind>:<key_id>`.
+#[derive(Serialize)]
+pub(crate) struct ShareItem {
+    kind: &'static str,
+    target: String,
+    right: &'static str,
+    key_id: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct SharesAnswer {
+    author: AuthorItem,
+    shares: Vec<ShareItem>,
+}
+
+impl From<ListedShares> for SharesAnswer {
+    fn from(listed: ListedShares) -> Self {
+        Self {
+            author: AuthorItem {
+                account: listed.author.as_str().to_owned(),
+                key_id: listed.author_key.map(|key| key.as_str().to_owned()),
+            },
+            shares: listed
+                .shares
+                .into_iter()
+                .map(|share| {
+                    let (kind, target) = match share.target {
+                        ShareTarget::Group(group) => ("group", group.as_str().to_owned()),
+                        ShareTarget::Member(account) => ("member", account.as_str().to_owned()),
+                    };
+                    ShareItem {
+                        kind,
+                        target,
+                        right: share.access.word(),
+                        key_id: share.key_id.as_str().to_owned(),
+                    }
+                })
+                .collect(),
+        }
+    }
+}
+
+pub(crate) async fn list(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path((company, record)): Path<(String, String)>,
+) -> Result<Json<SharesAnswer>, ApiError> {
+    let company = company_id(&company)?;
+    let record = record_id(&record)?;
+    let listed = state.storage.shares.list(&actor, &company, &record).await?;
+    Ok(Json(SharesAnswer::from(listed)))
 }

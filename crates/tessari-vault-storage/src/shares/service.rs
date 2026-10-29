@@ -15,6 +15,9 @@ use crate::audit::epoch_seconds;
 use crate::records::{RecordService, RecordVaults};
 use crate::{Conflict, Error, Result};
 
+#[path = "listing.rs"]
+mod listing;
+
 /// Shares.
 pub struct ShareService {
     repository: Arc<dyn ShareRepository>,

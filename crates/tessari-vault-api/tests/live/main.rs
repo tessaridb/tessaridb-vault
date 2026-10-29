@@ -27,6 +27,7 @@ mod records;
 mod recovery;
 mod revocation;
 mod rules;
+mod share_list;
 mod shares;
 mod sign_in;
 mod world;
@@ -302,6 +303,9 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             low: not_author,
             cross: hidden,
         }),
+        ("GET", "/api/companies/{company}/records/{record}/shares") => {
+            row(None, not_author, hidden)
+        }
         ("POST", "/api/companies/{company}/records/{record}/shares") => row(
             Some(
                 json!({ "member": cast.owner_a_id, "right": "read", "key_id": "44".repeat(16),

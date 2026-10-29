@@ -7,7 +7,7 @@ mod repository;
 mod service;
 mod tessaridb;
 
-pub use entity::{Access, NewShare, ShareError, ShareTarget};
+pub use entity::{Access, ListedShare, ListedShares, NewShare, ShareError, ShareTarget};
 pub(crate) use reach::{Reach, Reached};
 pub use service::ShareService;
 pub(crate) use tessaridb::{TessaridbShareRepository, retiring};

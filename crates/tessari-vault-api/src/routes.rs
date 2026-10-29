@@ -180,6 +180,11 @@ pub fn routes() -> Vec<Route> {
             delete(record_removal::delete),
         ),
         route(
+            Method::GET,
+            "/api/companies/{company}/records/{record}/shares",
+            get(shares::list),
+        ),
+        route(
             Method::POST,
             "/api/companies/{company}/records/{record}/shares",
             post(shares::create),

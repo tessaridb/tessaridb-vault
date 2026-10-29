@@ -151,3 +151,25 @@ impl FromRecord for Named {
         })
     }
 }
+
+/// One share of a record as its editors see it: whom it reaches, with what access, through which key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedShare {
+    /// The group or member it is shared with.
+    pub target: ShareTarget,
+    /// What the share lets them do.
+    pub access: Access,
+    /// The key the record key is wrapped to for them: a revision wraps to it again.
+    pub key_id: KeyId,
+}
+
+/// A record's shares and its author's key: every recipient a revision must keep.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedShares {
+    /// Who wrote the record.
+    pub author: AccountId,
+    /// The key set the author keeps in the company, when they keep one.
+    pub author_key: Option<KeyId>,
+    /// The shares.
+    pub shares: Vec<ListedShare>,
+}
