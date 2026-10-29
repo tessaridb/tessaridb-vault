@@ -20,6 +20,8 @@ import { Opener, companyPath, vouchedChain } from "./load.ts";
 import { newRecord, revisedRecord } from "./save-record.ts";
 import { sharedWith } from "./share-recipients.ts";
 import { sshKeyControl } from "./ssh-field-view.ts";
+import { fileControl, type Attach } from "./file-field-view.ts";
+import { uploadFile } from "./file-io.ts";
 import { BUILT_IN_TYPES, recordFromTemplate } from "./types.ts";
 
 const INPUT: Partial<Record<Field["type"], string>> = {
@@ -34,7 +36,10 @@ const INPUT: Partial<Record<Field["type"], string>> = {
 };
 
 /** One field's control and a way to read what it holds; types the form cannot edit yet keep their value. */
-function control(field: Field, id: string): { readonly row: HTMLElement; readonly read: () => unknown; readonly mark: (words: string | null) => void } {
+function control(field: Field, id: string, attach: Attach | null): { readonly row: HTMLElement; readonly read: () => unknown; readonly mark: (words: string | null) => void } {
+  if (field.type === "file") {
+    return fileControl(field.label, field.value, id, attach);
+  }
   if (field.type === "ssh-key") {
     return sshKeyControl(field.label, field.value, id);
   }
@@ -84,15 +89,18 @@ function saveFailure(code: string, fallback: string): string {
   }
 }
 
-/** The form for `document`; `save` seals and sends it and answers a refusal in words, or null when it is kept. */
-function form(main: HTMLElement, title: string, document: RecordDocument, trail: readonly Crumb[], extra: HTMLElement | null, save: (made: RecordDocument) => Promise<string | null>): void {
+/**
+ * The form for `document`; `save` seals and sends it and answers a refusal in words, or null when it is kept. `attach`
+ * sends a chosen file, and is null for a record not saved yet.
+ */
+function form(main: HTMLElement, title: string, document: RecordDocument, trail: readonly Crumb[], extra: HTMLElement | null, attach: Attach | null, save: (made: RecordDocument) => Promise<string | null>): void {
   const name = el("input", { id: "record-title", type: "text", autocomplete: "off", value: document.title });
   const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
   nameHint.hidden = true;
   name.setAttribute("aria-describedby", nameHint.id);
   const controls = new Map<string, ReturnType<typeof control>>();
   const { base, custom } = splitCustom(document);
-  const own = customEditor(custom, control, base.sections.flatMap((section) => section.fields.map((field) => field.label)));
+  const own = customEditor(custom, (field, id) => control(field, id, attach), base.sections.flatMap((section) => section.fields.map((field) => field.label)));
   const sections = base.sections.map((section, sectionIndex) =>
     el(
       "fieldset",
@@ -100,7 +108,7 @@ function form(main: HTMLElement, title: string, document: RecordDocument, trail:
       section.name === "" ? null : el("legend", {}, section.name),
       ...section.fields.map((field, fieldIndex) => {
         const at = fieldAt(sectionIndex, fieldIndex);
-        const made = control(field, `field-${sectionIndex}-${fieldIndex}`);
+        const made = control(field, `field-${sectionIndex}-${fieldIndex}`, attach);
         controls.set(at, made);
         return made.row;
       }),
@@ -159,7 +167,7 @@ export async function drawNew(main: HTMLElement, held: Unlocked, type: string | 
     return;
   }
   const picker = audiencePicker(audience.choices);
-  form(main, "New record", recordFromTemplate(template, ""), trail, picker.section, async (made) => {
+  form(main, "New record", recordFromTemplate(template, ""), trail, picker.section, null, async (made) => {
     const record = await newRecord(held.company, held.keys, made);
     const answer = await call("POST", `${companyPath(held)}/records`, readRow, { body: record.body });
     if (!answer.ok) {
@@ -196,7 +204,7 @@ export async function drawEdit(main: HTMLElement, held: Unlocked, id: string, re
     return;
   }
   const row: RecordRow = item.row;
-  form(main, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, async (made) => {
+  form(main, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, (file) => uploadFile(held, id, file), async (made) => {
     const sharing = await sharedWith(held, id);
     if (!sharing.ok) {
       return sharing.words;

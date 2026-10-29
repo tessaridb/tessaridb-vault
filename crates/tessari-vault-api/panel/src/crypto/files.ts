@@ -84,6 +84,9 @@ async function chunkKey(fileKey: CryptoKey, salt: Bytes, usage: "encrypt" | "dec
   );
 }
 
+/** How many bytes sealing a `length`-byte file makes: the header, then each chunk with its tag. */
+export const sealedSize = (length: number): number => 2 + KEY_ID_BYTES + SALT_BYTES + PREFIX_BYTES + length + TAG_BYTES * Math.max(1, Math.ceil(length / FILE_CHUNK_BYTES));
+
 /** Seal a whole file; refused above the ceiling before any byte of it is read. */
 export async function sealFile(fileKey: CryptoKey, context: FileContext, data: Bytes): Promise<Bytes> {
   if (data.length > FILE_MAX_BYTES) {

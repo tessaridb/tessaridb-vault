@@ -12,8 +12,11 @@
   margin-block-end: var(--stack);
 }
 
+/* One column that may be narrower than what it holds, so a wide control (a file picker) shrinks instead of pushing the
+   page sideways on a phone. */
 .field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-2);
   margin-block-end: var(--s-5);
   max-inline-size: 32rem;

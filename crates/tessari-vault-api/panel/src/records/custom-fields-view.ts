@@ -1,6 +1,6 @@
 // The edit form's own-fields section: the fields the author added, each removable, and an "Add a field" row that opens
-// in place for a name and a kind (text, a secret shown as dots, or an SSH key) rather than in a dialog, since it is
-// short and its result lands right above it.
+// in place for a name and a kind (text, a secret shown as dots, an SSH key or a file) rather than in a dialog, since
+// it is short and its result lands right above it.
 
 import { el, fill } from "../dom.ts";
 import { iconAction } from "../icon-action.ts";
@@ -24,6 +24,7 @@ const KINDS = [
   { type: "text", words: "Text" },
   { type: "concealed", words: "Secret" },
   { type: "ssh-key", words: "SSH key" },
+  { type: "file", words: "File" },
 ] as const;
 
 /** The section for `initial`, drawing each field with `controlFor`; `taken` names the type's own fields. */
@@ -39,7 +40,7 @@ export function customEditor(initial: readonly CustomField[], controlFor: (field
     // of its own buttons, and the remove button joins them.
     const input = control.row.querySelector("input");
     if (input === null) {
-      control.row.querySelector(".input-line")?.append(remove);
+      (control.row.querySelector(".input-line") ?? control.row).append(remove);
     } else {
       const line = el("div", { class: "input-line" });
       input.replaceWith(line);

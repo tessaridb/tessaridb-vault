@@ -86,3 +86,33 @@ export async function call<T>(method: Method, route: string, read: (value: unkno
     message: refusal?.message ?? `The vault refused the request (status ${response.status}).`,
   };
 }
+
+/** Sends `body` as raw bytes (`PUT`) or reads raw bytes (`GET`): a sealed file's parts, which are not JSON. */
+export async function callBytes(method: "GET" | "PUT", route: string, body?: Uint8Array<ArrayBuffer>): Promise<Answer<Uint8Array<ArrayBuffer>>> {
+  const sent = headers({});
+  sent["accept"] = "application/octet-stream, application/json";
+  if (body !== undefined) {
+    sent["content-type"] = "application/octet-stream";
+  }
+  let response: Response;
+  try {
+    response = await fetch(route, { method, credentials: "same-origin", headers: sent, ...(body === undefined ? {} : { body }) });
+  } catch {
+    return { ok: false, status: 0, code: "network", message: "The vault did not answer." };
+  }
+  if (response.ok) {
+    return { ok: true, value: new Uint8Array(await response.arrayBuffer()) };
+  }
+  let refusal: { readonly code: string; readonly message: string } | null = null;
+  try {
+    refusal = readRefusal(JSON.parse(await response.text()));
+  } catch {
+    refusal = null;
+  }
+  return {
+    ok: false,
+    status: response.status,
+    code: refusal?.code ?? "unknown",
+    message: refusal?.message ?? `The vault refused the request (status ${response.status}).`,
+  };
+}

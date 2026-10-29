@@ -9,6 +9,7 @@ import { breadcrumbs, heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { recordCrumbs } from "./crumbs.ts";
 import { fieldView, type Stops } from "./field-view.ts";
+import { saveToDevice } from "./file-field-view.ts";
 import { deleteControls } from "./delete-dialog.ts";
 import { CHAIN_REFUSED, loadFailure } from "./list-view.ts";
 import { typeName, unreadableWords, type copier } from "./listing.ts";
@@ -56,7 +57,7 @@ export async function drawRecord(
       "section",
       { class: "record-section" },
       section.name === "" ? null : el("h2", {}, section.name),
-      el("dl", { class: "fields" }, ...section.fields.flatMap((field) => fieldView(field, copy, stops))),
+      el("dl", { class: "fields" }, ...section.fields.flatMap((field) => fieldView(field, copy, stops, (value) => void saveToDevice(held, id, value)))),
     ),
   );
   const head = el("div", {}, title, el("p", { class: "lede" }, typeName(document.type)));

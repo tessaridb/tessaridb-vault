@@ -62,4 +62,9 @@ describe("custom fields", () => {
     assert.deepEqual(splitCustom(joined).custom, [{ label: "Deploy key", type: "ssh-key", value: key }]);
     assert.deepEqual(splitCustom(joined).base, BASE);
   });
+  it("keeps a file the author added, with its own key", () => {
+    const file = { id: "f".repeat(32), name: "plan.pdf", size: 10, mediaType: "application/pdf", key: "ab".repeat(32), keyId: "cd".repeat(16) };
+    const joined = joinCustom(BASE, [{ label: "Floor plan", type: "file", value: file }]);
+    assert.deepEqual(splitCustom(joined).custom, [{ label: "Floor plan", type: "file", value: file }]);
+  });
 });

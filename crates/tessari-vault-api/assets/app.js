@@ -70,6 +70,34 @@
       message: refusal2?.message ?? `The vault refused the request (status ${response.status}).`
     };
   }
+  async function callBytes(method, route, body) {
+    const sent = headers({});
+    sent["accept"] = "application/octet-stream, application/json";
+    if (body !== void 0) {
+      sent["content-type"] = "application/octet-stream";
+    }
+    let response;
+    try {
+      response = await fetch(route, { method, credentials: "same-origin", headers: sent, ...body === void 0 ? {} : { body } });
+    } catch {
+      return { ok: false, status: 0, code: "network", message: "The vault did not answer." };
+    }
+    if (response.ok) {
+      return { ok: true, value: new Uint8Array(await response.arrayBuffer()) };
+    }
+    let refusal2 = null;
+    try {
+      refusal2 = readRefusal(JSON.parse(await response.text()));
+    } catch {
+      refusal2 = null;
+    }
+    return {
+      ok: false,
+      status: response.status,
+      code: refusal2?.code ?? "unknown",
+      message: refusal2?.message ?? `The vault refused the request (status ${response.status}).`
+    };
+  }
 
   // src/dom.ts
   function el(tag, attributes = {}, ...children) {
@@ -650,6 +678,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     lock: [box(5, 11, 14, 10, 2), "M8 11V7.5a4 4 0 0 1 8 0V11"],
     "sign-out": ["M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4", "M15 8l4 4-4 4", "M19 12H9"],
     switch: ["M7 4L3 8l4 4", "M3 8h14", "M17 12l4 4-4 4", "M21 16H7"],
+    download: ["M12 4v11", "M7 10l5 5 5-5", "M5 20h14"],
     copy: [box(8, 8, 13, 13, 2), "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"],
     eye: ["M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z", ring(12, 12, 3)],
     "eye-off": [
@@ -1212,14 +1241,14 @@ ${target.detail}`.toLowerCase().includes(wanted));
       throw new VaultCryptoError("malformed");
     }
     const salt = random(SALT_BYTES);
-    const nonce = random(NONCE_BYTES);
+    const nonce2 = random(NONCE_BYTES);
     const key = await contentKey(recordKey, salt, "encrypt");
     const sealed2 = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce, additionalData: associatedData(context2, salt) },
+      { name: "AES-GCM", iv: nonce2, additionalData: associatedData(context2, salt) },
       key,
       plaintext
     );
-    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.recordBody), context2.keyId, salt, nonce, new Uint8Array(sealed2));
+    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.recordBody), context2.keyId, salt, nonce2, new Uint8Array(sealed2));
   }
   async function openRevision(keys, context2, body) {
     const reader = new Reader(body);
@@ -1231,7 +1260,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
     const keyId = reader.take(KEY_ID_BYTES);
     const salt = reader.take(SALT_BYTES);
-    const nonce = reader.take(NONCE_BYTES);
+    const nonce2 = reader.take(NONCE_BYTES);
     const ciphertext = reader.rest();
     if (ciphertext.length < TAG_BYTES) {
       throw new VaultCryptoError("malformed");
@@ -1247,7 +1276,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     try {
       return new Uint8Array(
         await crypto.subtle.decrypt(
-          { name: "AES-GCM", iv: nonce, additionalData: associatedData(context2, salt) },
+          { name: "AES-GCM", iv: nonce2, additionalData: associatedData(context2, salt) },
           key,
           ciphertext
         )
@@ -1347,8 +1376,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
   async function sealWith(ephemeral, recipientPublic, info, aad, plaintext) {
     const { sharedSecret, enc } = await encapsulateWith(ephemeral, recipientPublic);
-    const { key, nonce } = await aeadKey(sharedSecret, info);
-    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, additionalData: aad }, key, plaintext);
+    const { key, nonce: nonce2 } = await aeadKey(sharedSecret, info);
+    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce2, additionalData: aad }, key, plaintext);
     return { enc, ciphertext: new Uint8Array(ciphertext) };
   }
   async function seal(recipientPublic, info, aad, plaintext) {
@@ -1365,9 +1394,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
     } catch {
       throw new VaultCryptoError("unauthentic");
     }
-    const { key, nonce } = await aeadKey(await sharedSecretOf(dh, enc, recipientPublic), info);
+    const { key, nonce: nonce2 } = await aeadKey(await sharedSecretOf(dh, enc, recipientPublic), info);
     try {
-      return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce, additionalData: aad }, key, ciphertext));
+      return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce2, additionalData: aad }, key, ciphertext));
     } catch {
       throw new VaultCryptoError("unauthentic");
     }
@@ -1409,9 +1438,115 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/crypto/files.ts
   var FILE_CHUNK_BYTES = 64 * 1024;
   var FILE_MAX_BYTES = 256 * 1024 * 1024;
+  var KEY_ID_BYTES3 = 16;
+  var SALT_BYTES2 = 32;
+  var PREFIX_BYTES = 7;
   var TAG_BYTES2 = 16;
   var SEALED_CHUNK_BYTES = FILE_CHUNK_BYTES + TAG_BYTES2;
   var MAX_CHUNKS = FILE_MAX_BYTES / FILE_CHUNK_BYTES;
+  var FILE_KEY_BYTES = 32;
+  var toHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  function fromHex(text3, length) {
+    if (!new RegExp(`^[0-9a-f]{${2 * length}}$`).test(text3)) {
+      throw new VaultCryptoError("malformed");
+    }
+    return Uint8Array.from(text3.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+  }
+  function newFileKey() {
+    const key = random(FILE_KEY_BYTES);
+    const made = { key: toHex(key), keyId: toHex(random(KEY_ID_BYTES3)) };
+    wipe(key);
+    return made;
+  }
+  async function importFileKey(key) {
+    const raw = fromHex(key, FILE_KEY_BYTES);
+    const imported = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveKey"]);
+    wipe(raw);
+    return imported;
+  }
+  var fileKeyId = (keyId) => fromHex(keyId, KEY_ID_BYTES3);
+  function associatedData2(context2, salt, prefix) {
+    return concat(
+      utf8(LABEL.fileChunk),
+      field2(utf8(context2.company)),
+      field2(utf8(context2.record)),
+      field2(utf8(context2.file)),
+      field2(context2.keyId),
+      field2(salt),
+      field2(prefix)
+    );
+  }
+  function nonce(prefix, chunk, last) {
+    return concat(prefix, integer(chunk, 4), Uint8Array.of(last ? 1 : 0));
+  }
+  async function chunkKey(fileKey, salt, usage) {
+    return crypto.subtle.deriveKey(
+      { name: "HKDF", hash: "SHA-256", salt, info: utf8(LABEL.file) },
+      fileKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      [usage]
+    );
+  }
+  var sealedSize = (length) => 2 + KEY_ID_BYTES3 + SALT_BYTES2 + PREFIX_BYTES + length + TAG_BYTES2 * Math.max(1, Math.ceil(length / FILE_CHUNK_BYTES));
+  async function sealFile(fileKey, context2, data) {
+    if (data.length > FILE_MAX_BYTES) {
+      throw new VaultCryptoError("too-large");
+    }
+    if (context2.keyId.length !== KEY_ID_BYTES3) {
+      throw new VaultCryptoError("malformed");
+    }
+    const salt = random(SALT_BYTES2);
+    const prefix = random(PREFIX_BYTES);
+    const key = await chunkKey(fileKey, salt, "encrypt");
+    const additionalData = associatedData2(context2, salt, prefix);
+    const count = Math.max(1, Math.ceil(data.length / FILE_CHUNK_BYTES));
+    const sealed2 = [Uint8Array.of(FORMAT_VERSION, ALGORITHM.file), context2.keyId, salt, prefix];
+    for (let chunk = 0; chunk < count; chunk += 1) {
+      const plaintext = data.subarray(chunk * FILE_CHUNK_BYTES, (chunk + 1) * FILE_CHUNK_BYTES);
+      const iv = nonce(prefix, chunk, chunk === count - 1);
+      sealed2.push(new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData }, key, plaintext)));
+    }
+    return concat(...sealed2);
+  }
+  async function openFile(keys, context2, sealed2) {
+    const reader = new Reader(sealed2);
+    if (reader.integer(1) !== FORMAT_VERSION) {
+      throw new VaultCryptoError("unknown-version");
+    }
+    if (reader.integer(1) !== ALGORITHM.file) {
+      throw new VaultCryptoError("unknown-algorithm");
+    }
+    const keyId = reader.take(KEY_ID_BYTES3);
+    const salt = reader.take(SALT_BYTES2);
+    const prefix = reader.take(PREFIX_BYTES);
+    const body = reader.rest();
+    const count = Math.max(1, Math.ceil(body.length / SEALED_CHUNK_BYTES));
+    const lastLength = body.length - (count - 1) * SEALED_CHUNK_BYTES;
+    if (lastLength < TAG_BYTES2 || count > MAX_CHUNKS) {
+      throw new VaultCryptoError("malformed");
+    }
+    if (!sameBytes(keyId, context2.keyId)) {
+      throw new VaultCryptoError("key-mismatch");
+    }
+    const fileKey = keys.get(hex(context2.keyId));
+    if (fileKey === void 0) {
+      throw new VaultCryptoError("unknown-key");
+    }
+    const key = await chunkKey(fileKey, salt, "decrypt");
+    const additionalData = associatedData2(context2, salt, prefix);
+    const plain2 = [];
+    for (let chunk = 0; chunk < count; chunk += 1) {
+      const ciphertext = body.subarray(chunk * SEALED_CHUNK_BYTES, (chunk + 1) * SEALED_CHUNK_BYTES);
+      const iv = nonce(prefix, chunk, chunk === count - 1);
+      try {
+        plain2.push(new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData }, key, ciphertext)));
+      } catch {
+        throw new VaultCryptoError("unauthentic");
+      }
+    }
+    return concat(...plain2);
+  }
 
   // src/records/totp.ts
   var HASH = { SHA1: "SHA-1", SHA256: "SHA-256", SHA512: "SHA-512" };
@@ -2146,7 +2281,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/records/custom-fields.ts
   var CUSTOM_SECTION = "Custom fields";
   var MAX_LABEL = 64;
-  var isCustom = (field3) => field3.type === "text" || field3.type === "concealed" || field3.type === "ssh-key";
+  var isCustom = (field3) => field3.type === "text" || field3.type === "concealed" || field3.type === "ssh-key" || field3.type === "file";
   function splitCustom(document2) {
     const last = document2.sections.at(-1);
     if (last === void 0 || last.name !== CUSTOM_SECTION || !last.fields.every(isCustom)) {
@@ -2241,7 +2376,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
   var KINDS2 = [
     { type: "text", words: "Text" },
     { type: "concealed", words: "Secret" },
-    { type: "ssh-key", words: "SSH key" }
+    { type: "ssh-key", words: "SSH key" },
+    { type: "file", words: "File" }
   ];
   function customEditor(initial, controlFor, taken) {
     let made = 0;
@@ -2253,7 +2389,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       const remove = iconAction("trash", "Remove field", `Remove the field ${field3.label}`, "danger");
       const input = control2.row.querySelector("input");
       if (input === null) {
-        control2.row.querySelector(".input-line")?.append(remove);
+        (control2.row.querySelector(".input-line") ?? control2.row).append(remove);
       } else {
         const line = el("div", { class: "input-line" });
         input.replaceWith(line);
@@ -2673,6 +2809,121 @@ ${END}
     return { row: row2, read: () => value, mark: mark2 };
   }
 
+  // src/records/file-transfer.ts
+  var PART_BYTES = 4 * 1024 * 1024;
+  function partsOf(total) {
+    return Array.from({ length: Math.ceil(total / PART_BYTES) }, (_, index) => ({
+      offset: index * PART_BYTES,
+      length: Math.min(PART_BYTES, total - index * PART_BYTES)
+    }));
+  }
+
+  // src/records/file-io.ts
+  var readCreated = (v) => typeof v === "object" && v !== null && "id" in v && typeof v.id === "string" && /^[0-9a-f]{32}$/.test(v.id) ? v.id : null;
+  var filesPath = (held2, record) => `${companyPath(held2)}/records/${encodeURIComponent(record)}/files`;
+  async function uploadFile(held2, record, file) {
+    if (file.size > FILE_MAX_BYTES) {
+      return { ok: false, words: "A file can be up to 256 MiB." };
+    }
+    const data = new Uint8Array(await file.arrayBuffer());
+    const own = newFileKey();
+    const created = await call("POST", filesPath(held2, record), readCreated, { body: { size: sealedSize(data.length) } });
+    if (!created.ok) {
+      return { ok: false, words: loadFailure(created) };
+    }
+    const context2 = { company: held2.company, record, file: created.value, keyId: fileKeyId(own.keyId) };
+    const sealed2 = await sealFile(await importFileKey(own.key), context2, data);
+    for (const part of partsOf(sealed2.length)) {
+      const sent = await callBytes("PUT", `${filesPath(held2, record)}/${created.value}?offset=${part.offset}`, sealed2.slice(part.offset, part.offset + part.length));
+      if (!sent.ok) {
+        return { ok: false, words: loadFailure(sent) };
+      }
+    }
+    return { ok: true, value: { id: created.value, name: file.name, size: data.length, mediaType: file.type === "" ? "application/octet-stream" : file.type, ...own } };
+  }
+  async function downloadFile(held2, record, value) {
+    const parts = [];
+    for (const part of partsOf(sealedSize(value.size))) {
+      const read = await callBytes("GET", `${filesPath(held2, record)}/${encodeURIComponent(value.id)}?offset=${part.offset}&limit=${part.length}`);
+      if (!read.ok) {
+        return { ok: false, words: loadFailure(read) };
+      }
+      parts.push(read.value);
+    }
+    const context2 = { company: held2.company, record, file: value.id, keyId: fileKeyId(value.keyId) };
+    try {
+      return { ok: true, value: await openFile(/* @__PURE__ */ new Map([[value.keyId, await importFileKey(value.key)]]), context2, concat(...parts)) };
+    } catch (problem2) {
+      if (problem2 instanceof VaultCryptoError) {
+        return { ok: false, words: "This file doesn't check out, so it isn't opened. It may have been changed on the server." };
+      }
+      throw problem2;
+    }
+  }
+
+  // src/records/file-field-view.ts
+  var sizeWords = (bytes) => new Intl.NumberFormat(void 0, { style: "unit", unit: "kilobyte" }).format(Math.ceil(bytes / 1024));
+  var fileWords = (value) => `${value.name} (${sizeWords(value.size)})`;
+  function fileControl(label, initial, id, attach) {
+    let value = initial;
+    const name = el("label", { for: id }, label);
+    const shown = el("p", {});
+    const status = el("p", { class: "muted", role: "status" });
+    const hint = el("p", { id: `${id}-hint`, class: "message bad" });
+    hint.hidden = true;
+    const mark2 = (words) => {
+      hint.hidden = words === null;
+      hint.textContent = words ?? "";
+    };
+    const draw2 = () => {
+      fill(shown, value === null ? el("span", { class: "muted" }, "No file yet.") : fileWords(value));
+    };
+    draw2();
+    if (attach === null) {
+      const later = el("p", { class: "muted", id }, "Save the record first, then add its file.");
+      return { row: el("div", { class: "field" }, el("p", { class: "field-label" }, label), shown, later), read: () => value, mark: mark2 };
+    }
+    const input = el("input", { id, type: "file", "aria-describedby": hint.id });
+    input.addEventListener("change", () => {
+      const chosen = input.files?.[0];
+      if (chosen === void 0) {
+        return;
+      }
+      mark2(null);
+      input.disabled = true;
+      status.textContent = `Sealing and sending ${chosen.name}.`;
+      void attach(chosen).then((made) => {
+        input.disabled = false;
+        input.value = "";
+        if (!made.ok) {
+          status.textContent = "";
+          mark2(made.words);
+          return;
+        }
+        const had = value !== null;
+        value = made.value;
+        draw2();
+        status.textContent = had ? `${chosen.name} is sent. It replaces the old file when you save the record.` : `${chosen.name} is sent. Save the record to keep it.`;
+      });
+    });
+    return { row: el("div", { class: "field" }, name, shown, input, status, hint), read: () => value, mark: mark2 };
+  }
+  async function saveToDevice(held2, record, value) {
+    announce(`Opening ${value.name}.`);
+    const opened = await downloadFile(held2, record, value);
+    if (!opened.ok) {
+      announce(opened.words);
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([opened.value], { type: value.mediaType }));
+    const link = el("a", { href: url, download: value.name });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    announce(`${value.name} is ready in your downloads.`);
+  }
+
   // src/records/edit-view.ts
   var INPUT = {
     text: "text",
@@ -2684,7 +2935,10 @@ ${END}
     date: "date",
     "month-year": "month"
   };
-  function control(field3, id) {
+  function control(field3, id, attach) {
+    if (field3.type === "file") {
+      return fileControl(field3.label, field3.value, id, attach);
+    }
     if (field3.type === "ssh-key") {
       return sshKeyControl(field3.label, field3.value, id);
     }
@@ -2732,14 +2986,14 @@ ${END}
         return fallback;
     }
   }
-  function form(main2, title, document2, trail, extra, save) {
+  function form(main2, title, document2, trail, extra, attach, save) {
     const name = el("input", { id: "record-title", type: "text", autocomplete: "off", value: document2.title });
     const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
     nameHint.hidden = true;
     name.setAttribute("aria-describedby", nameHint.id);
     const controls = /* @__PURE__ */ new Map();
     const { base, custom } = splitCustom(document2);
-    const own = customEditor(custom, control, base.sections.flatMap((section) => section.fields.map((field3) => field3.label)));
+    const own = customEditor(custom, (field3, id) => control(field3, id, attach), base.sections.flatMap((section) => section.fields.map((field3) => field3.label)));
     const sections = base.sections.map(
       (section, sectionIndex) => el(
         "fieldset",
@@ -2747,7 +3001,7 @@ ${END}
         section.name === "" ? null : el("legend", {}, section.name),
         ...section.fields.map((field3, fieldIndex) => {
           const at2 = fieldAt(sectionIndex, fieldIndex);
-          const made = control(field3, `field-${sectionIndex}-${fieldIndex}`);
+          const made = control(field3, `field-${sectionIndex}-${fieldIndex}`, attach);
           controls.set(at2, made);
           return made.row;
         })
@@ -2804,7 +3058,7 @@ ${END}
       return;
     }
     const picker = audiencePicker(audience.choices);
-    form(main2, "New record", recordFromTemplate(template, ""), trail, picker.section, async (made) => {
+    form(main2, "New record", recordFromTemplate(template, ""), trail, picker.section, null, async (made) => {
       const record = await newRecord(held2.company, held2.keys, made);
       const answer = await call("POST", `${companyPath(held2)}/records`, readRow, { body: record.body });
       if (!answer.ok) {
@@ -2837,7 +3091,7 @@ ${END}
       return;
     }
     const row2 = item.row;
-    form(main2, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, async (made) => {
+    form(main2, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, (file) => uploadFile(held2, id, file), async (made) => {
       const sharing = await sharedWith(held2, id);
       if (!sharing.ok) {
         return sharing.words;
@@ -2894,7 +3148,7 @@ ${END}
     stops2.push(() => window.clearInterval(timer));
     return el("span", { class: "value-row" }, code, left, el("span", { class: "row-actions" }, copyButton(copy2, label, () => current)));
   }
-  function fieldView(field3, copy2, stops2) {
+  function fieldView(field3, copy2, stops2, save) {
     const term = el("dt", {}, field3.label);
     if (field3.value === null) {
       return [term, el("dd", { class: "muted" }, "Empty")];
@@ -2910,8 +3164,12 @@ ${END}
         return [term, el("dd", {}, field3.value ? "Yes" : "No")];
       case "otp":
         return [term, el("dd", {}, oneTime(field3.label, field3.value, copy2, stops2))];
-      case "file":
-        return [term, el("dd", {}, `${field3.value.name} (${new Intl.NumberFormat(void 0, { style: "unit", unit: "kilobyte" }).format(Math.ceil(field3.value.size / 1024))})`)];
+      case "file": {
+        const value = field3.value;
+        const download = iconAction("download", "Download", `Download ${value.name}`);
+        download.addEventListener("click", () => save(value));
+        return [term, el("dd", {}, el("span", { class: "value-row" }, el("span", { class: "value" }, fileWords(value)), el("span", { class: "row-actions" }, download)))];
+      }
       case "security-question":
         return [term, el("dd", {}, el("p", {}, field3.value.question), concealed(`${field3.label} answer`, field3.value.answer, copy2))];
       case "ssh-key":
@@ -3171,7 +3429,7 @@ ${END}
         "section",
         { class: "record-section" },
         section.name === "" ? null : el("h2", {}, section.name),
-        el("dl", { class: "fields" }, ...section.fields.flatMap((field3) => fieldView(field3, copy2, stops2)))
+        el("dl", { class: "fields" }, ...section.fields.flatMap((field3) => fieldView(field3, copy2, stops2, (value) => void saveToDevice(held2, id, value))))
       )
     );
     const head = el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type)));
@@ -3351,7 +3609,7 @@ ${END}
   }
 
   // src/groups/group-key.ts
-  var KEY_ID_BYTES3 = 16;
+  var KEY_ID_BYTES4 = 16;
   var KEY_BYTES5 = 32;
   async function newGroupKey(company, group, signer, ownerSigning, chain, vouched, pending) {
     const pair = await generatePair("X25519");
@@ -3362,7 +3620,7 @@ ${END}
       const groupPublic = await publicBytes(pair.publicKey);
       const statement = await appendStatement(company, chain.at(-1), { kind: "group", subject: group, agreementPublic: groupPublic, signingPublic: new Uint8Array(0) }, signer);
       await verifyChain(company, ownerSigning, [...chain, statement]);
-      const keyId = random(KEY_ID_BYTES3);
+      const keyId = random(KEY_ID_BYTES4);
       return { statement, keyId, public: groupPublic, ...await wrapToPending(company, keyId, raw, vouched, pending) };
     } finally {
       wipe(raw);
@@ -3963,9 +4221,9 @@ ${END}
 
   // src/crypto/unlock.ts
   var MAX_WRAPS = 2 ** 20;
-  var SALT_BYTES2 = 16;
+  var SALT_BYTES3 = 16;
   var MASTER_KEY_BYTES = 32;
-  var KEY_ID_BYTES4 = 16;
+  var KEY_ID_BYTES5 = 16;
   var NONCE_BYTES3 = 12;
   var DERIVED = 0;
   function exportsOf(instance) {
@@ -3983,14 +4241,14 @@ ${END}
     };
   }
   async function deriveMasterKey(module2, password, salt, params) {
-    if (salt.length !== SALT_BYTES2) {
+    if (salt.length !== SALT_BYTES3) {
       throw new VaultCryptoError("malformed");
     }
     const wasm = exportsOf(await WebAssembly.instantiate(module2, {}));
     const passwordBytes = utf8(password);
     const passwordLength = Math.max(passwordBytes.length, 1);
     const passwordAt = wasm.alloc(passwordLength);
-    const saltAt = wasm.alloc(SALT_BYTES2);
+    const saltAt = wasm.alloc(SALT_BYTES3);
     const outAt = wasm.alloc(MASTER_KEY_BYTES);
     try {
       const memory = new Uint8Array(wasm.memory.buffer);
@@ -4012,12 +4270,12 @@ ${END}
     } finally {
       wipe(passwordBytes);
       wasm.free(passwordAt, passwordLength);
-      wasm.free(saltAt, SALT_BYTES2);
+      wasm.free(saltAt, SALT_BYTES3);
       wasm.free(outAt, MASTER_KEY_BYTES);
     }
   }
-  function associatedData2(context2) {
-    if (context2.keyId.length !== KEY_ID_BYTES4) {
+  function associatedData3(context2) {
+    if (context2.keyId.length !== KEY_ID_BYTES5) {
       throw new VaultCryptoError("malformed");
     }
     return concat(
@@ -4029,7 +4287,7 @@ ${END}
     );
   }
   function pinData(pin) {
-    if (pin.keyId.length !== KEY_ID_BYTES4) {
+    if (pin.keyId.length !== KEY_ID_BYTES5) {
       throw new VaultCryptoError("malformed");
     }
     return concat(utf8(LABEL.ownerPin), field2(utf8(pin.account)), field2(utf8(pin.company)), field2(pin.keyId));
@@ -4071,13 +4329,13 @@ ${END}
         throw new VaultCryptoError("wrap-bound");
       }
       this.#wrapsMade += 1;
-      const nonce = random(NONCE_BYTES3);
+      const nonce2 = random(NONCE_BYTES3);
       const sealed2 = await crypto.subtle.wrapKey("pkcs8", privateKey, this.#key, {
         name: "AES-GCM",
-        iv: nonce,
-        additionalData: associatedData2(context2)
+        iv: nonce2,
+        additionalData: associatedData3(context2)
       });
-      return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context2.keyId, nonce, new Uint8Array(sealed2));
+      return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context2.keyId, nonce2, new Uint8Array(sealed2));
     }
     /** Seal the company owner's Ed25519 public key under UK, to be pinned in this member's key set; one more wrap. */
     async sealPin(ownerPublic, pin) {
@@ -4085,17 +4343,17 @@ ${END}
         throw new VaultCryptoError("wrap-bound");
       }
       this.#wrapsMade += 1;
-      const nonce = random(NONCE_BYTES3);
+      const nonce2 = random(NONCE_BYTES3);
       const sealed2 = await crypto.subtle.wrapKey("raw", ownerPublic, this.#key, {
         name: "AES-GCM",
-        iv: nonce,
+        iv: nonce2,
         additionalData: pinData(pin)
       });
-      return { nonce, sealed: new Uint8Array(sealed2) };
+      return { nonce: nonce2, sealed: new Uint8Array(sealed2) };
     }
     /** Open the pinned owner key; a pin sealed for another member, company or key set is `unauthentic`. */
-    async openPin(pin, nonce, sealed2) {
-      if (nonce.length !== NONCE_BYTES3) {
+    async openPin(pin, nonce2, sealed2) {
+      if (nonce2.length !== NONCE_BYTES3) {
         throw new VaultCryptoError("malformed");
       }
       try {
@@ -4103,7 +4361,7 @@ ${END}
           "raw",
           sealed2,
           this.#key,
-          { name: "AES-GCM", iv: nonce, additionalData: pinData(pin) },
+          { name: "AES-GCM", iv: nonce2, additionalData: pinData(pin) },
           { name: "Ed25519" },
           true,
           ["verify"]
@@ -4121,8 +4379,8 @@ ${END}
       if (reader.integer(1) !== ALGORITHM.memberKey) {
         throw new VaultCryptoError("unknown-algorithm");
       }
-      const keyId = reader.take(KEY_ID_BYTES4);
-      const nonce = reader.take(NONCE_BYTES3);
+      const keyId = reader.take(KEY_ID_BYTES5);
+      const nonce2 = reader.take(NONCE_BYTES3);
       const sealed2 = reader.rest();
       if (!sameBytes(keyId, context2.keyId)) {
         throw new VaultCryptoError("key-mismatch");
@@ -4133,7 +4391,7 @@ ${END}
           "pkcs8",
           sealed2,
           this.#key,
-          { name: "AES-GCM", iv: nonce, additionalData: associatedData2(context2) },
+          { name: "AES-GCM", iv: nonce2, additionalData: associatedData3(context2) },
           { name: agreement ? "X25519" : "Ed25519" },
           false,
           agreement ? ["deriveBits"] : ["sign"]
@@ -4146,8 +4404,8 @@ ${END}
 
   // src/crypto/key-set.ts
   var NEW_KDF = { memoryKib: 65536, passes: 3, lanes: 4 };
-  var SALT_BYTES3 = 16;
-  var KEY_ID_BYTES5 = 16;
+  var SALT_BYTES4 = 16;
+  var KEY_ID_BYTES6 = 16;
   var PIN_NONCE_BYTES = 12;
   var KEY_SET_VERSION = 2;
   var context = (account, company, kind, keyId) => ({
@@ -4189,8 +4447,8 @@ ${END}
     return openWith(await unlockKey(module2, password, stored.salt, stored.kdf, wrapsMade), account, company, stored);
   }
   async function createKeySet(module2, password, account, company, ownerSigningPublic) {
-    const salt = random(SALT_BYTES3);
-    const keyId = random(KEY_ID_BYTES5);
+    const salt = random(SALT_BYTES4);
+    const keyId = random(KEY_ID_BYTES6);
     const key = await unlockKey(module2, password, salt, NEW_KDF, 0);
     const agreement = await generatePair("X25519");
     const signing = await generatePair("Ed25519");

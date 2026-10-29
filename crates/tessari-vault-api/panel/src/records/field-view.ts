@@ -5,7 +5,8 @@ import { el } from "../dom.ts";
 import { iconAction } from "../icon-action.ts";
 import { icon } from "../icons.ts";
 import type { copier } from "./listing.ts";
-import type { Field } from "./fields.ts";
+import type { Field, FileValue } from "./fields.ts";
+import { fileWords } from "./file-field-view.ts";
 import { base32Decode, totpCode } from "./totp.ts";
 
 type Copier = ReturnType<typeof copier>;
@@ -63,8 +64,8 @@ function oneTime(label: string, value: Extract<Field, { type: "otp" }>["value"] 
   return el("span", { class: "value-row" }, code, left, el("span", { class: "row-actions" }, copyButton(copy, label, () => current)));
 }
 
-/** The field as a definition-list pair: its label and its value with the actions it offers. */
-export function fieldView(field: Field, copy: Copier, stops: Stops): HTMLElement[] {
+/** The field as a definition-list pair: its label and its value with the actions it offers; `save` takes a file. */
+export function fieldView(field: Field, copy: Copier, stops: Stops, save: (value: FileValue) => void): HTMLElement[] {
   const term = el("dt", {}, field.label);
   if (field.value === null) {
     return [term, el("dd", { class: "muted" }, "Empty")];
@@ -80,8 +81,12 @@ export function fieldView(field: Field, copy: Copier, stops: Stops): HTMLElement
       return [term, el("dd", {}, field.value ? "Yes" : "No")];
     case "otp":
       return [term, el("dd", {}, oneTime(field.label, field.value, copy, stops))];
-    case "file":
-      return [term, el("dd", {}, `${field.value.name} (${new Intl.NumberFormat(undefined, { style: "unit", unit: "kilobyte" }).format(Math.ceil(field.value.size / 1024))})`)];
+    case "file": {
+      const value = field.value;
+      const download = iconAction("download", "Download", `Download ${value.name}`);
+      download.addEventListener("click", () => save(value));
+      return [term, el("dd", {}, el("span", { class: "value-row" }, el("span", { class: "value" }, fileWords(value)), el("span", { class: "row-actions" }, download)))];
+    }
     case "security-question":
       return [term, el("dd", {}, el("p", {}, field.value.question), concealed(`${field.label} answer`, field.value.answer, copy))];
     case "ssh-key":
