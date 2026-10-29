@@ -4904,7 +4904,7 @@ ${END}
   function yourKeys(escrowed, recoveryKeyed, notices, names) {
     const status = escrowed ? "Your keys are kept for recovery. If you forget your unlock password, an owner can hand them back to you." : recoveryKeyed ? "Your keys aren't kept for recovery yet. They will be the next time you unlock." : "Your keys aren't kept for recovery: the company has no recovery key yet.";
     const reached = notices.length === 0 ? el("p", { class: "muted" }, "No owner has reached your keys.") : el("ul", { class: "shares" }, ...[...notices].reverse().map((notice2) => el("li", { class: "share" }, el("span", {}, noticeWords(notice2.kind, names.get(notice2.by) ?? "An owner"), el("span", { class: "detail" }, at2(notice2.at))))));
-    return section("your-keys", "Your keys", el("p", { class: "muted" }, status), el("h3", {}, "Who reached them"), reached);
+    return [section("your-keys", "Your keys", el("p", { class: "muted" }, status)), section("reached", "Who reached your keys", reached)];
   }
   function handOverDialog(held2, vouched, request, name, key, done) {
     const code = el("p", { class: "fingerprint" });
@@ -5025,7 +5025,7 @@ ${END}
     }
     const names = new Map(members.value.map((member) => [member.account, member.name]));
     const standing = vouched.recoveryKey();
-    const parts = [yourKeys(own.ok && own.value === standing?.keyId, standing !== void 0, notices.value, names)];
+    const parts = [...yourKeys(own.ok && own.value === standing?.keyId, standing !== void 0, notices.value, names)];
     const again = (words) => void drawRecovery(main2, held2, words);
     if (members.value.find((member) => member.account === held2.account)?.role === "owner") {
       parts.unshift(await ownersPart(held2, chain.value, vouched, members.value, directory.value, again));

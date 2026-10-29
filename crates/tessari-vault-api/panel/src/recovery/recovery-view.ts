@@ -25,7 +25,7 @@ const section = (id: string, title: string, ...body: Array<HTMLElement | null>):
   el("section", { class: "record-section", "aria-labelledby": id }, el("h2", { id }, title), ...body);
 
 /** The caller's own section: whether their keys are kept for recovery, and who reached them when. */
-function yourKeys(escrowed: boolean, recoveryKeyed: boolean, notices: readonly Notice[], names: ReadonlyMap<string, string>): HTMLElement {
+function yourKeys(escrowed: boolean, recoveryKeyed: boolean, notices: readonly Notice[], names: ReadonlyMap<string, string>): readonly HTMLElement[] {
   const status = escrowed
     ? "Your keys are kept for recovery. If you forget your unlock password, an owner can hand them back to you."
     : recoveryKeyed
@@ -35,7 +35,7 @@ function yourKeys(escrowed: boolean, recoveryKeyed: boolean, notices: readonly N
     notices.length === 0
       ? el("p", { class: "muted" }, "No owner has reached your keys.")
       : el("ul", { class: "shares" }, ...[...notices].reverse().map((notice) => el("li", { class: "share" }, el("span", {}, noticeWords(notice.kind, names.get(notice.by) ?? "An owner"), el("span", { class: "detail" }, at(notice.at))))));
-  return section("your-keys", "Your keys", el("p", { class: "muted" }, status), el("h3", {}, "Who reached them"), reached);
+  return [section("your-keys", "Your keys", el("p", { class: "muted" }, status)), section("reached", "Who reached your keys", reached)];
 }
 
 /** The hand-over dialog for one request: the code to compare, then the act. */
@@ -164,7 +164,7 @@ export async function drawRecovery(main: HTMLElement, held: Unlocked, notice: st
   }
   const names = new Map(members.value.map((member) => [member.account, member.name]));
   const standing = vouched.recoveryKey();
-  const parts = [yourKeys(own.ok && own.value === standing?.keyId, standing !== undefined, notices.value, names)];
+  const parts = [...yourKeys(own.ok && own.value === standing?.keyId, standing !== undefined, notices.value, names)];
   const again = (words: string): void => void drawRecovery(main, held, words);
   if (members.value.find((member) => member.account === held.account)?.role === "owner") {
     parts.unshift(await ownersPart(held, chain.value, vouched, members.value, directory.value, again));
