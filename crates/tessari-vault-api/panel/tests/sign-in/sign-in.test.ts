@@ -13,6 +13,8 @@ import {
   readChallenge,
   readMethods,
   readPasskeyRequest,
+  readLinkAddress,
+  readReturned,
   readSession,
   signInFailure,
 } from "../../src/sign-in-model.ts";
@@ -38,6 +40,26 @@ describe("the answers signing in reads", () => {
     assert.equal(readSession({ token: "s1" }), null);
     assert.deepEqual(readPasskeyRequest({ challenge: "c", rp_id: "vault.test" }), { challenge: "c", rpId: "vault.test" });
     assert.equal(readPasskeyRequest({ challenge: "c" }), null);
+  });
+});
+
+describe("an identity provider's return", () => {
+  it("is a session for a sign-in, a completed link for an empty answer, and nothing else", () => {
+    assert.deepEqual(readReturned({ session: "s1" }), { kind: "session", session: "s1" });
+    assert.deepEqual(readReturned(null), { kind: "linked" });
+    assert.equal(readReturned({ session: "" }), null);
+    assert.equal(readReturned({ linked: true }), null);
+    assert.equal(readReturned(undefined), null);
+  });
+});
+
+describe("the address a link sends the browser to", () => {
+  it("is taken only as an http or https address", () => {
+    assert.equal(readLinkAddress({ address: "https://id.example.test/authorize?state=s" }), "https://id.example.test/authorize?state=s");
+    assert.equal(readLinkAddress({ address: "http://127.0.0.1:47950/authorize" }), "http://127.0.0.1:47950/authorize");
+    assert.equal(readLinkAddress({ address: "javascript:alert(1)" }), null);
+    assert.equal(readLinkAddress({ address: "/relative" }), null);
+    assert.equal(readLinkAddress({ address: 7 }), null);
   });
 });
 

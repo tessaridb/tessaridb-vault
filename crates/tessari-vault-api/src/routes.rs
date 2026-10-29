@@ -140,11 +140,6 @@ pub fn routes() -> Vec<Route> {
             "/api/sign-in/passkey",
             post(passkeys::sign_in),
         ),
-        route(
-            Method::POST,
-            "/api/me/identities/oidc/return",
-            post(oidc::link_returned),
-        ),
         route(Method::POST, "/api/enrolment/begin", post(enrolment::begin)),
         route(
             Method::POST,

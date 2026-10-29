@@ -4642,6 +4642,20 @@ ${END}
   function readSession(v) {
     return isRecord12(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
+  function readReturned(v) {
+    if (v === null) {
+      return { kind: "linked" };
+    }
+    const session2 = readSession(v);
+    return session2 === null ? null : { kind: "session", session: session2 };
+  }
+  function readLinkAddress(v) {
+    if (!isRecord12(v) || typeof v["address"] !== "string" || !URL.canParse(v["address"])) {
+      return null;
+    }
+    const { protocol } = new URL(v["address"]);
+    return protocol === "https:" || protocol === "http:" ? v["address"] : null;
+  }
   function readPasskeyRequest(v) {
     return isRecord12(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
@@ -4793,15 +4807,40 @@ ${END}
     });
     return add;
   }
+  function providerSection(said) {
+    const link = el("button", { type: "button" }, "Link organisation sign-in");
+    link.addEventListener("click", () => {
+      link.disabled = true;
+      void call("POST", "/api/me/identities/oidc", readLinkAddress).then((answer) => {
+        if (answer.ok) {
+          window.location.assign(answer.value);
+          return;
+        }
+        link.disabled = false;
+        fill(said, refusal(answer.code === "network" ? "The vault didn't answer. Check your connection, then try again." : "The vault couldn't begin the link. Try again in a minute."));
+      });
+    });
+    return el(
+      "section",
+      { class: "record-section", "aria-labelledby": "provider" },
+      el("h2", { id: "provider" }, "Organisation sign-in"),
+      el("p", { class: "muted" }, "Link your account to your organisation's sign-in, then use it instead of your password and code. You'll sign in once more after linking."),
+      link
+    );
+  }
   async function drawAccount(main2, held2, notice2 = null) {
     const title = heading("Account");
     const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, `${held2.name} · ${held2.email} · ${held2.companyName}`)));
     const said = el("div", { "aria-live": "polite" }, notice2 === null ? null : el("p", { class: "muted", role: "status" }, notice2));
     const again = (words) => void drawAccount(main2, held2, words);
     const passkeys = el("section", { class: "record-section", "aria-labelledby": "passkeys" }, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted", role: "status" }, "Checking what this vault offers."));
-    fill(main2, head, said, passkeys);
+    const provider = el("div", {});
+    fill(main2, head, said, passkeys, provider);
     title.focus();
     const methods = await call("GET", "/api/sign-in/methods", readMethods);
+    if (methods.ok && methods.value.provider) {
+      fill(provider, providerSection(said));
+    }
     if (!methods.ok || !methods.value.passkey) {
       fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, methods.ok ? "This vault doesn't offer passkeys." : "The vault didn't say whether it offers passkeys. Reload the page to try again."));
       return;
@@ -5706,7 +5745,7 @@ ${END}
     const password = field("password", "Password", { type: "password", autocomplete: "current-password", required: "" });
     const submit = el("button", { type: "submit", class: "primary" }, "Continue");
     const others = el("div", { class: "other-ways" });
-    const said = el("div", {}, notice2 === null ? null : refusal(notice2));
+    const said = el("div", {}, notice2 === null ? null : notice2.refused ? refusal(notice2.words) : el("p", { class: "muted", role: "status" }, notice2.words));
     const view2 = card(
       "Sign in to TessariDB Vault",
       "Use your work email and password, then a code from your authenticator app.",
@@ -5768,12 +5807,15 @@ ${END}
       return null;
     }
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
-    const answer = await call("GET", `/api/sign-in/oidc/return${search}`, readSession);
-    if (answer.ok) {
-      keep(answer.value);
-      return null;
+    const answer = await call("GET", `/api/sign-in/oidc/return${search}`, readReturned);
+    if (!answer.ok) {
+      return { words: signInFailure(answer), refused: true };
     }
-    return signInFailure(answer);
+    if (answer.value.kind === "linked") {
+      return { words: "Your organisation sign-in is linked to your account. Sign in with it now.", refused: false };
+    }
+    keep(answer.value.session);
+    return null;
   }
 
   // src/join.ts
@@ -6910,8 +6952,8 @@ ${END}
     signOutButton();
     switchButton();
     locking();
-    void providerReturned().then((refused2) => {
-      notice = refused2;
+    void providerReturned().then((said) => {
+      notice = said;
       const router = new Router(routes, history);
       router.start((outcome) => {
         draw(outcome, view, router);

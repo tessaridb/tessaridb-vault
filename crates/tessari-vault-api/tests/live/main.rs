@@ -204,9 +204,6 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
                     "signature": "AA", "user_handle": "AA" }),
             StatusCode::UNAUTHORIZED,
         ),
-        ("POST", "/api/me/identities/oidc/return") => {
-            row(Some(json!({ "query": "state=cd&code=ef" })), None, None)
-        }
         ("POST", "/api/enrolment/begin") => {
             by_token(json!({ "token": "cd".repeat(32) }), StatusCode::NOT_FOUND)
         }

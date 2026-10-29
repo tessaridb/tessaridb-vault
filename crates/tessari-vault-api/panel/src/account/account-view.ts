@@ -1,12 +1,13 @@
 // The account page: who is signed in and where, a way to add a passkey, which then signs this person in without a
 // password or a code, and the person's passkeys, each removable at once (a lost device's passkey stops working). A
-// passkey is made by the person's device; the vault keeps only its public key.
+// passkey is made by the person's device; the vault keeps only its public key. Where the vault offers an organisation
+// sign-in, the person links it here: the browser leaves for the provider and comes back signed out, the link made.
 
 import { call, ignored, type Failure } from "../api.ts";
 import { encode } from "../base64url.ts";
 import { el, fill } from "../dom.ts";
 import { heading, refusal } from "../screen.ts";
-import { readMethods } from "../sign-in-model.ts";
+import { readLinkAddress, readMethods } from "../sign-in-model.ts";
 import type { Unlocked } from "../vault.ts";
 import { creationOptions, passkeyFailure, readPasskeys, readRegistrationOptions, type ListedPasskey } from "./passkey.ts";
 
@@ -82,6 +83,29 @@ function addButton(held: Unlocked, said: HTMLElement, again: (words: string) => 
   return add;
 }
 
+/** The section offering to link the organisation sign-in; leaving for the provider is the last thing it does. */
+function providerSection(said: HTMLElement): HTMLElement {
+  const link = el("button", { type: "button" }, "Link organisation sign-in");
+  link.addEventListener("click", () => {
+    link.disabled = true;
+    void call("POST", "/api/me/identities/oidc", readLinkAddress).then((answer) => {
+      if (answer.ok) {
+        window.location.assign(answer.value);
+        return;
+      }
+      link.disabled = false;
+      fill(said, refusal(answer.code === "network" ? "The vault didn't answer. Check your connection, then try again." : "The vault couldn't begin the link. Try again in a minute."));
+    });
+  });
+  return el(
+    "section",
+    { class: "record-section", "aria-labelledby": "provider" },
+    el("h2", { id: "provider" }, "Organisation sign-in"),
+    el("p", { class: "muted" }, "Link your account to your organisation's sign-in, then use it instead of your password and code. You'll sign in once more after linking."),
+    link,
+  );
+}
+
 /** Draws the account page into `main`; `notice` is said once at its top. */
 export async function drawAccount(main: HTMLElement, held: Unlocked, notice: string | null = null): Promise<void> {
   const title = heading("Account");
@@ -89,9 +113,13 @@ export async function drawAccount(main: HTMLElement, held: Unlocked, notice: str
   const said = el("div", { "aria-live": "polite" }, notice === null ? null : el("p", { class: "muted", role: "status" }, notice));
   const again = (words: string): void => void drawAccount(main, held, words);
   const passkeys = el("section", { class: "record-section", "aria-labelledby": "passkeys" }, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted", role: "status" }, "Checking what this vault offers."));
-  fill(main, head, said, passkeys);
+  const provider = el("div", {});
+  fill(main, head, said, passkeys, provider);
   title.focus();
   const methods = await call("GET", "/api/sign-in/methods", readMethods);
+  if (methods.ok && methods.value.provider) {
+    fill(provider, providerSection(said));
+  }
   if (!methods.ok || !methods.value.passkey) {
     fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, methods.ok ? "This vault doesn't offer passkeys." : "The vault didn't say whether it offers passkeys. Reload the page to try again."));
     return;

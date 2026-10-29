@@ -47,6 +47,14 @@ fn unreadable(reason: &str) -> Error {
 }
 
 /// A kept request as it reads back: the request, `sign-in` or `link`, and the binding digest or the account.
+/// What a return completes: a sign-in, or linking the identity to an account.
+pub enum Returned {
+    /// A sign-in begun by this browser.
+    SignIn(Pending),
+    /// A link the account began from this browser.
+    Link(Pending, AccountId),
+}
+
 struct Kept {
     pending: Pending,
     purpose: String,
@@ -80,13 +88,18 @@ impl IdentityService {
         Ok(binding)
     }
 
-    /// Keep `pending` as a request to link the identity it proves to `account`.
+    /// Keep `pending` as a request to link the identity it proves to `account`, and the binding the browser must
+    /// present with its return: the return arrives with no session, so the binding is what ties it to that browser.
     ///
     /// # Errors
     ///
-    /// When the store fails.
-    pub async fn keep_link(&self, pending: &Pending, account: &AccountId) -> Result<()> {
-        self.keep(pending, "link", account.as_str()).await
+    /// When randomness is unavailable or the store fails.
+    pub async fn keep_link(&self, pending: &Pending, account: &AccountId) -> Result<String> {
+        let binding = hex(&random::bytes::<SESSION_TOKEN_BYTES>()?);
+        let digest = digest_key(&binding).ok_or_else(|| unreadable("a fresh binding"))?;
+        self.keep(pending, "link", &format!("{} {digest}", account.as_str()))
+            .await?;
+        Ok(binding)
     }
 
     async fn keep(&self, pending: &Pending, purpose: &str, holder: &str) -> Result<()> {
@@ -114,34 +127,28 @@ impl IdentityService {
         Ok(())
     }
 
-    /// The sign-in kept under `state`, when the browser presents the `binding` issued at its start. The request is
-    /// consumed either way.
+    /// The sign-in or link kept under `state`, when the browser presents the `binding` issued when it began. The
+    /// request is consumed either way.
     ///
     /// # Errors
     ///
     /// When the store fails or the kept request does not read back.
-    pub async fn take_sign_in(&self, state: &str, binding: &str) -> Result<Option<Pending>> {
+    pub async fn take_return(&self, state: &str, binding: &str) -> Result<Option<Returned>> {
         let Some(kept) = self.take(state).await? else {
             return Ok(None);
         };
         let presented = digest_key(binding).unwrap_or_default();
-        let held = kept.purpose == "sign-in"
-            && bool::from(presented.as_bytes().ct_eq(kept.holder.as_bytes()));
-        Ok(held.then_some(kept.pending))
-    }
-
-    /// The link request kept under `state`, when `account` is the one that asked for it. The request is consumed
-    /// either way.
-    ///
-    /// # Errors
-    ///
-    /// When the store fails or the kept request does not read back.
-    pub async fn take_link(&self, state: &str, account: &AccountId) -> Result<Option<Pending>> {
-        let Some(kept) = self.take(state).await? else {
-            return Ok(None);
-        };
-        let held = kept.purpose == "link" && kept.holder == account.as_str();
-        Ok(held.then_some(kept.pending))
+        let bound = |digest: &str| bool::from(presented.as_bytes().ct_eq(digest.as_bytes()));
+        Ok(match kept.purpose.as_str() {
+            "sign-in" if bound(&kept.holder) => Some(Returned::SignIn(kept.pending)),
+            "link" => kept
+                .holder
+                .split_once(' ')
+                .filter(|(_, digest)| bound(digest))
+                .and_then(|(account, _)| AccountId::parse(account).ok())
+                .map(|account| Returned::Link(kept.pending, account)),
+            _ => None,
+        })
     }
 
     /// The request kept under `state`, removed: a second call for the same `state` finds nothing.

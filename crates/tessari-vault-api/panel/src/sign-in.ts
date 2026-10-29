@@ -13,6 +13,7 @@ import {
   readChallenge,
   readMethods,
   readPasskeyRequest,
+  readReturned,
   readSession,
   signInFailure,
   type PasskeyRequest,
@@ -106,14 +107,20 @@ function codeStep(main: HTMLElement, challenge: string, done: () => void, restar
   code.input.focus();
 }
 
+/** Something to say on the sign-in page before anything else: a refusal, or news such as a link made. */
+export interface Said {
+  readonly words: string;
+  readonly refused: boolean;
+}
+
 /** Draws signing in into `main`, saying `notice` first when there is one; `done` runs once a session exists. */
-export function signIn(main: HTMLElement, done: () => void, notice: string | null = null): void {
+export function signIn(main: HTMLElement, done: () => void, notice: Said | null = null): void {
   const restart = (): void => signIn(main, done);
   const email = field("email", "Work email", { type: "email", autocomplete: "username", required: "", spellcheck: "false" });
   const password = field("password", "Password", { type: "password", autocomplete: "current-password", required: "" });
   const submit = el("button", { type: "submit", class: "primary" }, "Continue");
   const others = el("div", { class: "other-ways" });
-  const said = el("div", {}, notice === null ? null : refusal(notice));
+  const said = el("div", {}, notice === null ? null : notice.refused ? refusal(notice.words) : el("p", { class: "muted", role: "status" }, notice.words));
   const view = card(
     "Sign in to TessariDB Vault",
     "Use your work email and password, then a code from your authenticator app.",
@@ -170,19 +177,23 @@ export function signIn(main: HTMLElement, done: () => void, notice: string | nul
   });
 }
 
-/** When the identity provider has just sent the person back, finishes that sign-in: null when there was no return or it
- *  signed the person in, else what went wrong, for the sign-in page to say. */
-export async function providerReturned(): Promise<string | null> {
+/** When the identity provider has just sent the person back, finishes that sign-in or link: null when there was no
+ *  return or it signed the person in, else what the sign-in page says first (a link leaves the person signed out,
+ *  because the page that asked for it was left for the provider). */
+export async function providerReturned(): Promise<Said | null> {
   const search = window.location.search;
   if (!isProviderReturn(search)) {
     return null;
   }
   // The provider's code and state leave the address bar at once, whatever the answer.
   window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
-  const answer = await call("GET", `/api/sign-in/oidc/return${search}`, readSession);
-  if (answer.ok) {
-    keep(answer.value);
-    return null;
+  const answer = await call("GET", `/api/sign-in/oidc/return${search}`, readReturned);
+  if (!answer.ok) {
+    return { words: signInFailure(answer), refused: true };
   }
-  return signInFailure(answer);
+  if (answer.value.kind === "linked") {
+    return { words: "Your organisation sign-in is linked to your account. Sign in with it now.", refused: false };
+  }
+  keep(answer.value.session);
+  return null;
 }

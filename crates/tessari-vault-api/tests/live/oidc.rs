@@ -3,7 +3,7 @@
 
 use axum::http::header::{LOCATION, SET_COOKIE};
 use axum::http::{Method, StatusCode};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::issuer::{Grant, Issuer};
 use crate::world::{Cast, World};
@@ -78,23 +78,28 @@ async fn sign_in_return(world: &World, query: &str, cookie: Option<&str>) -> (St
     (status, body)
 }
 
-async fn begin_link(world: &World, token: &str, subject: &str) -> Begun {
-    let (status, body) = world
-        .call(Method::POST, "/api/me/identities/oidc", Some(token), None)
+/// Begin linking for the account `token` signs in: the request and the binding cookie that browser got.
+async fn begin_link(world: &World, token: &str, subject: &str) -> (Begun, String) {
+    let bearer = format!("Bearer {token}");
+    let (status, headers, body) = world
+        .call_with(
+            Method::POST,
+            "/api/me/identities/oidc",
+            &[("authorization", bearer)],
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    begun(body["address"].as_str().expect("an address"), subject)
-}
-
-async fn link_return(world: &World, token: &str, query: &str) -> (StatusCode, Value) {
-    world
-        .call(
-            Method::POST,
-            "/api/me/identities/oidc/return",
-            Some(token),
-            Some(json!({ "query": query })),
-        )
-        .await
+    let cookie = headers[SET_COOKIE].to_str().expect("a cookie").to_owned();
+    assert!(
+        cookie.contains("HttpOnly") && cookie.contains("Secure") && cookie.contains("SameSite=Lax"),
+        "{cookie}"
+    );
+    let pair = cookie.split(';').next().expect("a pair").to_owned();
+    (
+        begun(body["address"].as_str().expect("an address"), subject),
+        pair,
+    )
 }
 
 /// A change one row makes to the grant its code carries.
@@ -116,10 +121,15 @@ async fn a_linked_identity_signs_in_and_an_unlinked_one_does_not() {
         failed(&sign_in_return(&world, &query, Some(&cookie)).await),
         "not linked yet"
     );
-    let link = begin_link(&world, &cast.member_a, "alice").await;
+    let (link, link_cookie) = begin_link(&world, &cast.member_a, "alice").await;
     let query = returned(&issuer, &link, "c2", link.grant.clone());
-    let (status, body) = link_return(&world, &cast.member_a, &query).await;
-    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    // The link completes at the same return, for the browser that began it, without that browser's session.
+    let (status, body) = sign_in_return(&world, &query, Some(&link_cookie)).await;
+    assert_eq!(
+        status,
+        StatusCode::NO_CONTENT,
+        "linked, and no session: {body}"
+    );
     let (begun_b, cookie) = start(&world, "alice").await;
     let query = returned(&issuer, &begun_b, "c3", begun_b.grant.clone());
     let (status, body) = sign_in_return(&world, &query, Some(&cookie)).await;
@@ -142,10 +152,10 @@ async fn a_return_whose_token_or_request_is_not_this_one_completes_nothing() {
     let issuer = Issuer::start().await;
     let world = World::with_issuer(issuer.issuer()).await;
     let cast = Cast::new(&world).await;
-    let link = begin_link(&world, &cast.member_a, "bob").await;
+    let (link, link_cookie) = begin_link(&world, &cast.member_a, "bob").await;
     let query = returned(&issuer, &link, "l1", link.grant.clone());
     assert_eq!(
-        link_return(&world, &cast.member_a, &query).await.0,
+        sign_in_return(&world, &query, Some(&link_cookie)).await.0,
         StatusCode::NO_CONTENT
     );
     let rows: [(&str, Change); 4] = [
@@ -200,10 +210,10 @@ async fn a_return_completes_only_for_the_party_that_began_it() {
     let issuer = Issuer::start().await;
     let world = World::with_issuer(issuer.issuer()).await;
     let cast = Cast::new(&world).await;
-    let link = begin_link(&world, &cast.member_a, "carol").await;
+    let (link, link_cookie) = begin_link(&world, &cast.member_a, "carol").await;
     let query = returned(&issuer, &link, "k1", link.grant.clone());
     assert_eq!(
-        link_return(&world, &cast.member_a, &query).await.0,
+        sign_in_return(&world, &query, Some(&link_cookie)).await.0,
         StatusCode::NO_CONTENT
     );
     // Login CSRF: the attacker's return handed to a browser that did not begin it.
@@ -224,29 +234,30 @@ async fn a_return_completes_only_for_the_party_that_began_it() {
         failed(&sign_in_return(&world, &query, Some(&cookie)).await),
         "a refused return spent its request"
     );
-    // Link CSRF: the attacker's link request completed by someone else's session, or at the sign-in return.
-    let link = begin_link(&world, &cast.admin_a, "dave").await;
+    // Link CSRF: an attacker's link request completed in a browser that did not begin it.
+    let (link, _) = begin_link(&world, &cast.admin_a, "dave").await;
     let query = returned(&issuer, &link, "k4", link.grant.clone());
     assert!(
-        failed(&link_return(&world, &cast.member_a, &query).await),
-        "another account's link"
+        failed(&sign_in_return(&world, &query, None).await),
+        "a link with no binding cookie"
     );
-    let link = begin_link(&world, &cast.admin_a, "dave").await;
+    let (link, _) = begin_link(&world, &cast.admin_a, "dave").await;
+    let (_, member_cookie) = begin_link(&world, &cast.member_a, "dave").await;
     let query = returned(&issuer, &link, "k5", link.grant.clone());
     assert!(
-        failed(&sign_in_return(&world, &query, Some(&cookie)).await),
-        "a link at the sign-in return"
+        failed(&sign_in_return(&world, &query, Some(&member_cookie)).await),
+        "another account's link cookie"
     );
-    let (begun, _) = start(&world, "dave").await;
-    let query = returned(&issuer, &begun, "k6", begun.grant.clone());
+    let (link, _) = begin_link(&world, &cast.admin_a, "dave").await;
+    let query = returned(&issuer, &link, "k6", link.grant.clone());
     assert!(
-        failed(&link_return(&world, &cast.admin_a, &query).await),
-        "a sign-in at the link return"
+        failed(&sign_in_return(&world, &query, Some(&cookie)).await),
+        "a sign-in's cookie on a link's return"
     );
     // An identity linked to one account is never linked to a second.
-    let link = begin_link(&world, &cast.admin_a, "carol").await;
+    let (link, admin_cookie) = begin_link(&world, &cast.admin_a, "carol").await;
     let query = returned(&issuer, &link, "k7", link.grant.clone());
-    let (status, body) = link_return(&world, &cast.admin_a, &query).await;
+    let (status, body) = sign_in_return(&world, &query, Some(&admin_cookie)).await;
     assert_eq!(
         (status, body["error_code"].as_str()),
         (StatusCode::CONFLICT, Some("identity_linked")),

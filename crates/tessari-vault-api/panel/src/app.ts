@@ -25,7 +25,7 @@ import { checkNotices, dropBanner, placeBanner } from "./recovery/notice-banner.
 import { drawRecovery } from "./recovery/recovery-view.ts";
 import { bearer, forget } from "./session.ts";
 import { join } from "./join.ts";
-import { providerReturned, signIn } from "./sign-in.ts";
+import { providerReturned, signIn, type Said } from "./sign-in.ts";
 import { unlock } from "./unlock.ts";
 import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked, type Unlocked } from "./vault.ts";
 import { installTips } from "./icon-action.ts";
@@ -37,7 +37,7 @@ import { sectionOf } from "./nav-section.ts";
 
 const history = browserHistory(window);
 /** What the identity provider's return refused, said once on the sign-in page. */
-let notice: string | null = null;
+let notice: Said | null = null;
 const signedIn = (): boolean => bearer() !== null;
 const isUnlocked = (): boolean => unlocked() !== null;
 const session = needsSession(signedIn, () => history.current());
@@ -294,8 +294,8 @@ if (view !== null) {
   switchButton();
   locking();
   // An identity provider's return is finished before any route is drawn, so the sign-in page never flashes first.
-  void providerReturned().then((refused) => {
-    notice = refused;
+  void providerReturned().then((said) => {
+    notice = said;
     const router = new Router(routes, history);
     router.start((outcome) => {
       draw(outcome, view, router);

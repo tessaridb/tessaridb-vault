@@ -1,19 +1,21 @@
 //! Sign-in through the configured OpenID Connect issuer, and linking an identity there to the signed-in account.
 //!
-//! The issuer sends the browser back to the panel, which hands the return query to one of two routes: the sign-in
-//! return, which needs the binding cookie set when that browser began, or the link return, which needs the session of
-//! the account that asked for the link. Every failure of a return answers as a failed sign-in.
+//! The issuer sends the browser back to the panel, which hands the return query to one route. It completes the sign-in
+//! or the link kept under the return's `state`, only for the browser holding the binding cookie set when it began: a
+//! link's return carries no session, since the page that asked for it was left for the issuer. Every failure of a
+//! return answers as a failed sign-in.
 
 use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::http::header::{COOKIE, LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tessari_vault_infrastructure::oidc::{OidcProvider, Pending};
+use tessari_vault_storage::identities::Returned;
 
 use crate::ApiError;
-use crate::caller::{Body, Caller, Unsigned};
+use crate::caller::{Caller, Unsigned};
 use crate::state::AppState;
 
 /// The cookie binding a sign-in's return to the browser that began it.
@@ -27,11 +29,6 @@ pub(crate) struct Session {
 #[derive(Serialize)]
 pub(crate) struct Address {
     address: String,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct LinkReturn {
-    query: String,
 }
 
 fn provider(state: &AppState) -> Result<&OidcProvider, ApiError> {
@@ -63,6 +60,16 @@ fn binding(headers: &HeaderMap) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// The cookie holding `binding` until the return, for this browser alone.
+fn bound(binding: &str) -> String {
+    format!("{BINDING}={binding}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600")
+}
+
+/// The cookie that clears the binding once a return has spent it.
+fn cleared() -> String {
+    format!("{BINDING}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0")
+}
+
 /// Begin a sign-in: send the browser to the issuer, holding a binding only it will present on return.
 pub(crate) async fn start(
     State(state): State<AppState>,
@@ -72,18 +79,13 @@ pub(crate) async fn start(
     let binding = state.storage.identities.keep_sign_in(&pending).await?;
     Ok((
         StatusCode::SEE_OTHER,
-        [
-            (LOCATION, address),
-            (
-                SET_COOKIE,
-                format!("{BINDING}={binding}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600"),
-            ),
-        ],
+        [(LOCATION, address), (SET_COOKIE, bound(&binding))],
     )
         .into_response())
 }
 
-/// The sign-in return: a session for the account the identity is linked to.
+/// The return: a session for the account a signed-in identity is linked to, or the identity linked to the account
+/// that asked.
 pub(crate) async fn returned(
     State(state): State<AppState>,
     _: Unsigned,
@@ -93,16 +95,24 @@ pub(crate) async fn returned(
     let provider = provider(&state)?;
     let query = query.unwrap_or_default();
     let binding = binding(&headers).unwrap_or_default();
-    let pending = state
+    let taken = state
         .storage
         .identities
-        .take_sign_in(&state_of(&query)?, &binding)
+        .take_return(&state_of(&query)?, &binding)
         .await?
         .ok_or(ApiError::SIGN_IN_FAILED)?;
+    let (pending, linking) = match taken {
+        Returned::SignIn(pending) => (pending, None),
+        Returned::Link(pending, account) => (pending, Some(account)),
+    };
     let identity = provider
         .finish(&pending, &query)
         .await
         .map_err(|_| ApiError::SIGN_IN_FAILED)?;
+    if let Some(account) = linking {
+        state.storage.identities.link(&account, &identity).await?;
+        return Ok((StatusCode::NO_CONTENT, [(SET_COOKIE, cleared())]).into_response());
+    }
     let session = state
         .storage
         .identities
@@ -111,10 +121,7 @@ pub(crate) async fn returned(
         .ok_or(ApiError::SIGN_IN_FAILED)?;
     Ok((
         StatusCode::CREATED,
-        [(
-            SET_COOKIE,
-            format!("{BINDING}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"),
-        )],
+        [(SET_COOKIE, cleared())],
         Json(Session {
             session: session.expose().to_owned(),
         }),
@@ -122,41 +129,17 @@ pub(crate) async fn returned(
         .into_response())
 }
 
-/// Begin linking an identity at the issuer to the caller's account: the address to send the browser to.
+/// Begin linking an identity at the issuer to the caller's account: the address to send the browser to, and the
+/// binding its return must come back with.
 pub(crate) async fn link(
     State(state): State<AppState>,
     Caller(actor): Caller,
-) -> Result<Json<Address>, ApiError> {
+) -> Result<Response, ApiError> {
     let (address, pending) = begun(provider(&state)?)?;
-    state
+    let binding = state
         .storage
         .identities
         .keep_link(&pending, actor.account())
         .await?;
-    Ok(Json(Address { address }))
-}
-
-/// The link return, sent by the account that asked for the link: the identity is linked to it.
-pub(crate) async fn link_returned(
-    State(state): State<AppState>,
-    Caller(actor): Caller,
-    Body(body): Body<LinkReturn>,
-) -> Result<StatusCode, ApiError> {
-    let provider = provider(&state)?;
-    let pending = state
-        .storage
-        .identities
-        .take_link(&state_of(&body.query)?, actor.account())
-        .await?
-        .ok_or(ApiError::SIGN_IN_FAILED)?;
-    let identity = provider
-        .finish(&pending, &body.query)
-        .await
-        .map_err(|_| ApiError::SIGN_IN_FAILED)?;
-    state
-        .storage
-        .identities
-        .link(actor.account(), &identity)
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(([(SET_COOKIE, bound(&binding))], Json(Address { address })).into_response())
 }

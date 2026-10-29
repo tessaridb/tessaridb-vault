@@ -286,15 +286,22 @@ async fn a_member_links_an_identity_at_the_issuer_and_signs_in_with_it() {
     let world = World::registered_at(&issuer, &client_id, REDIRECT).await;
     let cast = Cast::new(&world).await;
     let user = Browser::new();
-    let (status, body) = world
-        .call(
+    let (status, headers, body) = world
+        .call_with(
             Method::POST,
             "/api/me/identities/oidc",
-            Some(&cast.member_a),
+            &[("authorization", format!("Bearer {}", cast.member_a))],
             None,
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    let link_cookie = headers[axum::http::header::SET_COOKIE]
+        .to_str()
+        .expect("a cookie")
+        .split(';')
+        .next()
+        .expect("a pair")
+        .to_owned();
     let back = user
         .authorize(
             &issuer,
@@ -305,12 +312,12 @@ async fn a_member_links_an_identity_at_the_issuer_and_signs_in_with_it() {
         .await;
     assert!(back.starts_with(REDIRECT), "{back}");
     let query = back.split_once('?').expect("a query").1.to_owned();
-    let (status, body) = world
-        .call(
-            Method::POST,
-            "/api/me/identities/oidc/return",
-            Some(&cast.member_a),
-            Some(json!({"query": query})),
+    let (status, _, body) = world
+        .call_with(
+            Method::GET,
+            &format!("/api/sign-in/oidc/return?{query}"),
+            &[("cookie", link_cookie)],
+            None,
         )
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT, "linked: {body}");

@@ -32,6 +32,27 @@ export function readSession(v: unknown): string | null {
   return isRecord(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
 }
 
+/** What an identity provider's return completed: a sign-in, with its session, or a link of the identity. */
+export type Returned = { readonly kind: "session"; readonly session: string } | { readonly kind: "linked" };
+
+/** The answer of `GET /api/sign-in/oidc/return`: a session, or no body once a link is made. */
+export function readReturned(v: unknown): Returned | null {
+  if (v === null) {
+    return { kind: "linked" };
+  }
+  const session = readSession(v);
+  return session === null ? null : { kind: "session", session };
+}
+
+/** The issuer address `POST /api/me/identities/oidc` answers, which the page then opens: http or https only. */
+export function readLinkAddress(v: unknown): string | null {
+  if (!isRecord(v) || typeof v["address"] !== "string" || !URL.canParse(v["address"])) {
+    return null;
+  }
+  const { protocol } = new URL(v["address"]);
+  return protocol === "https:" || protocol === "http:" ? v["address"] : null;
+}
+
 /** What the browser needs to ask for a passkey. */
 export interface PasskeyRequest {
   readonly challenge: string;
