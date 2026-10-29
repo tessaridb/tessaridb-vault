@@ -10,12 +10,17 @@ use reqwest::StatusCode;
 use reqwest::header::{LOCATION, SET_COOKIE};
 use serde_json::{Value, json};
 use tessari_vault_core::totp;
+use tessari_vault_infrastructure::tessaridb::{Database, StoreConfig};
 
 use crate::enrolment::base32;
 use crate::issuer::{CLIENT_ID, Issuer, REDIRECT};
-use crate::world::{Node, STORE_PASSWORD, STORE_USER, free_port};
+use crate::world::{
+    Node, SERVER_PASSWORD, STORE_PASSWORD, STORE_USER, declare_server_account, free_port,
+};
 
 const ADMIN: &str = "ops@platform.test";
+/// The binary's account on the node: an editor of the default namespace, `vault`.
+const SERVER_USER: &str = "vault";
 const PASSWORD: &str = "a passphrase of my own";
 
 /// Everything the binary is started with: the node, the key file, the listen address and the issuer.
@@ -32,8 +37,8 @@ impl Setup {
         command
             .env_clear()
             .env("TESSARIDB_VAULT_STORE", &self.store)
-            .env("TESSARIDB_VAULT_STORE_USER", STORE_USER)
-            .env("TESSARIDB_VAULT_STORE_PASSWORD", STORE_PASSWORD)
+            .env("TESSARIDB_VAULT_STORE_USER", SERVER_USER)
+            .env("TESSARIDB_VAULT_STORE_PASSWORD", SERVER_PASSWORD)
             .env("TESSARIDB_VAULT_SERVICE_KEY_FILE", &self.key_file)
             .env("TESSARIDB_VAULT_LISTEN", &self.listen)
             .env("TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL", ADMIN)
@@ -89,6 +94,17 @@ fn exited(child: &mut Child, limit: Duration) -> Option<std::process::ExitStatus
 #[ignore = "needs TESSARIDB_BIN and TESSARIDB_VAULT_BIN"]
 async fn the_binary_lets_the_first_person_in_and_stops_on_sigterm() {
     let node = Node::start().await;
+    let owner = Database::new(
+        StoreConfig {
+            address: node.wire.clone(),
+            user: STORE_USER.to_owned(),
+            password: STORE_PASSWORD.to_owned(),
+            authority: None,
+        },
+        1,
+    )
+    .expect("a loopback pool");
+    declare_server_account(&owner, "vault", SERVER_USER).await;
     let issuer = Issuer::start().await;
     let key_file = std::env::temp_dir().join(format!("vault-binary-key-{}", std::process::id()));
     std::fs::write(&key_file, "cd".repeat(32)).expect("the key file");

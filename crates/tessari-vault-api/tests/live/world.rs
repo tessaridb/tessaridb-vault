@@ -27,6 +27,22 @@ pub(crate) const PASSKEY_ORIGIN: &str = "https://vault.test";
 
 pub(crate) const STORE_USER: &str = "vault_test";
 pub(crate) const STORE_PASSWORD: &str = "a-test-password-for-the-live-suite";
+/// The password of the server's own account, an editor of its namespace.
+pub(crate) const SERVER_PASSWORD: &str = "the-server-account-of-the-live-suite";
+
+/// What a deployment's store owner runs once: the server's namespace, and an account that may edit it and nothing else.
+pub(crate) async fn declare_server_account(owner: &Database, namespace: &str, user: &str) {
+    owner
+        .run_unplaced(
+            &format!(
+                "DEFINE NAMESPACE {namespace}; USE NAMESPACE {namespace}; \
+                 DEFINE USER {user} ON NAMESPACE {namespace} ROLE editor PASSWORD '{SERVER_PASSWORD}';"
+            ),
+            Vec::new(),
+        )
+        .await
+        .expect("the owner declares the server's namespace and account");
+}
 
 static TURN: AtomicU32 = AtomicU32::new(0);
 /// The next record id a test's browser chooses; every store is fresh, so a count is unique enough.
@@ -172,6 +188,21 @@ impl World {
         )
         .expect("a loopback pool");
         let turn = TURN.fetch_add(1, Ordering::Relaxed);
+        // The server signs in as a deployment's does: an editor of its one namespace, declared by the store's owner,
+        // never the owner itself. `database` stays the owner's, for the rows that act behind the server's back.
+        let namespace = format!("vault_t{turn}");
+        let server_user = format!("server_t{turn}");
+        declare_server_account(&database, &namespace, &server_user).await;
+        let server_database = Database::new(
+            StoreConfig {
+                address: node.wire.clone(),
+                user: server_user,
+                password: SERVER_PASSWORD.to_owned(),
+                authority: None,
+            },
+            8,
+        )
+        .expect("a loopback pool");
         let key_file =
             std::env::temp_dir().join(format!("vault-live-key-{}-{turn}", std::process::id()));
         std::fs::write(&key_file, "ab".repeat(32)).expect("the key file");
@@ -188,17 +219,17 @@ impl World {
         )
         .expect("the verifier");
         let seal = std::sync::Arc::new(TotpSeal::new(&service_key).expect("the seal"));
-        let place = Place::new(format!("vault_t{turn}"), "main").expect("plain names");
-        migrate(&database, &place)
+        let place = Place::new(namespace, "main").expect("plain names");
+        migrate(&server_database, &place)
             .await
             .expect("the schema applies");
-        migrate(&database, &place)
+        migrate(&server_database, &place)
             .await
             .expect("the schema applies a second time unchanged");
         let signin_keys = SigninKeys::new(&service_key).expect("the sign-in keys");
         let vault_keys = std::sync::Arc::new(VaultKeys::new(&service_key).expect("the vault keys"));
         let storage = Storage::new(
-            &database,
+            &server_database,
             &place,
             Custody {
                 passwords,

@@ -87,18 +87,20 @@ DEFINE TABLE IF NOT EXISTS recovery_requests (request_id string, company string,
 expires int, handed_by string, redeemed int, consumed int); \
 DEFINE INDEX IF NOT EXISTS by_company ON recovery_requests FIELDS company;";
 
-/// Declare the namespace and database of `place` and everything in them that is missing.
+/// Declare the database of `place` and everything in it that is missing.
+///
+/// The namespace is the store owner's to declare, with the server's account as an editor of it alone: declaring a
+/// namespace takes authority over the whole store, which the server never holds.
 ///
 /// # Errors
 ///
-/// When the store refuses a definition or cannot be reached.
+/// When the store refuses a definition or cannot be reached, including when the namespace does not exist.
 pub async fn migrate(database: &Database, place: &Place) -> Result<()> {
     let namespace = place.namespace();
     let name = place.database();
     // The two names were proven plain when the place was built; they are grammar and cannot be bound.
     let script = format!(
-        "DEFINE NAMESPACE IF NOT EXISTS {namespace}; USE NAMESPACE {namespace}; \
-         DEFINE DATABASE IF NOT EXISTS {name}; USE DATABASE {name}; {SCHEMA}"
+        "USE NAMESPACE {namespace}; DEFINE DATABASE IF NOT EXISTS {name}; USE DATABASE {name}; {SCHEMA}"
     );
     database.run_unplaced(&script, Vec::new()).await?;
     Ok(())

@@ -1,0 +1,83 @@
+# TessariDB Vault beside the TessariDB node that holds everything it keeps.
+#
+#   cp .env.example .env    # then set every value in it
+#   docker compose up -d --wait
+#   docker compose run --rm vault enrolment-link
+#
+# The vault runs in the database container's network namespace and reaches it
+# at 127.0.0.1: the server speaks to a store in the clear only over loopback,
+# and the database port is not published. The vault (8080) is published on
+# 127.0.0.1 through that namespace; give it a TLS-terminating proxy in front,
+# and set VAULT_PUBLIC_URL to the https address people use, before exposing it:
+# without TLS a password crosses the network in the clear.
+name: tessaridb-vault
+
+services:
+  tessaridb:
+    image: tessaridb/tessaridb:0.39.5
+    restart: unless-stopped
+    environment:
+      # The first start declares this store-wide owner; a store with no user
+      # is open to anybody who reaches it.
+      TESSARIDB_INITIAL_USER: ${TESSARIDB_USER:?set TESSARIDB_USER in .env}
+      TESSARIDB_INITIAL_PASSWORD: ${TESSARIDB_PASSWORD:?set TESSARIDB_PASSWORD in .env}
+    ports:
+      # The vault's listener: it shares this container's network namespace.
+      - "127.0.0.1:${VAULT_PORT:-8080}:8080"
+    volumes:
+      - tessaridb:/var/lib/tessaridb
+    stop_grace_period: 30s
+
+  # Declares the vault's own database account, as the owner, and exits: the
+  # vault signs in as an editor of its one namespace and never as the owner.
+  vault-account:
+    image: tessaridb/tessaridb:0.39.5
+    entrypoint: ["/bin/bash", "/vault-account.sh"]
+    depends_on:
+      tessaridb:
+        condition: service_healthy
+    environment:
+      TESSARIDB_AT: tessaridb:9080
+      TESSARIDB_OWNER: ${TESSARIDB_USER}
+      TESSARIDB_PASSWORD: ${TESSARIDB_PASSWORD}
+      VAULT_NAMESPACE: vault
+      VAULT_DATABASE: main
+      VAULT_STORE_USER: vault
+      VAULT_STORE_PASSWORD: ${VAULT_STORE_PASSWORD:?set VAULT_STORE_PASSWORD in .env}
+    volumes:
+      - ./docker/vault-account.sh:/vault-account.sh:ro
+
+  # Writes the service key into its own volume once, readable by the vault alone.
+  service-key:
+    image: tessaridb/tessaridb:0.39.5
+    entrypoint: ["/bin/bash", "/service-key.sh"]
+    user: "0"
+    volumes:
+      - ./docker/service-key.sh:/service-key.sh:ro
+      - vault-keys:/keys
+
+  vault:
+    image: tessaridb/vault:dev
+    build: .
+    restart: unless-stopped
+    network_mode: "service:tessaridb"
+    depends_on:
+      vault-account:
+        condition: service_completed_successfully
+      service-key:
+        condition: service_completed_successfully
+    environment:
+      TESSARIDB_VAULT_STORE: 127.0.0.1:9080
+      TESSARIDB_VAULT_STORE_USER: vault
+      TESSARIDB_VAULT_STORE_PASSWORD: ${VAULT_STORE_PASSWORD}
+      TESSARIDB_VAULT_SERVICE_KEY_FILE: /keys/service-key
+      TESSARIDB_VAULT_PUBLIC_URL: ${VAULT_PUBLIC_URL:-http://localhost:8080}
+      TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:?set PLATFORM_ADMIN_EMAIL in .env}
+      TESSARIDB_VAULT_PLATFORM_ADMIN_NAME: ${PLATFORM_ADMIN_NAME:?set PLATFORM_ADMIN_NAME in .env}
+    volumes:
+      - vault-keys:/keys:ro
+    stop_grace_period: 30s
+
+volumes:
+  tessaridb:
+  vault-keys:
