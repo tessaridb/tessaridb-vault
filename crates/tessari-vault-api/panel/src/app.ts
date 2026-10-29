@@ -3,9 +3,14 @@
 // parsed as markup.
 
 import { call, ignored } from "./api.ts";
+import { announce } from "./dom.ts";
 import { afterSignIn, afterUnlock, every, needsSession, needsUnlock } from "./guards.ts";
 import { browserHistory } from "./router/history.ts";
 import { Router, defineRoutes, type Outcome } from "./router/router.ts";
+import type { Stops } from "./records/field-view.ts";
+import { drawList } from "./records/list-view.ts";
+import { copier } from "./records/listing.ts";
+import { drawRecord } from "./records/record-view.ts";
 import { text } from "./router/query.ts";
 import { bearer, forget } from "./session.ts";
 import { providerReturned, signIn } from "./sign-in.ts";
@@ -22,6 +27,7 @@ const open = every(session, needsUnlock(isUnlocked, () => history.current()));
 
 const routes = defineRoutes({
   records: { path: "/", guard: open },
+  record: { path: "/records/:record", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
   unlock: { path: "/unlock", query: { next: text }, guard: session },
 });
@@ -36,12 +42,23 @@ function heading(view: HTMLElement, title: string, lead: string): void {
   view.replaceChildren(h1, p);
 }
 
+/** Copied values leave the clipboard by themselves, and at once when the vault locks. */
+const copy = copier({ write: (value) => navigator.clipboard.writeText(value) }, { set: (run, ms) => window.setTimeout(run, ms), clear: (handle) => window.clearTimeout(Number(handle)) }, announce);
+/** The timers of the view on screen, stopped before the next view is drawn. */
+const stops: Stops = [];
+const stopView = (): void => {
+  for (const stop of stops.splice(0)) {
+    stop();
+  }
+};
+
 /** Opens `href`, a hash of this page; the router hears of it as it hears of a link. */
 const go = (href: string): void => {
   window.location.hash = href;
 };
 
-function draw(outcome: Outcome<Routes>, view: HTMLElement): void {
+function draw(outcome: Outcome<Routes>, view: HTMLElement, router: Router<Routes>): void {
+  stopView();
   // Before signing in and while locked there is nothing to navigate: the card is the page.
   document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
   if (outcome.kind !== "matched") {
@@ -49,9 +66,20 @@ function draw(outcome: Outcome<Routes>, view: HTMLElement): void {
     return;
   }
   switch (outcome.match.name) {
-    case "records":
-      heading(view, "Records", "Your company's records arrive with the next version of this page.");
+    case "records": {
+      const held = unlocked();
+      if (held !== null) {
+        void drawList(view, held, (record) => router.href("record", { record }));
+      }
       break;
+    }
+    case "record": {
+      const held = unlocked();
+      if (held !== null) {
+        void drawRecord(view, held, outcome.match.params.record, copy, stops, router.href("records", {}));
+      }
+      break;
+    }
     case "signIn": {
       if (signedIn()) {
         go(afterSignIn(outcome.match.query.next));
@@ -123,6 +151,8 @@ function locking(): void {
   document.getElementById("lock")?.addEventListener("click", lock);
   lockWhenIdle(window, IDLE_MINUTES, { set: (run, ms) => window.setTimeout(run, ms), clear: (handle) => window.clearTimeout(Number(handle)) });
   onLock(() => {
+    stopView();
+    void copy.clearNow();
     if (signedIn()) {
       go(`#/unlock?next=${encodeURIComponent(history.current().replace(/^#/, ""))}`);
     }
@@ -137,8 +167,9 @@ if (view !== null) {
   // An identity provider's return is finished before any route is drawn, so the sign-in page never flashes first.
   void providerReturned().then((refused) => {
     notice = refused;
-    new Router(routes, history).start((outcome) => {
-      draw(outcome, view);
+    const router = new Router(routes, history);
+    router.start((outcome) => {
+      draw(outcome, view, router);
       mark(outcome);
     });
   });

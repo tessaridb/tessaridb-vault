@@ -1,0 +1,122 @@
+/* ───────────────────────────────────────────────────────────── records ── */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-block: var(--s-3);
+}
+
+button.chip {
+  min-block-size: 32px;
+  padding: 0 var(--s-4);
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+button.chip[aria-pressed="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.records {
+  list-style: none;
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  border-block-start: 1px solid var(--border);
+}
+
+.record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-4);
+  min-block-size: var(--row-height);
+  padding-block: var(--s-2);
+  border-block-end: 1px solid var(--border);
+}
+
+.record-title {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+
+.record.unreadable {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.record.unreadable .message {
+  grid-column: 1 / -1;
+  margin-block: 0;
+}
+
+.back {
+  display: inline-block;
+  margin-block-end: var(--s-3);
+}
+
+.record-section {
+  margin-block-start: var(--s-6);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  gap: var(--s-3) var(--s-5);
+  margin: var(--s-3) 0 0;
+}
+
+.fields dt {
+  color: var(--text-muted);
+  padding-block-start: var(--s-2);
+}
+
+.fields dd {
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.value-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.value {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pre {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 48rem) {
+  .record {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .record > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fields dt {
+    padding-block-start: 0;
+  }
+}
