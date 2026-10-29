@@ -191,6 +191,27 @@ table.records .message {
   grid-column: 1 / -1;
 }
 
+/* Like the members list, the rows share the list's columns, so key states line up whether or not a row has buttons. */
+@media (min-width: 48.01rem) {
+  .shares:has(> .share.group) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .shares:has(> .share.group):not(:has(.row-actions:not(:empty))) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .shares > .share.group {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+}
+
+.share.group .row-actions:empty {
+  display: none;
+}
+
 .share.group .row-actions {
   display: flex;
   flex-wrap: wrap;

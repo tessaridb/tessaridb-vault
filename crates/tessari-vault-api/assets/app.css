@@ -1242,6 +1242,7 @@ dialog.confirm .actions {
   list-style: none;
   margin: 0;
   padding: 0;
+  border-block-start: 1px solid var(--border);
 }
 
 .share {
@@ -1321,7 +1322,7 @@ form fieldset.record-section > legend {
   color: var(--text-muted);
 }
 
-form > button[type="submit"] {
+form > .record-section ~ button[type="submit"] {
   margin-block-start: var(--s-6);
 }
 
@@ -1541,6 +1542,27 @@ table.records .message {
 
 .share.group > [aria-live] {
   grid-column: 1 / -1;
+}
+
+/* Like the members list, the rows share the list's columns, so key states line up whether or not a row has buttons. */
+@media (min-width: 48.01rem) {
+  .shares:has(> .share.group) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .shares:has(> .share.group):not(:has(.row-actions:not(:empty))) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .shares > .share.group {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+}
+
+.share.group .row-actions:empty {
+  display: none;
 }
 
 .share.group .row-actions {

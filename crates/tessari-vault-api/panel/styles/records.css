@@ -270,6 +270,7 @@ dialog.confirm .actions {
   list-style: none;
   margin: 0;
   padding: 0;
+  border-block-start: 1px solid var(--border);
 }
 
 .share {
@@ -349,7 +350,7 @@ form fieldset.record-section > legend {
   color: var(--text-muted);
 }
 
-form > button[type="submit"] {
+form > .record-section ~ button[type="submit"] {
   margin-block-start: var(--s-6);
 }
 
