@@ -7,7 +7,7 @@ import { bearer } from "./session.ts";
 export type Failure = { readonly ok: false; readonly status: number; readonly code: string; readonly message: string };
 export type Answer<T> = { readonly ok: true; readonly value: T } | Failure;
 
-export type Method = "GET" | "POST" | "PUT" | "DELETE";
+export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** What a call may add: a JSON body, and the reason a person gave for a change (recorded on the trail). */
 export interface Options {

@@ -1,5 +1,6 @@
-// A department's or team's members in a dialog: who is in it, a way to add a member of the company, and a way to take
-// someone out. Taking someone out retires the group's key, so the page asks for a new one when the dialog closes.
+// A department's or team's settings in a dialog: its name, deleting it, who is in it, a way to add a member of the
+// company, and a way to take someone out. Taking someone out retires the group's key, so the page asks for a new one
+// when the dialog closes.
 
 import { call, ignored } from "../api.ts";
 import { el, fill } from "../dom.ts";
@@ -9,7 +10,7 @@ import { readMemberList } from "../records/share-targets.ts";
 import { refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { addable, readGroupMembers } from "./group-members.ts";
-import type { TreeRow } from "./groups-model.ts";
+import { createFailure, type TreeRow } from "./groups-model.ts";
 
 /** The "Members" button of group `row` and the dialog it opens; `changed` runs once the dialog closes after a change. */
 export function membersControl(held: Unlocked, row: TreeRow, changed: () => void): readonly HTMLElement[] {
@@ -19,18 +20,19 @@ export function membersControl(held: Unlocked, row: TreeRow, changed: () => void
   const close = el("button", { type: "button" }, "Close");
   const dialog = el("dialog", { class: "confirm", "aria-labelledby": `members-${row.id}` }, el("h2", { id: `members-${row.id}` }, `People in “${row.name}”`), body, said, el("div", { class: "actions" }, close));
   let touched = false;
-  const act = (method: "POST" | "DELETE", url: string, payload?: Readonly<Record<string, unknown>>): void => {
+  const send = (method: "POST" | "PATCH" | "DELETE", url: string, payload?: Readonly<Record<string, unknown>>, then: () => void = () => void draw()): void => {
     fill(said, el("p", { class: "muted", role: "status" }, "Saving."));
     void call(method, url, ignored, payload === undefined ? {} : { body: payload }).then((answer) => {
       if (!answer.ok) {
-        fill(said, refusal(answer.code === "not_a_member" ? "Only an active member of the company can join a group." : loadFailure(answer)));
+        fill(said, refusal(answer.code === "not_a_member" ? "Only an active member of the company can join a group." : createFailure(answer.code, loadFailure(answer))));
         return;
       }
       touched = true;
       fill(said, null);
-      void draw();
+      then();
     });
   };
+  const act = (method: "POST" | "DELETE", url: string, payload?: Readonly<Record<string, unknown>>): void => send(method, url, payload);
   const draw = async (): Promise<void> => {
     const [inGroup, company] = await Promise.all([call("GET", path, readGroupMembers), call("GET", `${companyPath(held)}/members`, readMemberList)]);
     if (!inGroup.ok || !company.ok) {
@@ -60,6 +62,27 @@ export function membersControl(held: Unlocked, row: TreeRow, changed: () => void
       candidates.length === 0 ? null : add,
     );
   };
+  const name = el("input", { id: `group-rename-${row.id}`, type: "text", autocomplete: "off", value: row.name });
+  const rename = el("button", { type: "button" }, "Rename");
+  rename.addEventListener("click", () => {
+    const wanted = name.value.trim();
+    if (wanted === "" || wanted === row.name) {
+      return;
+    }
+    send("PATCH", `${companyPath(held)}/groups/${encodeURIComponent(row.id)}`, { name: wanted });
+  });
+  // Deleting is said twice: records shared with the group stop opening for the people who reached them through it.
+  const remove = el("button", { type: "button", class: "danger" }, "Delete group");
+  const sure = el("div", { class: "actions" });
+  sure.hidden = true;
+  const keep = el("button", { type: "button" }, "Keep it");
+  const gone = el("button", { type: "button", class: "danger" }, `Delete \u201C${row.name}\u201D`);
+  fill(sure, el("p", {}, "Records shared with this group stop opening for the people who reached them through it."), keep, gone);
+  remove.addEventListener("click", () => (sure.hidden = false));
+  keep.addEventListener("click", () => (sure.hidden = true));
+  gone.addEventListener("click", () => send("DELETE", `${companyPath(held)}/groups/${encodeURIComponent(row.id)}`, undefined, () => dialog.close()));
+  const settings = el("section", { class: "record-section" }, el("div", { class: "field" }, el("label", { for: name.id }, "Name"), name), rename, remove, sure);
+  dialog.insertBefore(settings, said);
   const open = el("button", { type: "button", "aria-label": `People in ${row.name}` }, "Members");
   open.addEventListener("click", () => {
     touched = false;

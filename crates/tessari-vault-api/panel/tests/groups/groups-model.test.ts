@@ -41,6 +41,7 @@ describe("the groups page", () => {
   it("says why a group could not be made", () => {
     assert.match(createFailure("wrong_parent", "fallback"), /department sits in the company/);
     assert.equal(createFailure("other", "fallback"), "fallback");
+    assert.match(createFailure("group_not_empty", "fallback"), /still holds teams/);
   });
 
   it("reads whether a group's key is due for a new one, as after a member left", () => {

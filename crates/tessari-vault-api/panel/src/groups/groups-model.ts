@@ -74,13 +74,15 @@ export function readPending(v: unknown): readonly PendingKey[] | null {
   return keys.every((key) => key !== null) ? keys : null;
 }
 
-/** Why a group could not be made, from the server's code, or `fallback`. */
+/** Why a group could not be made, renamed or deleted, from the server's code, or `fallback`. */
 export function createFailure(code: string, fallback: string): string {
   switch (code) {
     case "wrong_parent":
       return "A department sits in the company; a team sits in a department or in the company.";
     case "forbidden":
       return "Only an owner or an admin can make departments and teams.";
+    case "group_not_empty":
+      return "This department still holds teams. Delete or move them first.";
     default:
       return fallback;
   }

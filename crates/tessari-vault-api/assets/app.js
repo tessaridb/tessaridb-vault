@@ -3185,72 +3185,6 @@ ${target.detail}`.toLowerCase().includes(wanted));
     return company.filter((member) => member.active && !inside.has(member.account)).sort((one, other) => one.name.localeCompare(other.name));
   }
 
-  // src/groups/group-members-view.ts
-  function membersControl(held2, row2, changed) {
-    const path = `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}/members`;
-    const body = el("div", {});
-    const said = el("div", { "aria-live": "polite" });
-    const close = el("button", { type: "button" }, "Close");
-    const dialog = el("dialog", { class: "confirm", "aria-labelledby": `members-${row2.id}` }, el("h2", { id: `members-${row2.id}` }, `People in “${row2.name}”`), body, said, el("div", { class: "actions" }, close));
-    let touched = false;
-    const act = (method, url, payload) => {
-      fill(said, el("p", { class: "muted", role: "status" }, "Saving."));
-      void call(method, url, ignored, payload === void 0 ? {} : { body: payload }).then((answer) => {
-        if (!answer.ok) {
-          fill(said, refusal(answer.code === "not_a_member" ? "Only an active member of the company can join a group." : loadFailure(answer)));
-          return;
-        }
-        touched = true;
-        fill(said, null);
-        void draw2();
-      });
-    };
-    const draw2 = async () => {
-      const [inGroup, company] = await Promise.all([call("GET", path, readGroupMembers), call("GET", `${companyPath(held2)}/members`, readMemberList)]);
-      if (!inGroup.ok || !company.ok) {
-        const failed2 = !inGroup.ok ? inGroup : company;
-        fill(body, failed2.ok ? null : refusal(loadFailure(failed2)));
-        return;
-      }
-      const people = inGroup.value.map((member) => {
-        const remove = el("button", { type: "button", "aria-label": `Take ${member.name} out of ${row2.name}` }, "Take out");
-        remove.addEventListener("click", () => act("DELETE", `${path}/${encodeURIComponent(member.account)}`));
-        return el("li", { class: "share member" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove);
-      });
-      const candidates = addable(company.value, inGroup.value);
-      let chosen = null;
-      const choices = candidates.map((member) => {
-        const id = `join-${row2.id}-${member.account}`;
-        const radio = el("input", { id, type: "radio", name: `join-${row2.id}` });
-        radio.addEventListener("change", () => chosen = member.account);
-        return el("div", { class: "choice" }, radio, el("label", { for: id }, member.name, el("span", { class: "detail" }, member.email)));
-      });
-      const add = el("button", { type: "button", class: "primary" }, "Add to group");
-      add.addEventListener("click", () => chosen === null ? fill(said, refusal("Choose who to add.")) : act("POST", path, { account_id: chosen }));
-      fill(
-        body,
-        people.length === 0 ? el("p", { class: "muted" }, "Nobody is in this group yet.") : el("ul", { class: "shares" }, ...people),
-        candidates.length === 0 ? null : el("fieldset", { class: "choices" }, el("legend", {}, "Add someone"), el("div", { class: "targets" }, ...choices)),
-        candidates.length === 0 ? null : add
-      );
-    };
-    const open3 = el("button", { type: "button", "aria-label": `People in ${row2.name}` }, "Members");
-    open3.addEventListener("click", () => {
-      touched = false;
-      fill(said, null);
-      fill(body, el("p", { class: "muted", role: "status" }, "Loading who is in the group."));
-      dialog.showModal();
-      void draw2();
-    });
-    close.addEventListener("click", () => dialog.close());
-    dialog.addEventListener("close", () => {
-      if (touched) {
-        changed();
-      }
-    });
-    return [open3, dialog];
-  }
-
   // src/groups/groups-model.ts
   var KEY_BYTES5 = 32;
   var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -3295,12 +3229,101 @@ ${target.detail}`.toLowerCase().includes(wanted));
         return "A department sits in the company; a team sits in a department or in the company.";
       case "forbidden":
         return "Only an owner or an admin can make departments and teams.";
+      case "group_not_empty":
+        return "This department still holds teams. Delete or move them first.";
       default:
         return fallback;
     }
   }
   function readRotationDue(v) {
     return isRecord8(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
+  }
+
+  // src/groups/group-members-view.ts
+  function membersControl(held2, row2, changed) {
+    const path = `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}/members`;
+    const body = el("div", {});
+    const said = el("div", { "aria-live": "polite" });
+    const close = el("button", { type: "button" }, "Close");
+    const dialog = el("dialog", { class: "confirm", "aria-labelledby": `members-${row2.id}` }, el("h2", { id: `members-${row2.id}` }, `People in “${row2.name}”`), body, said, el("div", { class: "actions" }, close));
+    let touched = false;
+    const send = (method, url, payload, then = () => void draw2()) => {
+      fill(said, el("p", { class: "muted", role: "status" }, "Saving."));
+      void call(method, url, ignored, payload === void 0 ? {} : { body: payload }).then((answer) => {
+        if (!answer.ok) {
+          fill(said, refusal(answer.code === "not_a_member" ? "Only an active member of the company can join a group." : createFailure(answer.code, loadFailure(answer))));
+          return;
+        }
+        touched = true;
+        fill(said, null);
+        then();
+      });
+    };
+    const act = (method, url, payload) => send(method, url, payload);
+    const draw2 = async () => {
+      const [inGroup, company] = await Promise.all([call("GET", path, readGroupMembers), call("GET", `${companyPath(held2)}/members`, readMemberList)]);
+      if (!inGroup.ok || !company.ok) {
+        const failed2 = !inGroup.ok ? inGroup : company;
+        fill(body, failed2.ok ? null : refusal(loadFailure(failed2)));
+        return;
+      }
+      const people = inGroup.value.map((member) => {
+        const remove2 = el("button", { type: "button", "aria-label": `Take ${member.name} out of ${row2.name}` }, "Take out");
+        remove2.addEventListener("click", () => act("DELETE", `${path}/${encodeURIComponent(member.account)}`));
+        return el("li", { class: "share member" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove2);
+      });
+      const candidates = addable(company.value, inGroup.value);
+      let chosen = null;
+      const choices = candidates.map((member) => {
+        const id = `join-${row2.id}-${member.account}`;
+        const radio = el("input", { id, type: "radio", name: `join-${row2.id}` });
+        radio.addEventListener("change", () => chosen = member.account);
+        return el("div", { class: "choice" }, radio, el("label", { for: id }, member.name, el("span", { class: "detail" }, member.email)));
+      });
+      const add = el("button", { type: "button", class: "primary" }, "Add to group");
+      add.addEventListener("click", () => chosen === null ? fill(said, refusal("Choose who to add.")) : act("POST", path, { account_id: chosen }));
+      fill(
+        body,
+        people.length === 0 ? el("p", { class: "muted" }, "Nobody is in this group yet.") : el("ul", { class: "shares" }, ...people),
+        candidates.length === 0 ? null : el("fieldset", { class: "choices" }, el("legend", {}, "Add someone"), el("div", { class: "targets" }, ...choices)),
+        candidates.length === 0 ? null : add
+      );
+    };
+    const name = el("input", { id: `group-rename-${row2.id}`, type: "text", autocomplete: "off", value: row2.name });
+    const rename = el("button", { type: "button" }, "Rename");
+    rename.addEventListener("click", () => {
+      const wanted = name.value.trim();
+      if (wanted === "" || wanted === row2.name) {
+        return;
+      }
+      send("PATCH", `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}`, { name: wanted });
+    });
+    const remove = el("button", { type: "button", class: "danger" }, "Delete group");
+    const sure = el("div", { class: "actions" });
+    sure.hidden = true;
+    const keep2 = el("button", { type: "button" }, "Keep it");
+    const gone = el("button", { type: "button", class: "danger" }, `Delete “${row2.name}”`);
+    fill(sure, el("p", {}, "Records shared with this group stop opening for the people who reached them through it."), keep2, gone);
+    remove.addEventListener("click", () => sure.hidden = false);
+    keep2.addEventListener("click", () => sure.hidden = true);
+    gone.addEventListener("click", () => send("DELETE", `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}`, void 0, () => dialog.close()));
+    const settings = el("section", { class: "record-section" }, el("div", { class: "field" }, el("label", { for: name.id }, "Name"), name), rename, remove, sure);
+    dialog.insertBefore(settings, said);
+    const open3 = el("button", { type: "button", "aria-label": `People in ${row2.name}` }, "Members");
+    open3.addEventListener("click", () => {
+      touched = false;
+      fill(said, null);
+      fill(body, el("p", { class: "muted", role: "status" }, "Loading who is in the group."));
+      dialog.showModal();
+      void draw2();
+    });
+    close.addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => {
+      if (touched) {
+        changed();
+      }
+    });
+    return [open3, dialog];
   }
 
   // src/groups/groups-view.ts
