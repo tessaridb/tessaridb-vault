@@ -13,7 +13,7 @@ use tessari_vault_core::totp;
 
 use crate::enrolment::base32;
 use crate::issuer::{CLIENT_ID, Issuer, REDIRECT};
-use crate::world::{Node, STORE_PASSWORD, STORE_USER};
+use crate::world::{Node, STORE_PASSWORD, STORE_USER, free_port};
 
 const ADMIN: &str = "ops@platform.test";
 const PASSWORD: &str = "a passphrase of my own";
@@ -51,11 +51,6 @@ impl Setup {
 fn binary() -> String {
     std::env::var("TESSARIDB_VAULT_BIN")
         .expect("TESSARIDB_VAULT_BIN names the built tessaridb-vault")
-}
-
-fn free_port() -> String {
-    let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-    format!("127.0.0.1:{}", probe.local_addr().expect("bound").port())
 }
 
 fn code(secret: &str, step: u64) -> String {

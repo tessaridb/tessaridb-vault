@@ -1,7 +1,7 @@
 //! A real TessariDB node, a fresh namespace on it, and the router over it, with the people the matrix needs.
 
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::Router;
@@ -30,6 +30,27 @@ pub(crate) const STORE_PASSWORD: &str = "a-test-password-for-the-live-suite";
 
 static TURN: AtomicU32 = AtomicU32::new(0);
 
+/// The first port this run hands a node, below the range the system gives out by itself.
+const PORT_BASE: u16 = 41_000;
+
+/// Ports come from one counter for the whole run: two tests that each asked the system for a free port, then let it
+/// go for their node to take, could be given the same one, and the world whose node lost would talk to the other's.
+static PORT: AtomicU16 = AtomicU16::new(PORT_BASE);
+
+/// The next port of this run's band that nothing on the host holds.
+pub(crate) fn free_port() -> String {
+    loop {
+        let port = PORT.fetch_add(1, Ordering::Relaxed);
+        assert!(
+            (PORT_BASE..49_152).contains(&port),
+            "the run used its port band"
+        );
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return format!("127.0.0.1:{port}");
+        }
+    }
+}
+
 /// A node process, stopped when dropped.
 pub struct Node {
     child: Child,
@@ -54,39 +75,42 @@ impl Node {
     pub async fn start_in(data: Option<&std::path::Path>) -> Self {
         let binary = std::env::var("TESSARIDB_BIN")
             .expect("TESSARIDB_BIN names the engine binary the live suite runs against");
-        let http_probe = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-        let wire_probe = std::net::TcpListener::bind("127.0.0.1:0").expect("a second free port");
-        let http = format!(
-            "127.0.0.1:{}",
-            http_probe.local_addr().expect("bound").port()
-        );
-        let wire = format!(
-            "127.0.0.1:{}",
-            wire_probe.local_addr().expect("bound").port()
-        );
-        drop((http_probe, wire_probe));
-        let mut command = Command::new(&binary);
-        if let Some(data) = data {
-            command.arg(data);
+        // A port the system says is free can still refuse the node's own bind, so a node that exits before it
+        // listens is started again on two other ports.
+        for _ in 0..5 {
+            let http = free_port();
+            let wire = free_port();
+            let mut command = Command::new(&binary);
+            if let Some(data) = data {
+                command.arg(data);
+            }
+            let child = command
+                .args(["--http", &http, "--serve", &wire])
+                .env("TESSARIDB_INITIAL_USER", STORE_USER)
+                .env("TESSARIDB_INITIAL_PASSWORD", STORE_PASSWORD)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("the engine binary starts");
+            let mut node = Self { child, wire, http };
+            let started = Instant::now();
+            loop {
+                // Something answering on the port is not proof it is this node: one that lost its port has exited.
+                let exited = !matches!(node.child.try_wait(), Ok(None));
+                if exited {
+                    break;
+                }
+                if tokio::net::TcpStream::connect(&node.wire).await.is_ok() {
+                    return node;
+                }
+                assert!(
+                    started.elapsed() < Duration::from_secs(20),
+                    "the node did not listen"
+                );
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
         }
-        let child = command
-            .args(["--http", &http, "--serve", &wire])
-            .env("TESSARIDB_INITIAL_USER", STORE_USER)
-            .env("TESSARIDB_INITIAL_PASSWORD", STORE_PASSWORD)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("the engine binary starts");
-        let node = Self { child, wire, http };
-        let started = Instant::now();
-        while tokio::net::TcpStream::connect(&node.wire).await.is_err() {
-            assert!(
-                started.elapsed() < Duration::from_secs(20),
-                "the node did not listen"
-            );
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        node
+        panic!("no node started on five pairs of ports");
     }
 }
 
