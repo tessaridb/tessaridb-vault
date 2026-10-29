@@ -19,6 +19,7 @@ import { typeName, unreadableWords } from "./listing.ts";
 import { Opener, companyPath, vouchedChain } from "./load.ts";
 import { newRecord, revisedRecord } from "./save-record.ts";
 import { sharedWith } from "./share-recipients.ts";
+import { sshKeyControl } from "./ssh-field-view.ts";
 import { BUILT_IN_TYPES, recordFromTemplate } from "./types.ts";
 
 const INPUT: Partial<Record<Field["type"], string>> = {
@@ -34,6 +35,9 @@ const INPUT: Partial<Record<Field["type"], string>> = {
 
 /** One field's control and a way to read what it holds; types the form cannot edit yet keep their value. */
 function control(field: Field, id: string): { readonly row: HTMLElement; readonly read: () => unknown; readonly mark: (words: string | null) => void } {
+  if (field.type === "ssh-key") {
+    return sshKeyControl(field.label, field.value, id);
+  }
   const hint = el("p", { id: `${id}-hint`, class: "message bad" });
   hint.hidden = true;
   const label = el("label", { for: id }, field.label);

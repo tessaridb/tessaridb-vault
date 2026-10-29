@@ -1272,6 +1272,24 @@ dialog.confirm .actions {
   min-inline-size: 0;
 }
 
+/* A field whose control is a group rather than one input names it the way a label names an input. */
+.field-label {
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--t-data);
+}
+
+/* An SSH key in the edit form: its public line and fingerprint, wrapped rather than scrolled. */
+.ssh-key {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.ssh-key p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 /* An edit form's groups read like the record page's sections: no box, a caption for a heading. */
 form fieldset.record-section {
   margin: var(--s-5) 0 0;

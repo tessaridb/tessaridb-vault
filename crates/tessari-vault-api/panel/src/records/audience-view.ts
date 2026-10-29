@@ -47,7 +47,7 @@ export function audiencePicker(choices: readonly ShareTarget[]): { readonly sect
       ),
     ),
   ];
-  const section = el("fieldset", { class: "choices" }, el("legend", {}, "Who can open it"), el("div", { class: "targets" }, ...rows));
+  const section = el("fieldset", { class: "record-section" }, el("legend", {}, "Who can open it"), el("div", { class: "targets" }, ...rows));
   return { section, chosen: () => chosen };
 }
 

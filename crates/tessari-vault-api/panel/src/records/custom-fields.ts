@@ -1,21 +1,19 @@
-// A record's own fields: beyond its type's, the author adds text and secret fields named as they like. They live in one
-// section of their own, the record's last, so they are sealed with the record like every other field and need no new
-// format; the edit form takes them out to manage them and puts them back before it saves.
+// A record's own fields: beyond its type's, the author adds text, secret and SSH key fields named as they like. They live
+// in one section of their own, the record's last, so they are sealed with the record like every other field and need no
+// new format; the edit form takes them out to manage them and puts them back before it saves.
 
 import type { RecordDocument } from "./document.ts";
-import type { Field } from "./fields.ts";
+import type { Field, SshKeyValue } from "./fields.ts";
 
 export const CUSTOM_SECTION = "Custom fields";
 const MAX_LABEL = 64;
 
-/** A field the author added: a line of text or a secret shown as dots. */
-export interface CustomField {
-  readonly label: string;
-  readonly type: "text" | "concealed";
-  readonly value: string | null;
-}
+/** A field the author added: a line of text, a secret shown as dots, or an SSH key. */
+export type CustomField =
+  | { readonly label: string; readonly type: "text" | "concealed"; readonly value: string | null }
+  | { readonly label: string; readonly type: "ssh-key"; readonly value: SshKeyValue | null };
 
-const isCustom = (field: Field): field is Field & CustomField => field.type === "text" || field.type === "concealed";
+const isCustom = (field: Field): field is CustomField => field.type === "text" || field.type === "concealed" || field.type === "ssh-key";
 
 /** The document without its own fields, and those fields; a type's section that happens to share the name stays. */
 export function splitCustom(document: RecordDocument): { readonly base: RecordDocument; readonly custom: readonly CustomField[] } {

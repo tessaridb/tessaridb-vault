@@ -56,4 +56,10 @@ describe("custom fields", () => {
     assert.equal(customLabelProblem("x".repeat(65), []), "Keep the name to 64 characters.");
     assert.equal(customLabelProblem("Account number", ["Username"]), null);
   });
+  it("keeps an SSH key the author added, private key and all", () => {
+    const key = { privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\nAA\n-----END OPENSSH PRIVATE KEY-----\n", publicKey: "ssh-ed25519 AAAA deploy", fingerprint: "SHA256:abc" };
+    const joined = joinCustom(BASE, [{ label: "Deploy key", type: "ssh-key", value: key }]);
+    assert.deepEqual(splitCustom(joined).custom, [{ label: "Deploy key", type: "ssh-key", value: key }]);
+    assert.deepEqual(splitCustom(joined).base, BASE);
+  });
 });

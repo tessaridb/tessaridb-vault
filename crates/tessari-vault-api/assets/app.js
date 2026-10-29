@@ -48,12 +48,12 @@
       return { ok: false, status: 0, code: "network", message: "The vault did not answer." };
     }
     let parsed = null;
-    const text2 = response.status === 204 ? "" : await response.text().catch(() => void 0);
-    if (text2 === void 0) {
+    const text3 = response.status === 204 ? "" : await response.text().catch(() => void 0);
+    if (text3 === void 0) {
       parsed = void 0;
-    } else if (text2 !== "") {
+    } else if (text3 !== "") {
       try {
-        parsed = JSON.parse(text2);
+        parsed = JSON.parse(text3);
       } catch {
         parsed = void 0;
       }
@@ -308,18 +308,18 @@
   function encode(bytes) {
     return btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join("")).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
   }
-  function decode(text2) {
-    if (!/^[A-Za-z0-9_-]*$/.test(text2) || text2.length % 4 === 1) {
+  function decode(text3) {
+    if (!/^[A-Za-z0-9_-]*$/.test(text3) || text3.length % 4 === 1) {
       return null;
     }
-    const standard = text2.replaceAll("-", "+").replaceAll("_", "/");
+    const standard = text3.replaceAll("-", "+").replaceAll("_", "/");
     return Uint8Array.from(atob(standard.padEnd(Math.ceil(standard.length / 4) * 4, "=")), (character) => character.charCodeAt(0));
   }
 
   // src/crypto/bytes.ts
   var ENCODER = new TextEncoder();
-  function utf8(text2) {
-    return ENCODER.encode(text2);
+  function utf8(text3) {
+    return ENCODER.encode(text3);
   }
   function concat(...parts) {
     const out = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
@@ -433,11 +433,11 @@
     return companies;
   }
   var unlockable = (companies) => companies.filter((company) => company.active && company.role !== null);
-  function keyIdBytes(text2) {
-    if (!/^[0-9a-f]{32}$/.test(text2)) {
+  function keyIdBytes(text3) {
+    if (!/^[0-9a-f]{32}$/.test(text3)) {
       return null;
     }
-    return Uint8Array.from(text2.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+    return Uint8Array.from(text3.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
   }
   function readOwnKeys(v) {
     if (!isRecord2(v) || !isRecord2(v["kdf"]) || !isText(v["key_id"])) {
@@ -535,8 +535,8 @@
     });
     return [...people, ...teams];
   }
-  function filterTargets(targets, text2) {
-    const wanted = text2.trim().toLowerCase();
+  function filterTargets(targets, text3) {
+    const wanted = text3.trim().toLowerCase();
     return targets.filter((target) => `${target.label}
 ${target.detail}`.toLowerCase().includes(wanted));
   }
@@ -950,6 +950,14 @@ ${target.detail}`.toLowerCase().includes(wanted));
   async function x25519PublicFromBytes(raw) {
     return crypto.subtle.importKey("raw", exactKey(raw), { name: "X25519" }, true, []);
   }
+  async function ed25519PrivateFromSeed(seed, extractable) {
+    const pkcs8 = concat(PKCS8_PREFIX_ED25519, exactKey(seed));
+    try {
+      return await crypto.subtle.importKey("pkcs8", pkcs8, { name: "Ed25519" }, extractable, ["sign"]);
+    } finally {
+      wipe(pkcs8);
+    }
+  }
   async function ed25519PublicFromBytes(raw) {
     return crypto.subtle.importKey("raw", exactKey(raw), { name: "Ed25519" }, true, ["verify"]);
   }
@@ -1056,7 +1064,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       throw new VaultCryptoError("chain-broken");
     }
     const decoder = new TextDecoder("utf-8", { fatal: true });
-    const text2 = (raw) => {
+    const text3 = (raw) => {
       try {
         return decoder.decode(raw);
       } catch {
@@ -1065,10 +1073,10 @@ ${target.detail}`.toLowerCase().includes(wanted));
     };
     const decoded = {
       kind,
-      company: text2(reader.field()),
+      company: text3(reader.field()),
       seq: reader.integer(8),
       prev: reader.take(DIGEST_BYTES),
-      subject: text2(reader.field()),
+      subject: text3(reader.field()),
       agreementPublic: reader.field(),
       signingPublic: reader.field(),
       signerPublic: reader.take(KEY_BYTES2)
@@ -1421,8 +1429,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
     return String(binary % 10 ** params.digits).padStart(params.digits, "0");
   }
   var ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  function base32Decode(text2) {
-    const clean = text2.replace(/\s+/g, "").toUpperCase().replace(/=+$/, "");
+  function base32Decode(text3) {
+    const clean = text3.replace(/\s+/g, "").toUpperCase().replace(/=+$/, "");
     const out = [];
     let buffer = 0;
     let bits = 0;
@@ -1464,12 +1472,12 @@ ${target.detail}`.toLowerCase().includes(wanted));
   ];
   var MAX_TEXT = 65536;
   var SHAPES2 = {
-    url: (text2) => URL.canParse(text2),
-    email: (text2) => /^[^\s@]+@[^\s@]+$/.test(text2),
-    phone: (text2) => /^[+0-9 ().-]{1,32}$/.test(text2),
-    number: (text2) => /^-?\d+(\.\d+)?$/.test(text2),
-    date: (text2) => {
-      const match2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text2);
+    url: (text3) => URL.canParse(text3),
+    email: (text3) => /^[^\s@]+@[^\s@]+$/.test(text3),
+    phone: (text3) => /^[+0-9 ().-]{1,32}$/.test(text3),
+    number: (text3) => /^-?\d+(\.\d+)?$/.test(text3),
+    date: (text3) => {
+      const match2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text3);
       if (match2 === null) {
         return false;
       }
@@ -1477,7 +1485,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       const date = new Date(Date.UTC(year, month - 1, day));
       return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
     },
-    "month-year": (text2) => /^\d{4}-(0[1-9]|1[0-2])$/.test(text2)
+    "month-year": (text3) => /^\d{4}-(0[1-9]|1[0-2])$/.test(text3)
   };
   function fail() {
     throw new VaultCryptoError("malformed");
@@ -1522,8 +1530,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
     return raw === null ? null : read(raw);
   }
   function readShaped(type, raw) {
-    const text2 = readText(raw);
-    return text2 === "" || SHAPES2[type](text2) ? text2 : fail();
+    const text3 = readText(raw);
+    return text3 === "" || SHAPES2[type](text3) ? text3 : fail();
   }
   function readSecurityQuestion(raw) {
     const value = exactly(raw, ["question", "answer"]);
@@ -1558,7 +1566,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       case "number":
       case "date":
       case "month-year":
-        return { label, type, value: orNull(value, (text2) => readShaped(type, text2)) };
+        return { label, type, value: orNull(value, (text3) => readShaped(type, text3)) };
       case "boolean":
         return { label, type, value: orNull(value, (flag) => typeof flag === "boolean" ? flag : fail()) };
       case "otp":
@@ -2104,7 +2112,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         )
       )
     ];
-    const section = el("fieldset", { class: "choices" }, el("legend", {}, "Who can open it"), el("div", { class: "targets" }, ...rows));
+    const section = el("fieldset", { class: "record-section" }, el("legend", {}, "Who can open it"), el("div", { class: "targets" }, ...rows));
     return { section, chosen: () => chosen };
   }
   async function shareCreated(held2, id, to) {
@@ -2130,7 +2138,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/records/custom-fields.ts
   var CUSTOM_SECTION = "Custom fields";
   var MAX_LABEL = 64;
-  var isCustom = (field3) => field3.type === "text" || field3.type === "concealed";
+  var isCustom = (field3) => field3.type === "text" || field3.type === "concealed" || field3.type === "ssh-key";
   function splitCustom(document2) {
     const last = document2.sections.at(-1);
     if (last === void 0 || last.name !== CUSTOM_SECTION || !last.fields.every(isCustom)) {
@@ -2224,7 +2232,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/records/custom-fields-view.ts
   var KINDS2 = [
     { type: "text", words: "Text" },
-    { type: "concealed", words: "Secret" }
+    { type: "concealed", words: "Secret" },
+    { type: "ssh-key", words: "SSH key" }
   ];
   function customEditor(initial, controlFor, taken) {
     let made = 0;
@@ -2235,9 +2244,13 @@ ${target.detail}`.toLowerCase().includes(wanted));
       const control2 = controlFor(field3, `custom-${made}`);
       const remove = iconAction("trash", "Remove field", `Remove the field ${field3.label}`, "danger");
       const input = control2.row.querySelector("input");
-      const line = el("div", { class: "input-line" });
-      input?.replaceWith(line);
-      line.append(...input === null ? [] : [input], remove);
+      if (input === null) {
+        control2.row.querySelector(".input-line")?.append(remove);
+      } else {
+        const line = el("div", { class: "input-line" });
+        input.replaceWith(line);
+        line.append(input, remove);
+      }
       const row2 = el("div", { class: "custom-row" }, control2.row);
       const entry = { field: field3, control: control2, row: row2 };
       remove.addEventListener("click", () => {
@@ -2299,7 +2312,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       }
       const row2 = append({ label: name.value.trim(), type: kind, value: null });
       close();
-      row2.querySelector("input")?.focus();
+      row2.querySelector("input, button")?.focus();
     };
     add.addEventListener("click", submit);
     cancel.addEventListener("click", () => {
@@ -2436,6 +2449,222 @@ ${target.detail}`.toLowerCase().includes(wanted));
     return recipients === null ? { ok: false, words: MOVED } : { ok: true, recipients };
   }
 
+  // src/records/ssh-field.ts
+  function sshImportProblem(problem2) {
+    if (!(problem2 instanceof VaultCryptoError)) {
+      return "The page couldn't read this key. Try pasting it again.";
+    }
+    switch (problem2.reason) {
+      case "unknown-algorithm":
+        return "Only an Ed25519 key without a passphrase can be kept. Remove the passphrase with ssh-keygen -p, or make a new key here.";
+      case "key-mismatch":
+        return "The public key in this file doesn't match its private key, so it isn't kept.";
+      default:
+        return "Paste the whole private key file, from -----BEGIN OPENSSH PRIVATE KEY----- to its END line.";
+    }
+  }
+
+  // src/records/ssh.ts
+  var MAGIC = concat(utf8("openssh-key-v1"), Uint8Array.of(0));
+  var KEY_TYPE = "ssh-ed25519";
+  var NONE = "none";
+  var KEY_BYTES4 = 32;
+  var BLOCK = 8;
+  var LINE = 70;
+  var BEGIN = "-----BEGIN OPENSSH PRIVATE KEY-----";
+  var END = "-----END OPENSSH PRIVATE KEY-----";
+  function sshString(bytes) {
+    return concat(integer(bytes.length, 4), bytes);
+  }
+  function base64(bytes) {
+    return btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
+  }
+  function fromBase64(text3) {
+    try {
+      return Uint8Array.from(atob(text3), (character) => character.charCodeAt(0));
+    } catch {
+      throw new VaultCryptoError("malformed");
+    }
+  }
+  function text2(reader) {
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(reader.field());
+    } catch {
+      throw new VaultCryptoError("malformed");
+    }
+  }
+  async function describe(publicKey, comment, privateKey) {
+    const blob = concat(sshString(utf8(KEY_TYPE)), sshString(publicKey));
+    const digest2 = new Uint8Array(await crypto.subtle.digest("SHA-256", blob));
+    return {
+      privateKey,
+      publicKey: [KEY_TYPE, base64(blob), comment].filter((part) => part !== "").join(" "),
+      fingerprint: `SHA256:${base64(digest2).replace(/=+$/, "")}`
+    };
+  }
+  async function publicOf(seed) {
+    const key = await ed25519PrivateFromSeed(seed.slice(), true);
+    const jwk = await crypto.subtle.exportKey("jwk", key);
+    return fromBase64((jwk.x ?? "").replace(/-/g, "+").replace(/_/g, "/").padEnd(44, "="));
+  }
+  function privateFile(seed, publicKey, comment) {
+    const check = random(4);
+    let section = concat(
+      check,
+      check,
+      sshString(utf8(KEY_TYPE)),
+      sshString(publicKey),
+      sshString(concat(seed, publicKey)),
+      sshString(utf8(comment))
+    );
+    const padding = Uint8Array.from({ length: (BLOCK - section.length % BLOCK) % BLOCK }, (_, index) => index + 1);
+    section = concat(section, padding);
+    const body = concat(
+      MAGIC,
+      sshString(utf8(NONE)),
+      sshString(utf8(NONE)),
+      sshString(new Uint8Array(0)),
+      integer(1, 4),
+      sshString(concat(sshString(utf8(KEY_TYPE)), sshString(publicKey))),
+      sshString(section)
+    );
+    const encoded = base64(body);
+    wipe(section, body);
+    const lines = encoded.match(new RegExp(`.{1,${LINE}}`, "g")) ?? [];
+    return `${BEGIN}
+${lines.join("\n")}
+${END}
+`;
+  }
+  async function generateSshKey(comment) {
+    const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+    if (!("privateKey" in pair)) {
+      throw new VaultCryptoError("malformed");
+    }
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    const seed = pkcs8.slice(pkcs8.length - KEY_BYTES4);
+    const publicKey = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
+    const key = await describe(publicKey, comment, privateFile(seed, publicKey, comment));
+    wipe(pkcs8, seed);
+    return key;
+  }
+  async function importSshKey(pem) {
+    const lines = pem.trim().split(/\r?\n/);
+    if (lines[0] !== BEGIN || lines.at(-1) !== END) {
+      throw new VaultCryptoError("malformed");
+    }
+    const reader = new Reader(fromBase64(lines.slice(1, -1).join("")));
+    if (!sameBytes(reader.take(MAGIC.length), MAGIC)) {
+      throw new VaultCryptoError("malformed");
+    }
+    if (text2(reader) !== NONE || text2(reader) !== NONE) {
+      throw new VaultCryptoError("unknown-algorithm");
+    }
+    if (reader.field().length !== 0 || reader.integer(4) !== 1) {
+      throw new VaultCryptoError("malformed");
+    }
+    const blob = new Reader(reader.field());
+    const section = new Reader(reader.field());
+    reader.end();
+    if (text2(blob) !== KEY_TYPE) {
+      throw new VaultCryptoError("unknown-algorithm");
+    }
+    const publicKey = blob.field();
+    blob.end();
+    if (section.integer(4) !== section.integer(4) || text2(section) !== KEY_TYPE) {
+      throw new VaultCryptoError("malformed");
+    }
+    const repeated = section.field();
+    const pair = section.field();
+    const comment = text2(section);
+    const padding = section.rest();
+    if (publicKey.length !== KEY_BYTES4 || pair.length !== 2 * KEY_BYTES4 || !padding.every((byte, index) => byte === index + 1)) {
+      throw new VaultCryptoError("malformed");
+    }
+    const seed = pair.slice(0, KEY_BYTES4);
+    const matches2 = sameBytes(repeated, publicKey) && sameBytes(pair.slice(KEY_BYTES4), publicKey) && sameBytes(await publicOf(seed), publicKey);
+    wipe(seed, pair);
+    if (!matches2) {
+      throw new VaultCryptoError("key-mismatch");
+    }
+    return describe(publicKey, comment, pem);
+  }
+
+  // src/records/ssh-field-view.ts
+  function sshKeyControl(label, initial, id) {
+    let value = initial;
+    const name = el("p", { id: `${id}-label`, class: "field-label" }, label);
+    const shown = el("div", { class: "ssh-key" });
+    const status = el("p", { class: "muted", role: "status" });
+    const hint = el("p", { id: `${id}-hint`, class: "message bad" });
+    hint.hidden = true;
+    const make = el("button", { type: "button" });
+    const paste = el("button", { type: "button", "aria-expanded": "false", "aria-controls": `${id}-paste` });
+    const area = el("textarea", { id, rows: "6", spellcheck: "false", autocomplete: "off", "aria-describedby": hint.id });
+    const use = el("button", { type: "button", class: "primary" }, "Use this key");
+    const pasting = el("div", { id: `${id}-paste`, class: "field" }, el("label", { for: id }, "Private key file"), area, el("div", { class: "input-line" }, use));
+    pasting.hidden = true;
+    const mark2 = (words) => {
+      hint.hidden = words === null;
+      hint.textContent = words ?? "";
+      if (words === null) {
+        area.removeAttribute("aria-invalid");
+      } else {
+        area.setAttribute("aria-invalid", "true");
+      }
+    };
+    const draw2 = () => {
+      fill(shown, ...value === null ? [el("p", { class: "muted" }, "No key yet.")] : [el("p", { class: "value mono" }, value.publicKey), el("p", { class: "muted mono" }, value.fingerprint)]);
+      make.textContent = value === null ? "Make a key" : "Make a new key";
+      paste.textContent = value === null ? "Paste a key" : "Paste another key";
+    };
+    const replaced = (next, words) => {
+      const had = value !== null;
+      value = next;
+      draw2();
+      status.textContent = had ? `${words} It replaces the old key when you save the record.` : words;
+    };
+    make.addEventListener("click", () => {
+      make.disabled = true;
+      status.textContent = "Making a key.";
+      void generateSshKey(label).then(
+        (key) => {
+          make.disabled = false;
+          replaced(key, "A new key was made.");
+        },
+        () => {
+          make.disabled = false;
+          status.textContent = "";
+          mark2("This browser couldn't make an Ed25519 key. Paste one made with ssh-keygen -t ed25519 instead.");
+        }
+      );
+    });
+    paste.addEventListener("click", () => {
+      const open3 = pasting.hidden;
+      pasting.hidden = !open3;
+      paste.setAttribute("aria-expanded", String(open3));
+      if (open3) {
+        area.focus();
+      }
+    });
+    use.addEventListener("click", () => {
+      mark2(null);
+      void importSshKey(area.value).then(
+        (key) => {
+          area.value = "";
+          pasting.hidden = true;
+          paste.setAttribute("aria-expanded", "false");
+          replaced(key, "The pasted key is in place.");
+          paste.focus();
+        },
+        (problem2) => mark2(sshImportProblem(problem2))
+      );
+    });
+    draw2();
+    const row2 = el("div", { class: "field", role: "group", "aria-labelledby": name.id }, name, shown, el("div", { class: "input-line" }, make, paste), pasting, status, hint);
+    return { row: row2, read: () => value, mark: mark2 };
+  }
+
   // src/records/edit-view.ts
   var INPUT = {
     text: "text",
@@ -2448,6 +2677,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
     "month-year": "month"
   };
   function control(field3, id) {
+    if (field3.type === "ssh-key") {
+      return sshKeyControl(field3.label, field3.value, id);
+    }
     const hint = el("p", { id: `${id}-hint`, class: "message bad" });
     hint.hidden = true;
     const label = el("label", { for: id }, field3.label);
@@ -2464,10 +2696,10 @@ ${target.detail}`.toLowerCase().includes(wanted));
       read = () => area.value;
       input = area;
     } else if (INPUT[field3.type] !== void 0 && (typeof field3.value === "string" || field3.value === null)) {
-      const text2 = el("input", { id, type: INPUT[field3.type] ?? "text", autocomplete: field3.type === "concealed" ? "new-password" : "off" });
-      text2.value = typeof field3.value === "string" ? field3.value : "";
-      read = () => text2.value;
-      input = text2;
+      const text3 = el("input", { id, type: INPUT[field3.type] ?? "text", autocomplete: field3.type === "concealed" ? "new-password" : "off" });
+      text3.value = typeof field3.value === "string" ? field3.value : "";
+      read = () => text3.value;
+      input = text3;
     }
     input?.setAttribute("aria-describedby", hint.id);
     const kept = input === null ? el("p", { class: "muted" }, "Kept as it is. Editing this kind of field comes later.") : null;
@@ -3112,11 +3344,11 @@ ${target.detail}`.toLowerCase().includes(wanted));
 
   // src/groups/group-key.ts
   var KEY_ID_BYTES3 = 16;
-  var KEY_BYTES4 = 32;
+  var KEY_BYTES5 = 32;
   async function newGroupKey(company, group, signer, ownerSigning, chain, vouched, pending) {
     const pair = await generatePair("X25519");
     const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
-    const raw = pkcs8.slice(pkcs8.length - KEY_BYTES4);
+    const raw = pkcs8.slice(pkcs8.length - KEY_BYTES5);
     wipe(pkcs8);
     try {
       const groupPublic = await publicBytes(pair.publicKey);
@@ -3202,7 +3434,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
 
   // src/groups/groups-model.ts
-  var KEY_BYTES5 = 32;
+  var KEY_BYTES6 = 32;
   var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   var isId5 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   var isText6 = (v) => typeof v === "string" && v !== "";
@@ -3235,7 +3467,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       }
       const keyId = keyIdBytes(item["key_id"]);
       const agreementPublic = decode(item["agreement_public"]);
-      return keyId === null || agreementPublic === null || agreementPublic.length !== KEY_BYTES5 ? null : { account: item["account"], keyId, agreementPublic };
+      return keyId === null || agreementPublic === null || agreementPublic.length !== KEY_BYTES6 ? null : { account: item["account"], keyId, agreementPublic };
     });
     return keys.every((key) => key !== null) ? keys : null;
   }

@@ -1,6 +1,6 @@
 // The edit form's own-fields section: the fields the author added, each removable, and an "Add a field" row that opens
-// in place for a name and a kind (text, or a secret shown as dots) rather than in a dialog, since it is short and its
-// result lands right above it.
+// in place for a name and a kind (text, a secret shown as dots, or an SSH key) rather than in a dialog, since it is
+// short and its result lands right above it.
 
 import { el, fill } from "../dom.ts";
 import { iconAction } from "../icon-action.ts";
@@ -23,6 +23,7 @@ export interface CustomEditor {
 const KINDS = [
   { type: "text", words: "Text" },
   { type: "concealed", words: "Secret" },
+  { type: "ssh-key", words: "SSH key" },
 ] as const;
 
 /** The section for `initial`, drawing each field with `controlFor`; `taken` names the type's own fields. */
@@ -34,11 +35,16 @@ export function customEditor(initial: readonly CustomField[], controlFor: (field
     made += 1;
     const control = controlFor(field, `custom-${made}`);
     const remove = iconAction("trash", "Remove field", `Remove the field ${field.label}`, "danger");
-    // The remove button sits on the input's own line, so it is plainly that field's.
+    // The remove button sits on the input's own line, so it is plainly that field's; a field with no input has a line
+    // of its own buttons, and the remove button joins them.
     const input = control.row.querySelector("input");
-    const line = el("div", { class: "input-line" });
-    input?.replaceWith(line);
-    line.append(...(input === null ? [] : [input]), remove);
+    if (input === null) {
+      control.row.querySelector(".input-line")?.append(remove);
+    } else {
+      const line = el("div", { class: "input-line" });
+      input.replaceWith(line);
+      line.append(input, remove);
+    }
     const row = el("div", { class: "custom-row" }, control.row);
     const entry = { field, control, row };
     remove.addEventListener("click", () => {
@@ -101,7 +107,7 @@ export function customEditor(initial: readonly CustomField[], controlFor: (field
     }
     const row = append({ label: name.value.trim(), type: kind, value: null });
     close();
-    row.querySelector<HTMLElement>("input")?.focus();
+    row.querySelector<HTMLElement>("input, button")?.focus();
   };
   add.addEventListener("click", submit);
   cancel.addEventListener("click", () => {
