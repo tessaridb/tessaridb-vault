@@ -22,9 +22,9 @@ function copyButton(copy: Copier, label: string, value: () => string): HTMLEleme
   return button;
 }
 
-/** A hidden value with Show / Hide; the value is in the page only while shown. */
-function concealed(label: string, value: string, copy: Copier): HTMLElement {
-  const shown = el("span", { class: "value mono" }, MASK);
+/** A hidden value with Show / Hide; the value is in the page only while shown, a note with its line breaks. */
+function concealed(label: string, value: string, copy: Copier, lines = false): HTMLElement {
+  const shown = el("span", { class: lines ? "value pre" : "value mono" }, MASK);
   const toggle = iconAction("eye", "Show", `Show ${label}`);
   toggle.setAttribute("aria-pressed", "false");
   toggle.addEventListener("click", () => {
@@ -73,6 +73,8 @@ export function fieldView(field: Field, copy: Copier, stops: Stops, save: (value
   switch (field.type) {
     case "concealed":
       return [term, el("dd", {}, concealed(field.label, field.value, copy))];
+    case "concealed-multiline":
+      return [term, el("dd", {}, concealed(field.label, field.value, copy, true))];
     case "url":
       return [term, el("dd", {}, plain(field.label, field.value, copy, true))];
     case "multiline":

@@ -21,6 +21,7 @@ export const FIELD_TYPES = [
   "file",
   "security-question",
   "ssh-key",
+  "concealed-multiline",
 ] as const;
 
 export type FieldType = (typeof FIELD_TYPES)[number];
@@ -58,7 +59,7 @@ export interface SshKeyValue {
   fingerprint: string;
 }
 
-type TextType = "text" | "multiline" | "concealed" | "url" | "email" | "phone" | "number" | "date" | "month-year";
+type TextType = "text" | "multiline" | "concealed" | "concealed-multiline" | "url" | "email" | "phone" | "number" | "date" | "month-year";
 
 export type Field =
   | { label: string; type: TextType; value: string | null }
@@ -71,7 +72,7 @@ export type Field =
 /** The longest string any one value or label may hold, in UTF-16 code units. */
 export const MAX_TEXT = 65_536;
 
-const SHAPES: Record<Exclude<TextType, "text" | "multiline" | "concealed">, (text: string) => boolean> = {
+const SHAPES: Record<Exclude<TextType, "text" | "multiline" | "concealed" | "concealed-multiline">, (text: string) => boolean> = {
   url: (text) => URL.canParse(text),
   email: (text) => /^[^\s@]+@[^\s@]+$/.test(text),
   phone: (text) => /^[+0-9 ().-]{1,32}$/.test(text),
@@ -154,7 +155,7 @@ function orNull<T>(raw: unknown, read: (raw: unknown) => T): T | null {
   return raw === null ? null : read(raw);
 }
 
-function readShaped(type: Exclude<TextType, "text" | "multiline" | "concealed">, raw: unknown): string {
+function readShaped(type: Exclude<TextType, "text" | "multiline" | "concealed" | "concealed-multiline">, raw: unknown): string {
   const text = readText(raw);
   return text === "" || SHAPES[type](text) ? text : fail();
 }
@@ -189,6 +190,7 @@ export function readField(raw: unknown): Field {
     case "text":
     case "multiline":
     case "concealed":
+    case "concealed-multiline":
       return { label, type, value: orNull(value, readText) };
     case "url":
     case "email":

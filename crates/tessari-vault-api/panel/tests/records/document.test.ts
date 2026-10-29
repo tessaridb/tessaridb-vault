@@ -26,6 +26,7 @@ const SAMPLE: Record<FieldType, Field["value"]> = {
   file: { id: "file-1", name: "contract.pdf", size: 1024, mediaType: "application/pdf", key: "ab".repeat(32), keyId: "cd".repeat(16) },
   "security-question": { question: "First school?", answer: "Hillside" },
   "ssh-key": { privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\nbody", publicKey: "ssh-ed25519 AAAA test", fingerprint: "SHA256:abc" },
+  "concealed-multiline": "recovery codes\n1234 5678",
 };
 
 /** An invalid value for every field type. */
@@ -44,6 +45,7 @@ const WRONG: Record<FieldType, unknown> = {
   file: { id: "file-1", name: "a.pdf", size: -1, mediaType: "application/pdf" },
   "security-question": { question: "First school?" },
   "ssh-key": { privateKey: "x", publicKey: "y", fingerprint: "z", extra: 1 },
+  "concealed-multiline": 5,
 };
 
 function filled(document: RecordDocument): RecordDocument {
@@ -122,6 +124,13 @@ describe("record content", () => {
     assert.throws(() => decodeRecord(utf8(JSON.stringify(withField("file", { ...file, key: "ab".repeat(31), keyId: "cd".repeat(16) })))), /malformed/);
     assert.throws(() => decodeRecord(utf8(JSON.stringify(withField("file", { ...file, key: "AB".repeat(32), keyId: "cd".repeat(16) })))), /malformed/);
     assert.throws(() => decodeRecord(utf8(JSON.stringify(withField("file", { ...file, key: "ab".repeat(32), keyId: "cd".repeat(15) })))), /malformed/);
+  });
+
+  it("keeps a secure note's note as a secret of several lines", () => {
+    const note = BUILT_IN_TYPES.find((type) => type.id === "secure-note");
+    assert.deepEqual(note?.sections.flatMap((section) => section.fields.map((field) => [field.label, field.type])), [["Note", "concealed-multiline"]]);
+    const read = decodeRecord(utf8(JSON.stringify(withField("concealed-multiline", "line one\nline two"))));
+    assert.equal(read.sections[0]?.fields[0]?.value, "line one\nline two");
   });
 
   it("refuses an unknown field type, an unknown version and a record that is not JSON", () => {

@@ -734,7 +734,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       ["Website", "url"],
       ["One-time password", "otp"]
     ]),
-    main("Secure note", "secure-note", [["Note", "multiline"]]),
+    main("Secure note", "secure-note", [["Note", "concealed-multiline"]]),
     main("SSH key", "ssh-key", [
       ["Key", "ssh-key"],
       ["Passphrase", "concealed"]
@@ -1603,7 +1603,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
     "otp",
     "file",
     "security-question",
-    "ssh-key"
+    "ssh-key",
+    "concealed-multiline"
   ];
   var MAX_TEXT = 65536;
   var SHAPES2 = {
@@ -1702,6 +1703,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       case "text":
       case "multiline":
       case "concealed":
+      case "concealed-multiline":
         return { label, type, value: orNull(value, readText) };
       case "url":
       case "email":
@@ -2993,7 +2995,7 @@ ${END}
       secret.value = kept2?.secret ?? "";
       read = () => kept2 !== null && secret.value === kept2.secret ? kept2 : secret.value.trim() === "" ? null : otpFromInput(secret.value) ?? secret.value;
       input = secret;
-    } else if (field3.type === "multiline") {
+    } else if (field3.type === "multiline" || field3.type === "concealed-multiline") {
       const area = el("textarea", { id, rows: "4" });
       area.value = field3.value ?? "";
       read = () => area.value;
@@ -3154,8 +3156,8 @@ ${END}
     button.addEventListener("click", () => void copy2.copy(value(), label));
     return button;
   }
-  function concealed(label, value, copy2) {
-    const shown = el("span", { class: "value mono" }, MASK);
+  function concealed(label, value, copy2, lines = false) {
+    const shown = el("span", { class: lines ? "value pre" : "value mono" }, MASK);
     const toggle = iconAction("eye", "Show", `Show ${label}`);
     toggle.setAttribute("aria-pressed", "false");
     toggle.addEventListener("click", () => {
@@ -3197,6 +3199,8 @@ ${END}
     switch (field3.type) {
       case "concealed":
         return [term, el("dd", {}, concealed(field3.label, field3.value, copy2))];
+      case "concealed-multiline":
+        return [term, el("dd", {}, concealed(field3.label, field3.value, copy2, true))];
       case "url":
         return [term, el("dd", {}, plain(field3.label, field3.value, copy2, true))];
       case "multiline":

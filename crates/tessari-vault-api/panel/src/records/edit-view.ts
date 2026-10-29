@@ -62,7 +62,7 @@ function control(field: Field, id: string, attach: Attach | null): { readonly ro
     secret.value = kept?.secret ?? "";
     read = () => (kept !== null && secret.value === kept.secret ? kept : secret.value.trim() === "" ? null : (otpFromInput(secret.value) ?? secret.value));
     input = secret;
-  } else if (field.type === "multiline") {
+  } else if (field.type === "multiline" || field.type === "concealed-multiline") {
     const area = el("textarea", { id, rows: "4" });
     area.value = field.value ?? "";
     read = () => area.value;

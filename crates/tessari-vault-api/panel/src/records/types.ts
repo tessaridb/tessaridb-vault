@@ -27,7 +27,7 @@ export const BUILT_IN_TYPES: readonly RecordTemplate[] = [
     ["Website", "url"],
     ["One-time password", "otp"],
   ]),
-  main("Secure note", "secure-note", [["Note", "multiline"]]),
+  main("Secure note", "secure-note", [["Note", "concealed-multiline"]]),
   main("SSH key", "ssh-key", [
     ["Key", "ssh-key"],
     ["Passphrase", "concealed"],
