@@ -139,6 +139,15 @@ or later:
 TESSARIDB_BIN=/path/to/tessaridb cargo test -p tessari-vault-api --test live -- --ignored
 ```
 
+The parsers that read a request before anyone has signed in (passkey responses, identifiers, addresses,
+base64url) have fuzz targets in `fuzz/`, a workspace of their own, run by hand when one of those parsers changes:
+
+```sh
+cd fuzz
+cargo +nightly fuzz run passkey -- -max_total_time=600
+cargo +nightly fuzz run sign_in_text -- -max_total_time=600
+```
+
 ## Branches
 
 `dev` is where development happens. `main` will carry releases and move only by merging `dev` at a release, with

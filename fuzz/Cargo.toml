@@ -1,0 +1,37 @@
+[package]
+name = "tessaridb-vault-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+authors = ["boogvar"]
+license = "BUSL-1.1"
+description = "Fuzz targets for the parsers a vault server runs on bytes before anyone has signed in"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace, so the vault's `cargo test --workspace` never builds it and a fuzz dependency never reaches the
+# vault's lockfile.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tessari-vault-core = { path = "../crates/tessari-vault-core" }
+tessari-vault-types = { path = "../crates/tessari-vault-types" }
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "passkey"
+path = "fuzz_targets/passkey.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sign_in_text"
+path = "fuzz_targets/sign_in_text.rs"
+test = false
+doc = false
+bench = false
