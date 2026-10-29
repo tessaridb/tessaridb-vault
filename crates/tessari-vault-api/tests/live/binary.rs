@@ -130,6 +130,19 @@ async fn the_binary_lets_the_first_person_in_and_stops_on_sigterm() {
     let mut lines = printed.lines();
     lines.find(|line| line.starts_with("enrolment token for "));
     let token = lines.next().expect("the token line").trim().to_owned();
+    // The rotation command reports what it moved and what still rests on each epoch, and serves nothing.
+    let rotation = setup
+        .command(&binary())
+        .arg("rotate")
+        .output()
+        .expect("the rotation command runs");
+    let report = String::from_utf8_lossy(&rotation.stdout);
+    assert!(rotation.status.success(), "{report}");
+    assert!(
+        report.contains("rotated to epoch 1: 0 company vaults moved")
+            && report.contains("still on each epoch: companies none, verifiers none, seeds none"),
+        "{report}"
+    );
     // The health check reads the listen address alone: with nothing serving it fails and says why.
     let health = |setup: &Setup| {
         Command::new(binary())

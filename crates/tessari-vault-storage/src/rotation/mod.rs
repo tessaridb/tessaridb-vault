@@ -85,6 +85,12 @@ impl RotationService {
         }
     }
 
+    /// The epoch a rotation moves everything to.
+    #[must_use]
+    pub fn current_epoch(&self) -> u32 {
+        self.keys.current_epoch()
+    }
+
     /// Move every company vault not yet on the current epoch, or marked moving, to the current epoch, then seal
     /// every TOTP seed again under it.
     ///

@@ -4,6 +4,9 @@
 //! `tessaridb-vault enrolment-link` prints, instead of serving, a single-use link for the configured platform admin
 //! while that account has no credential: the one way the first person gets in, and never written to a log.
 //!
+//! `tessaridb-vault rotate` moves every company vault and TOTP seed to the key file's current epoch, prints what it
+//! moved and what still rests on each epoch, and serves nothing; an epoch may leave the file when nothing rests on it.
+//!
 //! `tessaridb-vault health` asks the server already running at `TESSARIDB_VAULT_LISTEN` whether it answers, and exits
 //! 0 when it does: the image's health check, in an image with no shell.
 
@@ -87,15 +90,22 @@ enum StartError {
     PlatformAdmin(&'static str),
     #[error("cannot listen: {0}")]
     Listen(#[source] std::io::Error),
-    #[error("unknown command {0:?}; the commands are `enrolment-link` and `health`")]
+    #[error("unknown command {0:?}; the commands are `enrolment-link`, `rotate` and `health`")]
     Command(String),
+    #[error(
+        "{0} company vaults opened under no epoch the key file holds; they refuse requests until restored"
+    )]
+    Stranded(usize),
     #[error("`enrolment-link` needs TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL and _NAME")]
     NoPlatformAdmin,
 }
 
 async fn run() -> Result<&'static str, StartError> {
     let command = std::env::args().nth(1);
-    if let Some(other) = command.as_deref().filter(|name| *name != "enrolment-link") {
+    if let Some(other) = command
+        .as_deref()
+        .filter(|name| !["enrolment-link", "rotate"].contains(name))
+    {
         return Err(StartError::Command(other.to_owned()));
     }
     let config = NodeConfig::from_lookup(|key| std::env::var(key).ok())?;
@@ -127,6 +137,9 @@ async fn run() -> Result<&'static str, StartError> {
             .system_ensure_platform_admin(&email, &name)
             .await?;
         platform_admin = Some((email, account));
+    }
+    if command.as_deref() == Some("rotate") {
+        return rotate(&storage).await;
     }
     if command.is_some() {
         let (email, account) = platform_admin.ok_or(StartError::NoPlatformAdmin)?;
@@ -172,4 +185,43 @@ async fn shutdown_signal() -> std::io::Result<&'static str> {
         _ = interrupt.recv() => Ok("SIGINT"),
         _ = terminate.recv() => Ok("SIGTERM"),
     }
+}
+
+/// Run the rotation and print what it did; the report names counts and epochs, never a key.
+async fn rotate(storage: &Storage) -> Result<&'static str, StartError> {
+    let rotated = storage.rotation.rotate().await?;
+    let remaining = storage.rotation.remaining().await?;
+    println!(
+        "rotated to epoch {}: {} company vaults moved, {} finished after a cut-short run, {} stranded; \
+         {} TOTP seeds resealed, {} unopened",
+        storage.rotation.current_epoch(),
+        rotated.moved,
+        rotated.repaired,
+        rotated.stranded.len(),
+        rotated.seeds_resealed,
+        rotated.seeds_unopened,
+    );
+    println!(
+        "still on each epoch: companies {}, verifiers {}, seeds {}",
+        per_epoch(&remaining.companies),
+        per_epoch(&remaining.verifiers),
+        per_epoch(&remaining.seeds),
+    );
+    if rotated.stranded.is_empty() {
+        Ok("rotate")
+    } else {
+        Err(StartError::Stranded(rotated.stranded.len()))
+    }
+}
+
+/// `epoch:count` pairs, or `none`.
+fn per_epoch(counts: &[(u32, usize)]) -> String {
+    if counts.is_empty() {
+        return "none".to_owned();
+    }
+    counts
+        .iter()
+        .map(|(epoch, count)| format!("{epoch}:{count}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
