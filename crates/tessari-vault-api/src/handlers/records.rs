@@ -74,6 +74,8 @@ impl From<&OpenedRecord> for Opened {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NewRecord {
+    /// The id the browser sealed revision 1 under (Q-VA-39).
+    id: String,
     record_type: String,
     key_id: String,
     body: String,
@@ -227,6 +229,7 @@ pub(crate) async fn create(
     Body(body): Body<NewRecord>,
 ) -> Result<(StatusCode, Json<RecordItem>), ApiError> {
     let company = company_id(&company)?;
+    let id = RecordId::parse(&body.id).map_err(|_| ApiError::INVALID)?;
     let record_type = RecordType::parse(&body.record_type).map_err(|_| ApiError::INVALID)?;
     let (key_id, parts) = sealed(
         &body.key_id,
@@ -238,7 +241,7 @@ pub(crate) async fn create(
     let record = state
         .storage
         .records
-        .create(&actor, &company, &record_type, &key_id, &parts)
+        .create(&actor, &company, &id, &record_type, &key_id, &parts)
         .await?;
     Ok((StatusCode::CREATED, Json(RecordItem::from(&record))))
 }

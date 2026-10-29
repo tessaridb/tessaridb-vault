@@ -15,7 +15,9 @@ const fromHex = (text: string): Uint8Array<ArrayBuffer> => new Uint8Array(Buffer
 
 const rawKey = crypto.getRandomValues(new Uint8Array(32));
 const keyId = crypto.getRandomValues(new Uint8Array(16));
-const context = { company, record: "canary", revision: 1 };
+// The browser chooses the record id and seals revision 1 over it (Q-VA-39).
+const record = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex");
+const context = { company, record, revision: 1 };
 const body = await sealRevision(await importRecordKey(rawKey), { ...context, keyId }, utf8(plaintext));
 const signing = await generatePair("Ed25519");
 const signature = await signRevision(signing.privateKey, context, body);
@@ -28,6 +30,7 @@ const wrap = await wrapSecret(
 rawKey.fill(0);
 process.stdout.write(
   JSON.stringify({
+    id: record,
     record_type: "login",
     key_id: Buffer.from(keyId).toString("hex"),
     body: base64url(body),

@@ -183,6 +183,7 @@ const fn conflicted(conflict: Conflict) -> ApiError {
         ),
         Conflict::Incomplete => ("incomplete", "the file is not yet written to its size"),
         Conflict::KeysExist => ("keys_exist", "you keep a key set in this company already"),
+        Conflict::RecordExists => ("record_exists", "a record with this id exists already"),
         Conflict::RecoveryKeyed => ("recovery_keyed", "the company has a recovery key already"),
         Conflict::NoEscrow => ("no_escrow", "your keys are not escrowed in this company"),
         Conflict::NotHandedOver => (

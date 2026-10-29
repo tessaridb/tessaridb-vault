@@ -315,8 +315,10 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ("PUT", "/api/companies/{company}/records/{record}") => {
             let mut body = world::sealed_record();
             body["revision"] = json!(1);
-            body.as_object_mut()
-                .map(|fields| fields.remove("record_type"));
+            body.as_object_mut().map(|fields| {
+                fields.remove("record_type");
+                fields.remove("id")
+            });
             row(Some(body), not_author, hidden)
         }
         _ => None,

@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use tessari_vault_core::access::Action;
-use tessari_vault_infrastructure::random;
 use tessari_vault_infrastructure::tessaridb::{Database, Place, RefusalClass};
 use tessari_vault_types::{CompanyId, KeyId, RecordId, RecordType, Roles};
 
@@ -72,15 +71,18 @@ impl RecordService {
         records.into_iter().map(RecordEntity::into_model).collect()
     }
 
-    /// Keep a new record whose first revision is `sealed`, under the record key `key_id`.
+    /// Keep a new record `id` whose first revision is `sealed`, under the record key `key_id`. The browser chooses the
+    /// id, because revision 1 is sealed and signed over it before the record exists (Q-VA-39).
     ///
     /// # Errors
     ///
-    /// [`Error::Refused`] per the decision; [`Error::Store`] when the store fails.
+    /// [`Error::Refused`] per the decision; [`Conflict::RecordExists`] when the id is taken; [`Error::Store`] when the
+    /// store fails.
     pub async fn create(
         &self,
         actor: &Actor,
         company: &CompanyId,
+        id: &RecordId,
         record_type: &RecordType,
         key_id: &KeyId,
         sealed: &Sealed,
@@ -118,7 +120,6 @@ impl RecordService {
         )
         .await?;
         let type_text = record_type.to_string();
-        let id = RecordId::from_random(random::bytes()?);
         let now = epoch_seconds();
         self.repository
             .create(
@@ -126,7 +127,7 @@ impl RecordService {
                 recorded(actor, company, &standing, "record.create", id.as_str()),
                 Write {
                     company,
-                    record: &id,
+                    record: id,
                     revision: 1,
                     record_type: &type_text,
                     key_id,
@@ -141,7 +142,7 @@ impl RecordService {
             )
             .await?;
         Ok(Record {
-            id,
+            id: id.clone(),
             record_type: record_type.clone(),
             revision: 1,
             key_id: key_id.clone(),

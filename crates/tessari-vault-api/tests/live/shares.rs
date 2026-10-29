@@ -77,8 +77,10 @@ pub(crate) async fn listed(world: &World, cast: &Cast, token: &str) -> Vec<Strin
 /// A revision of the record over `expected` by the member whose key is `key`, carrying `wraps`.
 pub(crate) fn revision(expected: i64, key: &str, wraps: Vec<Value>) -> Value {
     let mut body = sealed_record();
-    body.as_object_mut()
-        .map(|fields| fields.remove("record_type"));
+    body.as_object_mut().map(|fields| {
+        fields.remove("record_type");
+        fields.remove("id")
+    });
     body["revision"] = json!(expected);
     body["author_key"] = json!(key);
     body["wraps"] = json!(wraps);

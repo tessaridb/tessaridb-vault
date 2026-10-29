@@ -208,6 +208,7 @@ impl RecordRepository for TessaridbRecordRepository {
         };
         let script = format!(
             "BEGIN; {GUARD} {type_unchanged} {OWN_KEY} \
+             LET $taken = GET records:$record; THROW 'record exists' IF ($taken.record_id ?? 'none') != 'none'; \
              CREATE records:$record = {{ record_id: $record, company: $company, record_type: $type, \
              revision: $revision, key_id: $key_id, author: $author, state: 'active', share_version: 0, rotate: false, created: $now, \
              updated: $now }}; {revision} {RECORD} COMMIT;"

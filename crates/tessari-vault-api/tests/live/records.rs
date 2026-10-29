@@ -81,6 +81,7 @@ pub(crate) fn signature(seed: u8) -> String {
 /// A new record whose sealed body is `body`, as the browser sends one.
 fn new_record(body: &[u8]) -> serde_json::Value {
     serde_json::json!({
+        "id": crate::world::fresh_record_id(),
         "record_type": "login",
         "key_id": "11".repeat(16),
         "body": encoded(body),
@@ -393,4 +394,62 @@ async fn a_record_is_signed_only_under_the_callers_own_registered_key() {
         .await;
     assert_eq!(status, StatusCode::CONFLICT, "{refused}");
     assert_eq!(refused["error_code"], "unknown_key");
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_new_record_keeps_the_id_its_browser_sealed_it_under_and_an_id_is_taken_once() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let a = &cast.company_a;
+    let path = format!("/api/companies/{a}/records");
+    let chosen = "ab".repeat(16);
+    let mut body = new_record(b"first");
+    body["id"] = serde_json::json!(chosen);
+    let (status, made) = world
+        .call(
+            Method::POST,
+            &path,
+            Some(&cast.member_a),
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    assert_eq!(made["id"], chosen.as_str(), "{made}");
+    body["body"] = serde_json::json!(encoded(b"second"));
+    let (status, again) = world
+        .call(
+            Method::POST,
+            &path,
+            Some(&cast.member_a),
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(
+        (status, again["error_code"].as_str()),
+        (StatusCode::CONFLICT, Some("record_exists")),
+        "{again}"
+    );
+    let (status, read) = world
+        .call(
+            Method::GET,
+            &format!("{path}/{chosen}"),
+            Some(&cast.member_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{read}");
+    assert_eq!(read["body"], encoded(b"first"), "the first record stands");
+    for wrong in [serde_json::json!("not-an-id"), serde_json::json!(7)] {
+        body["id"] = wrong;
+        let (status, refused) = world
+            .call(
+                Method::POST,
+                &path,
+                Some(&cast.member_a),
+                Some(body.clone()),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    }
 }

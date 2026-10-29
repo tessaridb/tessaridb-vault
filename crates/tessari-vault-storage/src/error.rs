@@ -70,6 +70,9 @@ pub enum Conflict {
     /// The member keeps a key set in this company already.
     #[error("the member keeps a key set already")]
     KeysExist,
+    /// A record with the id the browser chose exists already; ids are chosen once.
+    #[error("a record with this id exists already")]
+    RecordExists,
     /// The company has a recovery key already.
     #[error("the company has a recovery key already")]
     RecoveryKeyed,

@@ -29,6 +29,13 @@ pub(crate) const STORE_USER: &str = "vault_test";
 pub(crate) const STORE_PASSWORD: &str = "a-test-password-for-the-live-suite";
 
 static TURN: AtomicU32 = AtomicU32::new(0);
+/// The next record id a test's browser chooses; every store is fresh, so a count is unique enough.
+static RECORD: AtomicU32 = AtomicU32::new(1);
+
+/// A record id as a browser chooses one: 32 lowercase hexadecimal characters.
+pub fn fresh_record_id() -> String {
+    format!("{:032x}", RECORD.fetch_add(1, Ordering::Relaxed))
+}
 
 /// The first port this run hands a node, below the range the system gives out by itself.
 const PORT_BASE: u16 = 41_000;
@@ -368,6 +375,7 @@ pub fn sealed_record() -> Value {
 pub fn sealed_record_by(author_key: &str) -> Value {
     use tessari_vault_types::base64url::encode;
     json!({
+        "id": fresh_record_id(),
         "record_type": "login",
         "key_id": "11".repeat(16),
         "body": encode(b"sealed"),
