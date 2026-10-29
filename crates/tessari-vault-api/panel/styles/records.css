@@ -247,3 +247,69 @@ dialog.confirm .actions {
   letter-spacing: 0.04em;
   overflow-wrap: anywhere;
 }
+
+/* The author's own fields: each with its remove button level with the input, then a row that opens to add one. */
+.input-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-inline-size: calc(32rem + var(--control-height) + var(--s-2));
+}
+
+.custom-row > .field {
+  max-inline-size: calc(32rem + var(--control-height) + var(--s-2));
+}
+
+.input-line > input {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/* An edit form's groups read like the record page's sections: no box, a caption for a heading. */
+form fieldset.record-section {
+  margin: var(--s-5) 0 0;
+  padding: 0 0 var(--s-2);
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  min-inline-size: 0;
+}
+
+form fieldset.record-section > legend {
+  margin-block-end: var(--s-4);
+  padding: 0;
+  font-size: var(--t-caption);
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+form > button[type="submit"] {
+  margin-block-start: var(--s-6);
+}
+
+button.add-field {
+  justify-content: flex-start;
+  gap: var(--s-2);
+  padding-inline: var(--s-3);
+}
+
+.custom-add {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface-raised);
+}
+
+.custom-add[hidden] {
+  display: none;
+}
+
+.custom-add .field,
+.custom-add .chips,
+.custom-add .actions {
+  margin: 0;
+}

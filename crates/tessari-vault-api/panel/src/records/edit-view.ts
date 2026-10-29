@@ -4,6 +4,8 @@
 
 import { call } from "../api.ts";
 import { el, fill } from "../dom.ts";
+import { joinCustom, splitCustom } from "./custom-fields.ts";
+import { customEditor } from "./custom-fields-view.ts";
 import { readOpened, readRow, type RecordRow } from "../records-model.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
@@ -83,7 +85,9 @@ function form(main: HTMLElement, title: string, document: RecordDocument, back: 
   nameHint.hidden = true;
   name.setAttribute("aria-describedby", nameHint.id);
   const controls = new Map<string, ReturnType<typeof control>>();
-  const sections = document.sections.map((section, sectionIndex) =>
+  const { base, custom } = splitCustom(document);
+  const own = customEditor(custom, control, base.sections.flatMap((section) => section.fields.map((field) => field.label)));
+  const sections = base.sections.map((section, sectionIndex) =>
     el(
       "fieldset",
       { class: "record-section" },
@@ -98,14 +102,17 @@ function form(main: HTMLElement, title: string, document: RecordDocument, back: 
   );
   const submit = el("button", { type: "submit", class: "primary" }, "Save record");
   const said = el("div", { "aria-live": "polite" });
-  const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, submit, said);
+  const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, own.section, submit, said);
   body.addEventListener("submit", (event) => {
     event.preventDefault();
-    const values = new Map([...controls].map(([at, made]) => [at, made.read()] as const));
-    const result = edited(document, name.value, values);
+    const added = own.current();
+    const all = new Map(controls);
+    added.forEach((entry, index) => all.set(fieldAt(base.sections.length, index), entry.control));
+    const values = new Map([...all].map(([at, made]) => [at, made.read()] as const));
+    const result = edited(joinCustom(base, added.map((entry) => entry.field)), name.value, values);
     nameHint.hidden = result.ok || !result.problems.has("title");
     nameHint.textContent = result.ok ? "" : (result.problems.get("title") ?? "");
-    for (const [at, made] of controls) {
+    for (const [at, made] of all) {
       made.mark(result.ok ? null : (result.problems.get(at) ?? null));
     }
     if (!result.ok) {

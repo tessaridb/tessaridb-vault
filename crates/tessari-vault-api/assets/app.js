@@ -294,6 +294,245 @@
     }
   };
 
+  // src/records/custom-fields.ts
+  var CUSTOM_SECTION = "Custom fields";
+  var MAX_LABEL = 64;
+  var isCustom = (field3) => field3.type === "text" || field3.type === "concealed";
+  function splitCustom(document2) {
+    const last = document2.sections.at(-1);
+    if (last === void 0 || last.name !== CUSTOM_SECTION || !last.fields.every(isCustom)) {
+      return { base: document2, custom: [] };
+    }
+    return { base: { ...document2, sections: document2.sections.slice(0, -1) }, custom: last.fields.filter(isCustom) };
+  }
+  function joinCustom(base, custom) {
+    return custom.length === 0 ? base : { ...base, sections: [...base.sections, { name: CUSTOM_SECTION, fields: [...custom] }] };
+  }
+  function customLabelProblem(label, taken) {
+    const name = label.trim();
+    if (name === "") {
+      return "Give the field a name.";
+    }
+    if (name.length > MAX_LABEL) {
+      return "Keep the name to 64 characters.";
+    }
+    const folded = name.toLocaleLowerCase();
+    return taken.some((other) => other.trim().toLocaleLowerCase() === folded) ? "This record already has a field called that." : null;
+  }
+
+  // src/icons.ts
+  var SVG = "http://www.w3.org/2000/svg";
+  var box = (x, y, w, h, r) => `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${h - 2 * r}a${r} ${r} 0 0 1 -${r} ${r}h-${w - 2 * r}a${r} ${r} 0 0 1 -${r} -${r}v-${h - 2 * r}a${r} ${r} 0 0 1 ${r} -${r}z`;
+  var ring = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 -${2 * r} 0`;
+  var SHAPES = {
+    records: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
+    members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
+    sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
+    moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
+    lock: [box(5, 11, 14, 10, 2), "M8 11V7.5a4 4 0 0 1 8 0V11"],
+    "sign-out": ["M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4", "M15 8l4 4-4 4", "M19 12H9"],
+    switch: ["M7 4L3 8l4 4", "M3 8h14", "M17 12l4 4-4 4", "M21 16H7"],
+    copy: [box(8, 8, 13, 13, 2), "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"],
+    eye: ["M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z", ring(12, 12, 3)],
+    "eye-off": [
+      "M3 3l18 18",
+      "M10.6 5.1A9.7 9.7 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.9 3.9",
+      "M6.6 6.6C3.9 8.4 2.5 12 2.5 12s3.5 7 9.5 7a9.3 9.3 0 0 0 5.4-1.6",
+      "M9.9 9.9a3 3 0 0 0 4.2 4.2"
+    ],
+    edit: ["M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16z", "M13.5 6.5l4 4"],
+    share: [ring(6, 12, 2.5), ring(18, 6, 2.5), ring(18, 18, 2.5), "M8.2 10.8l7.6-3.6", "M8.2 13.2l7.6 3.6"],
+    trash: ["M4 7h16", "M9.5 7V4.5h5V7", "M6.5 7l1 13h9l1-13", "M10 11v5.5", "M14 11v5.5"],
+    close: ["M6 6l12 12", "M18 6L6 18"],
+    plus: ["M12 5v14", "M5 12h14"],
+    search: [ring(11, 11, 6.5), "M20 20l-4.2-4.2"]
+  };
+  function icon(name) {
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "icon");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    for (const d of SHAPES[name]) {
+      const path = document.createElementNS(SVG, "path");
+      path.setAttribute("d", d);
+      svg.append(path);
+    }
+    return svg;
+  }
+
+  // src/icon-action.ts
+  var OPEN_DELAY_MS = 500;
+  var INSTANT_WINDOW_MS = 400;
+  function iconAction(name, tip, label, tone = "quiet") {
+    return el("button", { type: "button", class: `icon-action ${tone}`, "aria-label": label, "data-tip": tip }, icon(name));
+  }
+  function installTips() {
+    const tip = el("div", { class: "tip", role: "tooltip", "aria-hidden": "true" });
+    document.body.append(tip);
+    let anchor = null;
+    let timer;
+    let closedAt = Number.NEGATIVE_INFINITY;
+    const place = (target2) => {
+      const box2 = target2.getBoundingClientRect();
+      const own = tip.getBoundingClientRect();
+      const above = box2.top - own.height - 6;
+      const below = above < 4;
+      const left = Math.min(Math.max(4, box2.left + box2.width / 2 - own.width / 2), window.innerWidth - own.width - 4);
+      tip.style.left = `${left}px`;
+      tip.style.top = `${below ? box2.bottom + 6 : above}px`;
+      tip.dataset["side"] = below ? "below" : "above";
+    };
+    const show = (target2, instant) => {
+      anchor = target2;
+      tip.textContent = target2.dataset["tip"] ?? "";
+      tip.toggleAttribute("data-instant", instant);
+      tip.dataset["open"] = "";
+      place(target2);
+    };
+    const hide = () => {
+      window.clearTimeout(timer);
+      if (anchor !== null) {
+        closedAt = performance.now();
+      }
+      anchor = null;
+      delete tip.dataset["open"];
+    };
+    const target = (event) => event.target instanceof Element ? event.target.closest("[data-tip]") : null;
+    document.addEventListener("pointerover", (event) => {
+      const over = target(event);
+      if (over === null || over === anchor) {
+        return;
+      }
+      hide();
+      const instant = performance.now() - closedAt < INSTANT_WINDOW_MS;
+      timer = window.setTimeout(() => show(over, instant), instant ? 0 : OPEN_DELAY_MS);
+    });
+    document.addEventListener("pointerout", (event) => {
+      if (target(event) !== null) {
+        hide();
+      }
+    });
+    document.addEventListener("focusin", (event) => {
+      const focused = target(event);
+      if (focused !== null && focused.matches(":focus-visible")) {
+        hide();
+        show(focused, true);
+      }
+    });
+    document.addEventListener("focusout", hide);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        hide();
+      }
+    });
+    window.addEventListener("scroll", hide, { capture: true, passive: true });
+  }
+
+  // src/records/custom-fields-view.ts
+  var KINDS = [
+    { type: "text", words: "Text" },
+    { type: "concealed", words: "Secret" }
+  ];
+  function customEditor(initial, controlFor, taken) {
+    let made = 0;
+    const entries = [];
+    const list = el("div", { class: "custom-fields" });
+    const append = (field3) => {
+      made += 1;
+      const control2 = controlFor(field3, `custom-${made}`);
+      const remove = iconAction("trash", "Remove field", `Remove the field ${field3.label}`, "danger");
+      const input = control2.row.querySelector("input");
+      const line = el("div", { class: "input-line" });
+      input?.replaceWith(line);
+      line.append(...input === null ? [] : [input], remove);
+      const row2 = el("div", { class: "custom-row" }, control2.row);
+      const entry = { field: field3, control: control2, row: row2 };
+      remove.addEventListener("click", () => {
+        entries.splice(entries.indexOf(entry), 1);
+        row2.remove();
+        opener.focus();
+      });
+      entries.push(entry);
+      list.append(row2);
+      return row2;
+    };
+    initial.forEach(append);
+    const name = el("input", { id: "custom-name", type: "text", autocomplete: "off", maxlength: "64" });
+    const hint = el("p", { id: "custom-name-hint", class: "message bad" });
+    hint.hidden = true;
+    name.setAttribute("aria-describedby", hint.id);
+    let kind = "text";
+    const chips = KINDS.map(({ type, words }) => {
+      const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(type === kind) }, words);
+      chip.addEventListener("click", () => {
+        kind = type;
+        chips.forEach((other, at2) => other.setAttribute("aria-pressed", String(KINDS[at2]?.type === kind)));
+      });
+      return chip;
+    });
+    const add = el("button", { type: "button", class: "primary" }, "Add field");
+    const cancel = el("button", { type: "button", class: "quiet" }, "Cancel");
+    const panel = el(
+      "div",
+      { class: "custom-add" },
+      el("div", { class: "field" }, el("label", { for: name.id }, "Field name"), name, hint),
+      el("div", { class: "chips", role: "group", "aria-label": "Kind of field" }, ...chips),
+      el("div", { class: "actions" }, add, cancel)
+    );
+    panel.hidden = true;
+    const opener = el("button", { type: "button", class: "quiet add-field", "aria-expanded": "false" }, icon("plus"), el("span", {}, "Add a field"));
+    const close = () => {
+      panel.hidden = true;
+      opener.hidden = false;
+      opener.setAttribute("aria-expanded", "false");
+    };
+    opener.addEventListener("click", () => {
+      name.value = "";
+      hint.hidden = true;
+      name.removeAttribute("aria-invalid");
+      panel.hidden = false;
+      opener.hidden = true;
+      opener.setAttribute("aria-expanded", "true");
+      name.focus();
+    });
+    const submit = () => {
+      const problem2 = customLabelProblem(name.value, [...taken, ...entries.map((entry) => entry.field.label)]);
+      hint.hidden = problem2 === null;
+      fill(hint, problem2 ?? "");
+      if (problem2 !== null) {
+        name.setAttribute("aria-invalid", "true");
+        name.focus();
+        return;
+      }
+      const row2 = append({ label: name.value.trim(), type: kind, value: null });
+      close();
+      row2.querySelector("input")?.focus();
+    };
+    add.addEventListener("click", submit);
+    cancel.addEventListener("click", () => {
+      close();
+      opener.focus();
+    });
+    name.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submit();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        opener.focus();
+      }
+    });
+    const section = el("fieldset", { class: "record-section" }, el("legend", {}, CUSTOM_SECTION), list, opener, panel);
+    return { section, current: () => entries.map(({ field: field3, control: control2 }) => ({ field: field3, control: control2 })) };
+  }
+
   // src/base64url.ts
   function encode(bytes) {
     return btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join("")).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
@@ -661,7 +900,7 @@
     "ssh-key"
   ];
   var MAX_TEXT = 65536;
-  var SHAPES = {
+  var SHAPES2 = {
     url: (text2) => URL.canParse(text2),
     email: (text2) => /^[^\s@]+@[^\s@]+$/.test(text2),
     phone: (text2) => /^[+0-9 ().-]{1,32}$/.test(text2),
@@ -721,7 +960,7 @@
   }
   function readShaped(type, raw) {
     const text2 = readText(raw);
-    return text2 === "" || SHAPES[type](text2) ? text2 : fail();
+    return text2 === "" || SHAPES2[type](text2) ? text2 : fail();
   }
   function readSecurityQuestion(raw) {
     const value = exactly(raw, ["question", "answer"]);
@@ -807,51 +1046,6 @@
       })
     }));
     return problems.size === 0 ? { ok: true, document: { ...document2, title: named, sections } } : { ok: false, problems };
-  }
-
-  // src/icons.ts
-  var SVG = "http://www.w3.org/2000/svg";
-  var box = (x, y, w, h, r) => `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${h - 2 * r}a${r} ${r} 0 0 1 -${r} ${r}h-${w - 2 * r}a${r} ${r} 0 0 1 -${r} -${r}v-${h - 2 * r}a${r} ${r} 0 0 1 ${r} -${r}z`;
-  var ring = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 -${2 * r} 0`;
-  var SHAPES2 = {
-    records: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
-    members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
-    sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
-    moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
-    lock: [box(5, 11, 14, 10, 2), "M8 11V7.5a4 4 0 0 1 8 0V11"],
-    "sign-out": ["M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4", "M15 8l4 4-4 4", "M19 12H9"],
-    switch: ["M7 4L3 8l4 4", "M3 8h14", "M17 12l4 4-4 4", "M21 16H7"],
-    copy: [box(8, 8, 13, 13, 2), "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"],
-    eye: ["M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z", ring(12, 12, 3)],
-    "eye-off": [
-      "M3 3l18 18",
-      "M10.6 5.1A9.7 9.7 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.9 3.9",
-      "M6.6 6.6C3.9 8.4 2.5 12 2.5 12s3.5 7 9.5 7a9.3 9.3 0 0 0 5.4-1.6",
-      "M9.9 9.9a3 3 0 0 0 4.2 4.2"
-    ],
-    edit: ["M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16z", "M13.5 6.5l4 4"],
-    share: [ring(6, 12, 2.5), ring(18, 6, 2.5), ring(18, 18, 2.5), "M8.2 10.8l7.6-3.6", "M8.2 13.2l7.6 3.6"],
-    trash: ["M4 7h16", "M9.5 7V4.5h5V7", "M6.5 7l1 13h9l1-13", "M10 11v5.5", "M14 11v5.5"],
-    close: ["M6 6l12 12", "M18 6L6 18"],
-    search: [ring(11, 11, 6.5), "M20 20l-4.2-4.2"]
-  };
-  function icon(name) {
-    const svg = document.createElementNS(SVG, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("class", "icon");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("focusable", "false");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "2");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    for (const d of SHAPES2[name]) {
-      const path = document.createElementNS(SVG, "path");
-      path.setAttribute("d", d);
-      svg.append(path);
-    }
-    return svg;
   }
 
   // src/records/types.ts
@@ -1132,7 +1326,7 @@
   // src/crypto/statements.ts
   var KEY_BYTES2 = 32;
   var DIGEST_BYTES = 32;
-  var KINDS = ["member", "admin", "group", "revoke", "recovery"];
+  var KINDS2 = ["member", "admin", "group", "revoke", "recovery"];
   var Vouched = class {
     #members;
     #groups;
@@ -1158,7 +1352,7 @@
   function encode2(company, seq, prev, fields, signerPublic) {
     return concat(
       utf8(LABEL.statement),
-      Uint8Array.of(FORMAT_VERSION, KINDS.indexOf(fields.kind) + 1),
+      Uint8Array.of(FORMAT_VERSION, KINDS2.indexOf(fields.kind) + 1),
       field2(utf8(company)),
       integer(seq, 8),
       prev,
@@ -1176,7 +1370,7 @@
     if (reader.integer(1) !== FORMAT_VERSION) {
       throw new VaultCryptoError("unknown-version");
     }
-    const kind = KINDS[reader.integer(1) - 1];
+    const kind = KINDS2[reader.integer(1) - 1];
     if (kind === void 0) {
       throw new VaultCryptoError("chain-broken");
     }
@@ -2107,7 +2301,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
     nameHint.hidden = true;
     name.setAttribute("aria-describedby", nameHint.id);
     const controls = /* @__PURE__ */ new Map();
-    const sections = document2.sections.map(
+    const { base, custom } = splitCustom(document2);
+    const own = customEditor(custom, control, base.sections.flatMap((section) => section.fields.map((field3) => field3.label)));
+    const sections = base.sections.map(
       (section, sectionIndex) => el(
         "fieldset",
         { class: "record-section" },
@@ -2122,14 +2318,17 @@ ${target.detail}`.toLowerCase().includes(wanted));
     );
     const submit = el("button", { type: "submit", class: "primary" }, "Save record");
     const said = el("div", { "aria-live": "polite" });
-    const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, submit, said);
+    const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, own.section, submit, said);
     body.addEventListener("submit", (event) => {
       event.preventDefault();
-      const values = new Map([...controls].map(([at2, made]) => [at2, made.read()]));
-      const result = edited(document2, name.value, values);
+      const added = own.current();
+      const all = new Map(controls);
+      added.forEach((entry, index) => all.set(fieldAt(base.sections.length, index), entry.control));
+      const values = new Map([...all].map(([at2, made]) => [at2, made.read()]));
+      const result = edited(joinCustom(base, added.map((entry) => entry.field)), name.value, values);
       nameHint.hidden = result.ok || !result.problems.has("title");
       nameHint.textContent = result.ok ? "" : result.problems.get("title") ?? "";
-      for (const [at2, made] of controls) {
+      for (const [at2, made] of all) {
         made.mark(result.ok ? null : result.problems.get(at2) ?? null);
       }
       if (!result.ok) {
@@ -2200,74 +2399,6 @@ ${target.detail}`.toLowerCase().includes(wanted));
       opened(id);
       return null;
     });
-  }
-
-  // src/icon-action.ts
-  var OPEN_DELAY_MS = 500;
-  var INSTANT_WINDOW_MS = 400;
-  function iconAction(name, tip, label, tone = "quiet") {
-    return el("button", { type: "button", class: `icon-action ${tone}`, "aria-label": label, "data-tip": tip }, icon(name));
-  }
-  function installTips() {
-    const tip = el("div", { class: "tip", role: "tooltip", "aria-hidden": "true" });
-    document.body.append(tip);
-    let anchor = null;
-    let timer;
-    let closedAt = Number.NEGATIVE_INFINITY;
-    const place = (target2) => {
-      const box2 = target2.getBoundingClientRect();
-      const own = tip.getBoundingClientRect();
-      const above = box2.top - own.height - 6;
-      const below = above < 4;
-      const left = Math.min(Math.max(4, box2.left + box2.width / 2 - own.width / 2), window.innerWidth - own.width - 4);
-      tip.style.left = `${left}px`;
-      tip.style.top = `${below ? box2.bottom + 6 : above}px`;
-      tip.dataset["side"] = below ? "below" : "above";
-    };
-    const show = (target2, instant) => {
-      anchor = target2;
-      tip.textContent = target2.dataset["tip"] ?? "";
-      tip.toggleAttribute("data-instant", instant);
-      tip.dataset["open"] = "";
-      place(target2);
-    };
-    const hide = () => {
-      window.clearTimeout(timer);
-      if (anchor !== null) {
-        closedAt = performance.now();
-      }
-      anchor = null;
-      delete tip.dataset["open"];
-    };
-    const target = (event) => event.target instanceof Element ? event.target.closest("[data-tip]") : null;
-    document.addEventListener("pointerover", (event) => {
-      const over = target(event);
-      if (over === null || over === anchor) {
-        return;
-      }
-      hide();
-      const instant = performance.now() - closedAt < INSTANT_WINDOW_MS;
-      timer = window.setTimeout(() => show(over, instant), instant ? 0 : OPEN_DELAY_MS);
-    });
-    document.addEventListener("pointerout", (event) => {
-      if (target(event) !== null) {
-        hide();
-      }
-    });
-    document.addEventListener("focusin", (event) => {
-      const focused = target(event);
-      if (focused !== null && focused.matches(":focus-visible")) {
-        hide();
-        show(focused, true);
-      }
-    });
-    document.addEventListener("focusout", hide);
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        hide();
-      }
-    });
-    window.addEventListener("scroll", hide, { capture: true, passive: true });
   }
 
   // src/records/field-view.ts
