@@ -15,6 +15,7 @@
   --violet-400: oklch(0.72 0.145 289);
   --violet-500: oklch(0.647 0.137 289);
   --violet-600: oklch(0.54 0.15 289);
+  --violet-650: oklch(0.5 0.15 289);
   --violet-a12: oklch(0.647 0.137 289 / 0.12);
   --violet-a20: oklch(0.647 0.137 289 / 0.2);
 
@@ -91,8 +92,8 @@
   --text: var(--n-1000);
   --text-muted: var(--n-500);
   --accent: var(--violet-600);
-  --accent-hover: var(--violet-500);
-  --accent-text: var(--violet-600);
+  --accent-hover: var(--violet-650);
+  --accent-text: var(--violet-650);
   --accent-wash: var(--violet-a12);
   --on-accent: var(--n-0);
   --ok: var(--green-600);
