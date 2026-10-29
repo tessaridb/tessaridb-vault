@@ -2015,10 +2015,10 @@ ${target.detail}`.toLowerCase().includes(wanted));
     let input = null;
     let read = () => field3.value;
     if (field3.type === "boolean") {
-      const box = el("input", { id, type: "checkbox" });
-      box.checked = field3.value === true;
-      read = () => box.checked;
-      input = box;
+      const box2 = el("input", { id, type: "checkbox" });
+      box2.checked = field3.value === true;
+      read = () => box2.checked;
+      input = box2;
     } else if (field3.type === "multiline") {
       const area = el("textarea", { id, rows: "4" });
       area.value = field3.value ?? "";
@@ -2154,30 +2154,143 @@ ${target.detail}`.toLowerCase().includes(wanted));
     });
   }
 
+  // src/icons.ts
+  var SVG = "http://www.w3.org/2000/svg";
+  var box = (x, y, w, h, r) => `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${h - 2 * r}a${r} ${r} 0 0 1 -${r} ${r}h-${w - 2 * r}a${r} ${r} 0 0 1 -${r} -${r}v-${h - 2 * r}a${r} ${r} 0 0 1 ${r} -${r}z`;
+  var ring = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 -${2 * r} 0`;
+  var SHAPES2 = {
+    records: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
+    members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
+    sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
+    moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
+    lock: [box(5, 11, 14, 10, 2), "M8 11V7.5a4 4 0 0 1 8 0V11"],
+    "sign-out": ["M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4", "M15 8l4 4-4 4", "M19 12H9"],
+    switch: ["M7 4L3 8l4 4", "M3 8h14", "M17 12l4 4-4 4", "M21 16H7"],
+    copy: [box(8, 8, 13, 13, 2), "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"],
+    eye: ["M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z", ring(12, 12, 3)],
+    "eye-off": [
+      "M3 3l18 18",
+      "M10.6 5.1A9.7 9.7 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.9 3.9",
+      "M6.6 6.6C3.9 8.4 2.5 12 2.5 12s3.5 7 9.5 7a9.3 9.3 0 0 0 5.4-1.6",
+      "M9.9 9.9a3 3 0 0 0 4.2 4.2"
+    ],
+    edit: ["M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16z", "M13.5 6.5l4 4"],
+    share: [ring(6, 12, 2.5), ring(18, 6, 2.5), ring(18, 18, 2.5), "M8.2 10.8l7.6-3.6", "M8.2 13.2l7.6 3.6"],
+    trash: ["M4 7h16", "M9.5 7V4.5h5V7", "M6.5 7l1 13h9l1-13", "M10 11v5.5", "M14 11v5.5"],
+    close: ["M6 6l12 12", "M18 6L6 18"]
+  };
+  function icon(name) {
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "icon");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    for (const d of SHAPES2[name]) {
+      const path = document.createElementNS(SVG, "path");
+      path.setAttribute("d", d);
+      svg.append(path);
+    }
+    return svg;
+  }
+
+  // src/icon-action.ts
+  var OPEN_DELAY_MS = 500;
+  var INSTANT_WINDOW_MS = 400;
+  function iconAction(name, tip, label, tone = "quiet") {
+    return el("button", { type: "button", class: `icon-action ${tone}`, "aria-label": label, "data-tip": tip }, icon(name));
+  }
+  function installTips() {
+    const tip = el("div", { class: "tip", role: "tooltip", "aria-hidden": "true" });
+    document.body.append(tip);
+    let anchor = null;
+    let timer;
+    let closedAt = Number.NEGATIVE_INFINITY;
+    const place = (target2) => {
+      const box2 = target2.getBoundingClientRect();
+      const own = tip.getBoundingClientRect();
+      const above = box2.top - own.height - 6;
+      const below = above < 4;
+      const left = Math.min(Math.max(4, box2.left + box2.width / 2 - own.width / 2), window.innerWidth - own.width - 4);
+      tip.style.left = `${left}px`;
+      tip.style.top = `${below ? box2.bottom + 6 : above}px`;
+      tip.dataset["side"] = below ? "below" : "above";
+    };
+    const show = (target2, instant) => {
+      anchor = target2;
+      tip.textContent = target2.dataset["tip"] ?? "";
+      tip.toggleAttribute("data-instant", instant);
+      tip.dataset["open"] = "";
+      place(target2);
+    };
+    const hide = () => {
+      window.clearTimeout(timer);
+      if (anchor !== null) {
+        closedAt = performance.now();
+      }
+      anchor = null;
+      delete tip.dataset["open"];
+    };
+    const target = (event) => event.target instanceof Element ? event.target.closest("[data-tip]") : null;
+    document.addEventListener("pointerover", (event) => {
+      const over = target(event);
+      if (over === null || over === anchor) {
+        return;
+      }
+      hide();
+      const instant = performance.now() - closedAt < INSTANT_WINDOW_MS;
+      timer = window.setTimeout(() => show(over, instant), instant ? 0 : OPEN_DELAY_MS);
+    });
+    document.addEventListener("pointerout", (event) => {
+      if (target(event) !== null) {
+        hide();
+      }
+    });
+    document.addEventListener("focusin", (event) => {
+      const focused = target(event);
+      if (focused !== null && focused.matches(":focus-visible")) {
+        hide();
+        show(focused, true);
+      }
+    });
+    document.addEventListener("focusout", hide);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        hide();
+      }
+    });
+    window.addEventListener("scroll", hide, { capture: true, passive: true });
+  }
+
   // src/records/field-view.ts
   var MASK = "••••••••••••";
   function copyButton(copy2, label, value) {
-    const button = el("button", { type: "button", class: "quiet" }, "Copy");
-    button.setAttribute("aria-label", `Copy ${label}`);
+    const button = iconAction("copy", "Copy", `Copy ${label}`);
     button.addEventListener("click", () => void copy2.copy(value(), label));
     return button;
   }
   function concealed(label, value, copy2) {
     const shown = el("span", { class: "value mono" }, MASK);
-    const toggle = el("button", { type: "button", class: "quiet", "aria-pressed": "false" }, "Show");
-    toggle.setAttribute("aria-label", `Show ${label}`);
+    const toggle = iconAction("eye", "Show", `Show ${label}`);
+    toggle.setAttribute("aria-pressed", "false");
     toggle.addEventListener("click", () => {
       const showing = toggle.getAttribute("aria-pressed") !== "true";
       toggle.setAttribute("aria-pressed", String(showing));
-      toggle.textContent = showing ? "Hide" : "Show";
+      toggle.setAttribute("aria-label", `${showing ? "Hide" : "Show"} ${label}`);
+      toggle.dataset["tip"] = showing ? "Hide" : "Show";
+      toggle.replaceChildren(icon(showing ? "eye-off" : "eye"));
       shown.textContent = showing ? value : MASK;
     });
-    return el("span", { class: "value-row" }, shown, toggle, copyButton(copy2, label, () => value));
+    return el("span", { class: "value-row" }, shown, el("span", { class: "row-actions" }, toggle, copyButton(copy2, label, () => value)));
   }
   function plain(label, value, copy2, link = false) {
     const safeLink = link && /^https?:\/\//i.test(value);
     const shown = safeLink ? el("a", { class: "value", href: value, target: "_blank", rel: "noopener noreferrer" }, value) : el("span", { class: "value" }, value);
-    return el("span", { class: "value-row" }, shown, copyButton(copy2, label, () => value));
+    return el("span", { class: "value-row" }, shown, el("span", { class: "row-actions" }, copyButton(copy2, label, () => value)));
   }
   function oneTime(label, value, copy2, stops2) {
     const code = el("span", { class: "value mono" }, "");
@@ -2193,7 +2306,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     void tick();
     const timer = window.setInterval(() => void tick(), 1e3);
     stops2.push(() => window.clearInterval(timer));
-    return el("span", { class: "value-row" }, code, left, copyButton(copy2, label, () => current));
+    return el("span", { class: "value-row" }, code, left, el("span", { class: "row-actions" }, copyButton(copy2, label, () => current)));
   }
   function fieldView(field3, copy2, stops2) {
     const term = el("dt", {}, field3.label);
@@ -2206,7 +2319,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       case "url":
         return [term, el("dd", {}, plain(field3.label, field3.value, copy2, true))];
       case "multiline":
-        return [term, el("dd", {}, el("span", { class: "value-row" }, el("span", { class: "value pre" }, field3.value), copyButton(copy2, field3.label, () => field3.value ?? "")))];
+        return [term, el("dd", {}, el("span", { class: "value-row" }, el("span", { class: "value pre" }, field3.value), el("span", { class: "row-actions" }, copyButton(copy2, field3.label, () => field3.value ?? ""))))];
       case "boolean":
         return [term, el("dd", {}, field3.value ? "Yes" : "No")];
       case "otp":
@@ -2264,7 +2377,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       said,
       el("div", { class: "actions" }, keep2, confirm)
     );
-    const open3 = el("button", { type: "button", class: "danger" }, "Delete");
+    const open3 = iconAction("trash", "Delete", `Delete ${title}`, "danger");
     open3.addEventListener("click", () => {
       fill(said, null);
       reason.value = "";
@@ -2378,7 +2491,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       said,
       el("div", { class: "actions" }, cancel, confirm)
     );
-    const open3 = el("button", { type: "button" }, "Share");
+    const open3 = iconAction("share", "Share", `Share ${context2.title}`);
     open3.addEventListener("click", () => {
       chosen = null;
       press(0);
@@ -2470,7 +2583,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       });
     });
     const items = rows.map((row2) => {
-      const remove = el("button", { type: "button", class: "quiet", "aria-label": `Stop sharing with ${row2.label}` }, "Remove");
+      const remove = iconAction("close", "Stop sharing", `Stop sharing with ${row2.label}`, "danger");
       remove.addEventListener("click", () => {
         removing = row2;
         fill(title, `Stop sharing with “${row2.label}”?`);
@@ -2569,14 +2682,15 @@ ${target.detail}`.toLowerCase().includes(wanted));
         el("dl", { class: "fields" }, ...section.fields.flatMap((field3) => fieldView(field3, copy2, stops2)))
       )
     );
-    const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type))));
+    const head = el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type)));
     const named = document2.title === "" ? "Untitled" : document2.title;
     const [remove, dialog] = deleteControls(held2, id, named, gone);
     const again = () => void drawRecord(main2, held2, id, copy2, stops2, back, editHref, gone);
     const context2 = { held: held2, vouched: chain.vouched, opener, opened: opened.value, title: named, done: again };
     const [share2, shareDialog] = sharing?.ok === true ? shareControls(context2, sharing.targets) : [];
     const shared = sharing === null ? [] : sharing.ok ? sharedWithSection(held2, id, sharing.rows, again) : [el("section", { class: "record-section" }, el("h2", {}, "Shared with"), refusal(sharing.words))];
-    const actions = el("div", { class: "actions" }, el("a", { class: "button", href: editHref }, "Edit"), share2 ?? null, remove ?? null);
+    const edit = el("a", { class: "button icon-action quiet", href: editHref, "aria-label": `Edit ${named}`, "data-tip": "Edit" }, icon("edit"));
+    const actions = el("div", { class: "actions" }, edit, share2 ?? null, remove ?? null);
     fill(main2, toList, el("div", { class: "page-head" }, head, actions), ...sections, ...shared, dialog ?? null, shareDialog ?? null);
     title.focus();
   }
@@ -3467,6 +3581,23 @@ ${target.detail}`.toLowerCase().includes(wanted));
     await draw2();
   }
 
+  // src/shell-icons.ts
+  function isIconName(name) {
+    return name === "records" || name === "members" || name === "sun" || name === "moon" || name === "lock" || name === "sign-out" || name === "switch";
+  }
+  function setIcon(control2, name) {
+    control2.querySelector(":scope > svg.icon")?.remove();
+    control2.prepend(icon(name));
+  }
+  function decorateShell() {
+    for (const control2 of document.querySelectorAll("[data-icon]")) {
+      const name = control2.dataset["icon"];
+      if (isIconName(name)) {
+        setIcon(control2, name);
+      }
+    }
+  }
+
   // src/app.ts
   var history = browserHistory(window);
   var notice = null;
@@ -3581,10 +3712,11 @@ ${target.detail}`.toLowerCase().includes(wanted));
   function showCompany() {
     const held2 = unlocked();
     const name = document.getElementById("company");
+    const workspace = document.getElementById("workspace");
     const switcher = document.getElementById("switch-company");
-    if (name !== null) {
+    if (name !== null && workspace !== null) {
       name.textContent = held2?.companyName ?? "";
-      name.hidden = held2 === null;
+      workspace.hidden = held2 === null;
     }
     if (switcher !== null) {
       switcher.hidden = held2?.otherCompanies !== true;
@@ -3600,8 +3732,11 @@ ${target.detail}`.toLowerCase().includes(wanted));
     const button = document.getElementById("theme");
     const root = document.documentElement;
     const label = () => {
-      if (button !== null) {
-        button.textContent = root.dataset.theme === "dark" ? "Light theme" : "Dark theme";
+      const words = button?.querySelector("span");
+      if (button !== null && words !== null && words !== void 0) {
+        const dark = root.dataset.theme === "dark";
+        words.textContent = dark ? "Light theme" : "Dark theme";
+        setIcon(button, dark ? "sun" : "moon");
       }
     };
     const stored = localStorage.getItem("vault-theme");
@@ -3637,6 +3772,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
   var view = document.getElementById("view");
   if (view !== null) {
+    decorateShell();
+    installTips();
     themed();
     signOutButton();
     switchButton();

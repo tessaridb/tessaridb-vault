@@ -65,28 +65,54 @@ button.chip[aria-pressed="true"] {
   margin-block-start: var(--s-6);
 }
 
+/* A record's fields read as a table: one row per field, a label column, and the value with its actions pushed to the
+   row's end, so every Copy sits in one column. Each row is one line box tall and centred on it, whatever it holds. */
 .fields {
   display: grid;
-  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
-  gap: var(--s-3) var(--s-5);
-  margin: var(--s-3) 0 0;
+  grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr);
+  margin: 0;
+  border-block-start: 1px solid var(--border);
+}
+
+.fields dt,
+.fields dd {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--row-height);
+  padding-block: var(--s-1);
+  border-block-end: 1px solid var(--border);
 }
 
 .fields dt {
   color: var(--text-muted);
-  padding-block-start: var(--s-2);
+  padding-inline-end: var(--s-4);
 }
 
 .fields dd {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: var(--s-1);
   margin: 0;
   min-inline-size: 0;
 }
 
+.fields dd > p {
+  margin: 0;
+}
+
 .value-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-2);
+  gap: var(--s-3);
+  min-block-size: var(--control-height);
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-inline-start: auto;
 }
 
 .value {
@@ -117,7 +143,9 @@ button.chip[aria-pressed="true"] {
   }
 
   .fields dt {
-    padding-block-start: 0;
+    min-block-size: 0;
+    padding-block: var(--s-3) 0;
+    border-block-end: 0;
   }
 }
 

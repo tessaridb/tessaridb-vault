@@ -4,6 +4,7 @@
 
 import { call, ignored } from "../api.ts";
 import { el, fill } from "../dom.ts";
+import { iconAction } from "../icon-action.ts";
 import { refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { loadFailure } from "./list-view.ts";
@@ -11,7 +12,7 @@ import { companyPath } from "./load.ts";
 import type { SharedRow } from "./share-targets.ts";
 import { removeShareFailure } from "./share-words.ts";
 
-/** The section listing `rows` for record `id`, and the one dialog its Remove buttons open; `done` runs after a removal. */
+/** The section listing `rows` for record `id`, and the one dialog its stop-sharing buttons open; `done` runs after a removal. */
 export function sharedWithSection(held: Unlocked, id: string, rows: readonly SharedRow[], done: () => void): readonly HTMLElement[] {
   const reason = el("input", { id: "unshare-reason", type: "text", autocomplete: "off", maxlength: "500" });
   const said = el("div", { "aria-live": "polite" });
@@ -51,7 +52,7 @@ export function sharedWithSection(held: Unlocked, id: string, rows: readonly Sha
     });
   });
   const items = rows.map((row) => {
-    const remove = el("button", { type: "button", class: "quiet", "aria-label": `Stop sharing with ${row.label}` }, "Remove");
+    const remove = iconAction("close", "Stop sharing", `Stop sharing with ${row.label}`, "danger");
     remove.addEventListener("click", () => {
       removing = row;
       fill(title, `Stop sharing with \u201C${row.label}\u201D?`);

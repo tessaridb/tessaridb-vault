@@ -1,0 +1,85 @@
+/* ──────────────────────────────────────────────────────────────── icons ── */
+
+.icon {
+  inline-size: var(--icon);
+  block-size: var(--icon);
+  flex: none;
+}
+
+/* An action shown as its icon alone: its accessible name says the action and what it acts on, its tooltip the action. */
+button.icon-action,
+.button.icon-action {
+  inline-size: var(--control-height);
+  padding: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+button.icon-action.danger {
+  background: transparent;
+  border-color: transparent;
+  color: var(--bad);
+}
+
+button.icon-action[aria-pressed="true"] {
+  color: var(--accent-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button.icon-action:hover,
+  .button.icon-action:hover {
+    background: var(--surface-sunken);
+    color: var(--text);
+  }
+
+  button.icon-action.danger:hover {
+    color: var(--bad);
+  }
+}
+
+.actions:has(> .icon-action) {
+  flex-wrap: nowrap;
+  gap: var(--s-1);
+}
+
+/* The one tooltip, placed over the page by script so nothing scrolling can clip it. */
+.tip {
+  position: fixed;
+  z-index: var(--z-toast);
+  pointer-events: none;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--surface);
+  font-size: var(--t-data);
+  font-weight: 550;
+  white-space: nowrap;
+  opacity: 0;
+  transform: scale(0.97);
+  transform-origin: center bottom;
+  transition:
+    opacity 125ms var(--ease-out),
+    transform 125ms var(--ease-out);
+}
+
+.tip[data-side="below"] {
+  transform-origin: center top;
+}
+
+.tip[data-open] {
+  opacity: 1;
+  transform: none;
+}
+
+.tip[data-instant] {
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip {
+    transform: none;
+    transition-duration: 0ms;
+  }
+}

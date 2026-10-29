@@ -3,6 +3,7 @@
 
 import { call } from "../api.ts";
 import { el, fill } from "../dom.ts";
+import { icon } from "../icons.ts";
 import { readOpened } from "../records-model.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
@@ -57,7 +58,7 @@ export async function drawRecord(
       el("dl", { class: "fields" }, ...section.fields.flatMap((field) => fieldView(field, copy, stops))),
     ),
   );
-  const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document.type))));
+  const head = el("div", {}, title, el("p", { class: "lede" }, typeName(document.type)));
   const named = document.title === "" ? "Untitled" : document.title;
   const [remove, dialog] = deleteControls(held, id, named, gone);
   const again = (): void => void drawRecord(main, held, id, copy, stops, back, editHref, gone);
@@ -69,7 +70,8 @@ export async function drawRecord(
       : sharing.ok
         ? sharedWithSection(held, id, sharing.rows, again)
         : [el("section", { class: "record-section" }, el("h2", {}, "Shared with"), refusal(sharing.words))];
-  const actions = el("div", { class: "actions" }, el("a", { class: "button", href: editHref }, "Edit"), share ?? null, remove ?? null);
+  const edit = el("a", { class: "button icon-action quiet", href: editHref, "aria-label": `Edit ${named}`, "data-tip": "Edit" }, icon("edit"));
+  const actions = el("div", { class: "actions" }, edit, share ?? null, remove ?? null);
   fill(main, toList, el("div", { class: "page-head" }, head, actions), ...sections, ...shared, dialog ?? null, shareDialog ?? null);
   title.focus();
 }

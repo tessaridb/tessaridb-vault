@@ -15,17 +15,20 @@
       <aside class="side">
         <div class="identity">
           <p class="brand"><img class="logo" src="/favicon.svg" alt="" width="28" height="28" /><span>TessariDB Vault</span></p>
-          <p id="company" class="company" hidden></p>
+          <div id="workspace" class="workspace" hidden>
+            <p class="caption">Company</p>
+            <p id="company" class="company"></p>
+          </div>
         </div>
         <nav aria-label="Sections">
-          <a href="#/" data-section="records">Records</a>
-          <a href="#/members" data-section="members">Members</a>
+          <a href="#/" data-section="records" data-icon="records"><span>Records</span></a>
+          <a href="#/members" data-section="members" data-icon="members"><span>Members</span></a>
         </nav>
         <div class="side-foot">
-          <button id="theme" type="button" class="quiet">Dark theme</button>
-          <button id="switch-company" type="button" class="quiet" hidden>Switch company</button>
-          <button id="lock" type="button" class="quiet">Lock</button>
-          <button id="sign-out" type="button" class="quiet">Sign out</button>
+          <button id="theme" type="button" class="quiet" data-icon="moon"><span>Dark theme</span></button>
+          <button id="switch-company" type="button" class="quiet" data-icon="switch" hidden><span>Switch company</span></button>
+          <button id="lock" type="button" class="quiet" data-icon="lock"><span>Lock</span></button>
+          <button id="sign-out" type="button" class="quiet" data-icon="sign-out"><span>Sign out</span></button>
         </div>
       </aside>
       <main id="view" tabindex="-1">

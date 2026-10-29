@@ -1,7 +1,9 @@
-// One field of an opened record, drawn with text nodes only. A concealed value stays hidden until "Show", every value
+// One field of an opened record, drawn with text nodes only. A concealed value stays hidden until it is shown, every value
 // has its own Copy, and a one-time password shows its current code and the seconds it has left.
 
 import { el } from "../dom.ts";
+import { iconAction } from "../icon-action.ts";
+import { icon } from "../icons.ts";
 import type { copier } from "./listing.ts";
 import type { Field } from "./fields.ts";
 import { base32Decode, totpCode } from "./totp.ts";
@@ -14,8 +16,7 @@ export type Stops = Array<() => void>;
 const MASK = "••••••••••••";
 
 function copyButton(copy: Copier, label: string, value: () => string): HTMLElement {
-  const button = el("button", { type: "button", class: "quiet" }, "Copy");
-  button.setAttribute("aria-label", `Copy ${label}`);
+  const button = iconAction("copy", "Copy", `Copy ${label}`);
   button.addEventListener("click", () => void copy.copy(value(), label));
   return button;
 }
@@ -23,15 +24,17 @@ function copyButton(copy: Copier, label: string, value: () => string): HTMLEleme
 /** A hidden value with Show / Hide; the value is in the page only while shown. */
 function concealed(label: string, value: string, copy: Copier): HTMLElement {
   const shown = el("span", { class: "value mono" }, MASK);
-  const toggle = el("button", { type: "button", class: "quiet", "aria-pressed": "false" }, "Show");
-  toggle.setAttribute("aria-label", `Show ${label}`);
+  const toggle = iconAction("eye", "Show", `Show ${label}`);
+  toggle.setAttribute("aria-pressed", "false");
   toggle.addEventListener("click", () => {
     const showing = toggle.getAttribute("aria-pressed") !== "true";
     toggle.setAttribute("aria-pressed", String(showing));
-    toggle.textContent = showing ? "Hide" : "Show";
+    toggle.setAttribute("aria-label", `${showing ? "Hide" : "Show"} ${label}`);
+    toggle.dataset["tip"] = showing ? "Hide" : "Show";
+    toggle.replaceChildren(icon(showing ? "eye-off" : "eye"));
     shown.textContent = showing ? value : MASK;
   });
-  return el("span", { class: "value-row" }, shown, toggle, copyButton(copy, label, () => value));
+  return el("span", { class: "value-row" }, shown, el("span", { class: "row-actions" }, toggle, copyButton(copy, label, () => value)));
 }
 
 function plain(label: string, value: string, copy: Copier, link = false): HTMLElement {
@@ -39,7 +42,7 @@ function plain(label: string, value: string, copy: Copier, link = false): HTMLEl
   const shown = safeLink
     ? el("a", { class: "value", href: value, target: "_blank", rel: "noopener noreferrer" }, value)
     : el("span", { class: "value" }, value);
-  return el("span", { class: "value-row" }, shown, copyButton(copy, label, () => value));
+  return el("span", { class: "value-row" }, shown, el("span", { class: "row-actions" }, copyButton(copy, label, () => value)));
 }
 
 /** The current one-time code and its seconds left, redrawn every second until the view stops it. */
@@ -57,7 +60,7 @@ function oneTime(label: string, value: Extract<Field, { type: "otp" }>["value"] 
   void tick();
   const timer = window.setInterval(() => void tick(), 1000);
   stops.push(() => window.clearInterval(timer));
-  return el("span", { class: "value-row" }, code, left, copyButton(copy, label, () => current));
+  return el("span", { class: "value-row" }, code, left, el("span", { class: "row-actions" }, copyButton(copy, label, () => current)));
 }
 
 /** The field as a definition-list pair: its label and its value with the actions it offers. */
@@ -72,7 +75,7 @@ export function fieldView(field: Field, copy: Copier, stops: Stops): HTMLElement
     case "url":
       return [term, el("dd", {}, plain(field.label, field.value, copy, true))];
     case "multiline":
-      return [term, el("dd", {}, el("span", { class: "value-row" }, el("span", { class: "value pre" }, field.value), copyButton(copy, field.label, () => field.value ?? "")))];
+      return [term, el("dd", {}, el("span", { class: "value-row" }, el("span", { class: "value pre" }, field.value), el("span", { class: "row-actions" }, copyButton(copy, field.label, () => field.value ?? ""))))];
     case "boolean":
       return [term, el("dd", {}, field.value ? "Yes" : "No")];
     case "otp":

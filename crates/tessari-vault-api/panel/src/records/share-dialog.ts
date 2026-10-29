@@ -6,6 +6,7 @@ import { call, ignored } from "../api.ts";
 import { VaultCryptoError } from "../crypto/errors.ts";
 import type { Vouched } from "../crypto/statements.ts";
 import { el, fill } from "../dom.ts";
+import { iconAction } from "../icon-action.ts";
 import type { OpenedRecord } from "../records-model.ts";
 import { refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
@@ -66,7 +67,7 @@ export function shareControls(context: ShareContext, targets: readonly ShareTarg
     said,
     el("div", { class: "actions" }, cancel, confirm),
   );
-  const open = el("button", { type: "button" }, "Share");
+  const open = iconAction("share", "Share", `Share ${context.title}`);
   open.addEventListener("click", () => {
     chosen = null;
     press(0);

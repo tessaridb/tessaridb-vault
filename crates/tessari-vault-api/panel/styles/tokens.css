@@ -168,6 +168,7 @@
   --side-width: 16rem;
   --row-height: 3rem; /* 48px — the 40-48px band DENSITY 55 asks for */
   --control-height: 2.5rem; /* 40px controls, one height across every form */
+  --icon: 1.125rem; /* 18px, the family's icon size beside 16px text */
   --card-radius: var(--radius-lg);
   --button-radius: var(--radius-pill); /* the product site's buttons are pills */
   --card-inset: var(--s-6);

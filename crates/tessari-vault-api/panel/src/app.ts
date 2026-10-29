@@ -18,6 +18,8 @@ import { bearer, forget } from "./session.ts";
 import { providerReturned, signIn } from "./sign-in.ts";
 import { unlock } from "./unlock.ts";
 import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked } from "./vault.ts";
+import { installTips } from "./icon-action.ts";
+import { decorateShell, setIcon } from "./shell-icons.ts";
 
 const history = browserHistory(window);
 /** What the identity provider's return refused, said once on the sign-in page. */
@@ -147,10 +149,11 @@ function mark(outcome: Outcome<Routes>): void {
 function showCompany(): void {
   const held = unlocked();
   const name = document.getElementById("company");
+  const workspace = document.getElementById("workspace");
   const switcher = document.getElementById("switch-company");
-  if (name !== null) {
+  if (name !== null && workspace !== null) {
     name.textContent = held?.companyName ?? "";
-    name.hidden = held === null;
+    workspace.hidden = held === null;
   }
   if (switcher !== null) {
     switcher.hidden = held?.otherCompanies !== true;
@@ -170,8 +173,11 @@ function themed(): void {
   const button = document.getElementById("theme");
   const root = document.documentElement;
   const label = (): void => {
-    if (button !== null) {
-      button.textContent = root.dataset.theme === "dark" ? "Light theme" : "Dark theme";
+    const words = button?.querySelector("span");
+    if (button !== null && words !== null && words !== undefined) {
+      const dark = root.dataset.theme === "dark";
+      words.textContent = dark ? "Light theme" : "Dark theme";
+      setIcon(button, dark ? "sun" : "moon");
     }
   };
   const stored = localStorage.getItem("vault-theme");
@@ -213,6 +219,8 @@ function locking(): void {
 
 const view = document.getElementById("view");
 if (view !== null) {
+  decorateShell();
+  installTips();
   themed();
   signOutButton();
   switchButton();

@@ -168,6 +168,7 @@
   --side-width: 16rem;
   --row-height: 3rem; /* 48px — the 40-48px band DENSITY 55 asks for */
   --control-height: 2.5rem; /* 40px controls, one height across every form */
+  --icon: 1.125rem; /* 18px, the family's icon size beside 16px text */
   --card-radius: var(--radius-lg);
   --button-radius: var(--radius-pill); /* the product site's buttons are pills */
   --card-inset: var(--s-6);
@@ -333,7 +334,7 @@ code {
   block-size: 100dvh;
   display: flex;
   flex-direction: column;
-  gap: var(--s-7);
+  gap: var(--s-5);
   padding: var(--s-6) var(--s-4);
 }
 
@@ -342,21 +343,44 @@ code {
   align-items: center;
   gap: var(--s-2);
   margin: 0;
-  padding-inline: var(--s-2);
+  padding-inline: var(--s-3);
   font-weight: 650;
 }
 
-/* The product, and under it the company whose records are open: the one place the page says which company it is. */
+/* The product, and under it the company whose records are open: the one place the page says which company it is.
+   A rule closes the block, so the company reads as the context the sections below act in. Everything in the sidebar
+   shares one inline inset, the nav's. */
 .identity {
   display: grid;
-  gap: var(--s-2);
+  gap: var(--s-5);
+  padding-block-end: var(--s-5);
+  border-block-end: 1px solid var(--border);
+}
+
+.workspace {
+  display: grid;
+  gap: var(--s-1);
+  padding-inline: var(--s-3);
+}
+
+.workspace[hidden] {
+  display: none;
+}
+
+.workspace .caption {
+  margin: 0;
+  font-size: var(--t-caption);
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .company {
   margin: 0;
-  padding-inline: var(--s-2);
-  font-size: var(--t-data);
   font-weight: 600;
+  line-height: 1.35;
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -406,6 +430,7 @@ code {
 
 .side-foot button {
   justify-content: flex-start;
+  gap: var(--s-3);
   padding-inline: var(--s-3);
 }
 
@@ -462,6 +487,32 @@ main:focus,
     flex-wrap: wrap;
   }
 
+  .identity {
+    gap: var(--s-1);
+    padding-block-end: 0;
+    border-block-end: 0;
+  }
+
+  .workspace .caption {
+    display: none;
+  }
+
+  /* The bar is one row on a phone, so its controls show their icons; the label stays for assistive technology. */
+  .side-foot button {
+    inline-size: var(--control-height);
+    padding: 0;
+    justify-content: center;
+  }
+
+  .side-foot button > span {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   .side-foot {
     margin-block-start: 0;
     margin-inline-start: auto;
@@ -479,6 +530,15 @@ main:focus,
   justify-content: space-between;
   gap: var(--s-4);
   margin-block-end: var(--s-7);
+}
+
+/* Icon actions sit level with the title's line, not between the title and the line under it. */
+.page-head:has(> .actions > .icon-action) {
+  align-items: flex-start;
+}
+
+.page-head > .actions:has(> .icon-action) {
+  margin-block-start: calc((var(--t-heading) * 1.2 - var(--control-height)) / 2);
 }
 
 .page-head .lede {
@@ -751,6 +811,92 @@ fieldset.choices legend {
   font-size: var(--t-body);
 }
 
+/* ──────────────────────────────────────────────────────────────── icons ── */
+
+.icon {
+  inline-size: var(--icon);
+  block-size: var(--icon);
+  flex: none;
+}
+
+/* An action shown as its icon alone: its accessible name says the action and what it acts on, its tooltip the action. */
+button.icon-action,
+.button.icon-action {
+  inline-size: var(--control-height);
+  padding: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+button.icon-action.danger {
+  background: transparent;
+  border-color: transparent;
+  color: var(--bad);
+}
+
+button.icon-action[aria-pressed="true"] {
+  color: var(--accent-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button.icon-action:hover,
+  .button.icon-action:hover {
+    background: var(--surface-sunken);
+    color: var(--text);
+  }
+
+  button.icon-action.danger:hover {
+    color: var(--bad);
+  }
+}
+
+.actions:has(> .icon-action) {
+  flex-wrap: nowrap;
+  gap: var(--s-1);
+}
+
+/* The one tooltip, placed over the page by script so nothing scrolling can clip it. */
+.tip {
+  position: fixed;
+  z-index: var(--z-toast);
+  pointer-events: none;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--surface);
+  font-size: var(--t-data);
+  font-weight: 550;
+  white-space: nowrap;
+  opacity: 0;
+  transform: scale(0.97);
+  transform-origin: center bottom;
+  transition:
+    opacity 125ms var(--ease-out),
+    transform 125ms var(--ease-out);
+}
+
+.tip[data-side="below"] {
+  transform-origin: center top;
+}
+
+.tip[data-open] {
+  opacity: 1;
+  transform: none;
+}
+
+.tip[data-instant] {
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip {
+    transform: none;
+    transition-duration: 0ms;
+  }
+}
+
 /* ───────────────────────────────────────────────────────────── records ── */
 
 .chips {
@@ -818,28 +964,54 @@ button.chip[aria-pressed="true"] {
   margin-block-start: var(--s-6);
 }
 
+/* A record's fields read as a table: one row per field, a label column, and the value with its actions pushed to the
+   row's end, so every Copy sits in one column. Each row is one line box tall and centred on it, whatever it holds. */
 .fields {
   display: grid;
-  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
-  gap: var(--s-3) var(--s-5);
-  margin: var(--s-3) 0 0;
+  grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr);
+  margin: 0;
+  border-block-start: 1px solid var(--border);
+}
+
+.fields dt,
+.fields dd {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--row-height);
+  padding-block: var(--s-1);
+  border-block-end: 1px solid var(--border);
 }
 
 .fields dt {
   color: var(--text-muted);
-  padding-block-start: var(--s-2);
+  padding-inline-end: var(--s-4);
 }
 
 .fields dd {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: var(--s-1);
   margin: 0;
   min-inline-size: 0;
 }
 
+.fields dd > p {
+  margin: 0;
+}
+
 .value-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-2);
+  gap: var(--s-3);
+  min-block-size: var(--control-height);
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-inline-start: auto;
 }
 
 .value {
@@ -870,7 +1042,9 @@ button.chip[aria-pressed="true"] {
   }
 
   .fields dt {
-    padding-block-start: 0;
+    min-block-size: 0;
+    padding-block: var(--s-3) 0;
+    border-block-end: 0;
   }
 }
 

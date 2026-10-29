@@ -4,6 +4,7 @@
 
 import { call, ignored } from "../api.ts";
 import { el, fill } from "../dom.ts";
+import { iconAction } from "../icon-action.ts";
 import { refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { deleteFailure } from "./delete-words.ts";
@@ -29,7 +30,7 @@ export function deleteControls(held: Unlocked, id: string, title: string, gone: 
     said,
     el("div", { class: "actions" }, keep, confirm),
   );
-  const open = el("button", { type: "button", class: "danger" }, "Delete");
+  const open = iconAction("trash", "Delete", `Delete ${title}`, "danger");
   open.addEventListener("click", () => {
     fill(said, null);
     reason.value = "";
