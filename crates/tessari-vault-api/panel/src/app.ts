@@ -95,7 +95,7 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
       const held = unlocked();
       if (held !== null) {
         const opened = (record: string): void => go(router.href("record", { record }));
-        drawNew(view, held, outcome.match.query.type, router.href("records", {}), router.href("newRecord", {}), opened, (type) => router.href("newRecord", {}, { type }));
+        void drawNew(view, held, outcome.match.query.type, router.href("records", {}), router.href("newRecord", {}), opened, (type) => router.href("newRecord", {}, { type }));
       }
       break;
     }

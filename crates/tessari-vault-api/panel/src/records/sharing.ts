@@ -7,7 +7,8 @@ import { readGroupKey } from "../records-model.ts";
 import type { Unlocked } from "../vault.ts";
 import { loadFailure } from "./list-view.ts";
 import { companyPath } from "./load.ts";
-import { readGroupList, readMemberList, sharedRows, shareTargets, type SharedRow, type ShareTarget } from "./share-targets.ts";
+import { companyAndGroups } from "./audience.ts";
+import { readGroupList, readMemberList, sharedRows, shareTargets, type ListedGroup, type SharedRow, type ShareTarget } from "./share-targets.ts";
 import { readDirectory, readShares } from "./shares-model.ts";
 
 export type Sharing =
@@ -37,21 +38,35 @@ export async function loadSharing(held: Unlocked, id: string): Promise<Sharing |
   if (!directory.ok) {
     return failed(directory);
   }
-  const keys = await Promise.all(
-    groups.value.map((group) => call("GET", `${path}/groups/${encodeURIComponent(group.id)}/key`, readGroupKey).then((key) => [group.id, key] as const)),
-  );
-  const groupKeys = new Map<string, { readonly keyId: string; readonly public: Bytes }>();
-  for (const [group, key] of keys) {
-    if (key.ok) {
-      groupKeys.set(group, { keyId: hex(key.value.keyId), public: key.value.public });
-    } else if (key.status !== 404) {
-      return failed(key);
-    }
+  const all = companyAndGroups({ id: held.company, name: held.companyName }, groups.value);
+  const groupKeys = await loadGroupKeys(held, all);
+  if (!groupKeys.ok) {
+    return failed(groupKeys);
   }
   const { author, shares } = listed.value;
   return {
     ok: true,
-    rows: sharedRows(shares, members.value, groups.value),
-    targets: shareTargets(members.value, groups.value, directory.value, groupKeys, author.account, shares.map((share) => share.target)),
+    rows: sharedRows(shares, members.value, all),
+    targets: shareTargets(members.value, all, directory.value, groupKeys.keys, author.account, shares.map((share) => share.target)),
   };
+}
+
+/** The key each of `groups` has, by group; a group with none yet is left out. */
+export async function loadGroupKeys(
+  held: Unlocked,
+  groups: readonly ListedGroup[],
+): Promise<{ readonly ok: true; readonly keys: ReadonlyMap<string, { readonly keyId: string; readonly public: Bytes }> } | Failure> {
+  const path = companyPath(held);
+  const answers = await Promise.all(
+    groups.map((group) => call("GET", `${path}/groups/${encodeURIComponent(group.id)}/key`, readGroupKey).then((key) => [group.id, key] as const)),
+  );
+  const keys = new Map<string, { readonly keyId: string; readonly public: Bytes }>();
+  for (const [group, key] of answers) {
+    if (key.ok) {
+      keys.set(group, { keyId: hex(key.value.keyId), public: key.value.public });
+    } else if (key.status !== 404) {
+      return key;
+    }
+  }
+  return { ok: true, keys };
 }

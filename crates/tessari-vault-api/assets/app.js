@@ -294,244 +294,15 @@
     }
   };
 
-  // src/records/custom-fields.ts
-  var CUSTOM_SECTION = "Custom fields";
-  var MAX_LABEL = 64;
-  var isCustom = (field3) => field3.type === "text" || field3.type === "concealed";
-  function splitCustom(document2) {
-    const last = document2.sections.at(-1);
-    if (last === void 0 || last.name !== CUSTOM_SECTION || !last.fields.every(isCustom)) {
-      return { base: document2, custom: [] };
+  // src/crypto/errors.ts
+  var VaultCryptoError = class extends Error {
+    reason;
+    constructor(reason) {
+      super(`refused: ${reason}`);
+      this.name = "VaultCryptoError";
+      this.reason = reason;
     }
-    return { base: { ...document2, sections: document2.sections.slice(0, -1) }, custom: last.fields.filter(isCustom) };
-  }
-  function joinCustom(base, custom) {
-    return custom.length === 0 ? base : { ...base, sections: [...base.sections, { name: CUSTOM_SECTION, fields: [...custom] }] };
-  }
-  function customLabelProblem(label, taken) {
-    const name = label.trim();
-    if (name === "") {
-      return "Give the field a name.";
-    }
-    if (name.length > MAX_LABEL) {
-      return "Keep the name to 64 characters.";
-    }
-    const folded = name.toLocaleLowerCase();
-    return taken.some((other) => other.trim().toLocaleLowerCase() === folded) ? "This record already has a field called that." : null;
-  }
-
-  // src/icons.ts
-  var SVG = "http://www.w3.org/2000/svg";
-  var box = (x, y, w, h, r) => `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${h - 2 * r}a${r} ${r} 0 0 1 -${r} ${r}h-${w - 2 * r}a${r} ${r} 0 0 1 -${r} -${r}v-${h - 2 * r}a${r} ${r} 0 0 1 ${r} -${r}z`;
-  var ring = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 -${2 * r} 0`;
-  var SHAPES = {
-    records: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
-    members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
-    sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
-    moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
-    lock: [box(5, 11, 14, 10, 2), "M8 11V7.5a4 4 0 0 1 8 0V11"],
-    "sign-out": ["M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4", "M15 8l4 4-4 4", "M19 12H9"],
-    switch: ["M7 4L3 8l4 4", "M3 8h14", "M17 12l4 4-4 4", "M21 16H7"],
-    copy: [box(8, 8, 13, 13, 2), "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"],
-    eye: ["M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z", ring(12, 12, 3)],
-    "eye-off": [
-      "M3 3l18 18",
-      "M10.6 5.1A9.7 9.7 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.9 3.9",
-      "M6.6 6.6C3.9 8.4 2.5 12 2.5 12s3.5 7 9.5 7a9.3 9.3 0 0 0 5.4-1.6",
-      "M9.9 9.9a3 3 0 0 0 4.2 4.2"
-    ],
-    edit: ["M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16z", "M13.5 6.5l4 4"],
-    share: [ring(6, 12, 2.5), ring(18, 6, 2.5), ring(18, 18, 2.5), "M8.2 10.8l7.6-3.6", "M8.2 13.2l7.6 3.6"],
-    trash: ["M4 7h16", "M9.5 7V4.5h5V7", "M6.5 7l1 13h9l1-13", "M10 11v5.5", "M14 11v5.5"],
-    close: ["M6 6l12 12", "M18 6L6 18"],
-    plus: ["M12 5v14", "M5 12h14"],
-    search: [ring(11, 11, 6.5), "M20 20l-4.2-4.2"]
   };
-  function icon(name) {
-    const svg = document.createElementNS(SVG, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("class", "icon");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("focusable", "false");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "2");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    for (const d of SHAPES[name]) {
-      const path = document.createElementNS(SVG, "path");
-      path.setAttribute("d", d);
-      svg.append(path);
-    }
-    return svg;
-  }
-
-  // src/icon-action.ts
-  var OPEN_DELAY_MS = 500;
-  var INSTANT_WINDOW_MS = 400;
-  function iconAction(name, tip, label, tone = "quiet") {
-    return el("button", { type: "button", class: `icon-action ${tone}`, "aria-label": label, "data-tip": tip }, icon(name));
-  }
-  function installTips() {
-    const tip = el("div", { class: "tip", role: "tooltip", "aria-hidden": "true" });
-    document.body.append(tip);
-    let anchor = null;
-    let timer;
-    let closedAt = Number.NEGATIVE_INFINITY;
-    const place = (target2) => {
-      const box2 = target2.getBoundingClientRect();
-      const own = tip.getBoundingClientRect();
-      const above = box2.top - own.height - 6;
-      const below = above < 4;
-      const left = Math.min(Math.max(4, box2.left + box2.width / 2 - own.width / 2), window.innerWidth - own.width - 4);
-      tip.style.left = `${left}px`;
-      tip.style.top = `${below ? box2.bottom + 6 : above}px`;
-      tip.dataset["side"] = below ? "below" : "above";
-    };
-    const show = (target2, instant) => {
-      anchor = target2;
-      tip.textContent = target2.dataset["tip"] ?? "";
-      tip.toggleAttribute("data-instant", instant);
-      tip.dataset["open"] = "";
-      place(target2);
-    };
-    const hide = () => {
-      window.clearTimeout(timer);
-      if (anchor !== null) {
-        closedAt = performance.now();
-      }
-      anchor = null;
-      delete tip.dataset["open"];
-    };
-    const target = (event) => event.target instanceof Element ? event.target.closest("[data-tip]") : null;
-    document.addEventListener("pointerover", (event) => {
-      const over = target(event);
-      if (over === null || over === anchor) {
-        return;
-      }
-      hide();
-      const instant = performance.now() - closedAt < INSTANT_WINDOW_MS;
-      timer = window.setTimeout(() => show(over, instant), instant ? 0 : OPEN_DELAY_MS);
-    });
-    document.addEventListener("pointerout", (event) => {
-      if (target(event) !== null) {
-        hide();
-      }
-    });
-    document.addEventListener("focusin", (event) => {
-      const focused = target(event);
-      if (focused !== null && focused.matches(":focus-visible")) {
-        hide();
-        show(focused, true);
-      }
-    });
-    document.addEventListener("focusout", hide);
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        hide();
-      }
-    });
-    window.addEventListener("scroll", hide, { capture: true, passive: true });
-  }
-
-  // src/records/custom-fields-view.ts
-  var KINDS = [
-    { type: "text", words: "Text" },
-    { type: "concealed", words: "Secret" }
-  ];
-  function customEditor(initial, controlFor, taken) {
-    let made = 0;
-    const entries = [];
-    const list = el("div", { class: "custom-fields" });
-    const append = (field3) => {
-      made += 1;
-      const control2 = controlFor(field3, `custom-${made}`);
-      const remove = iconAction("trash", "Remove field", `Remove the field ${field3.label}`, "danger");
-      const input = control2.row.querySelector("input");
-      const line = el("div", { class: "input-line" });
-      input?.replaceWith(line);
-      line.append(...input === null ? [] : [input], remove);
-      const row2 = el("div", { class: "custom-row" }, control2.row);
-      const entry = { field: field3, control: control2, row: row2 };
-      remove.addEventListener("click", () => {
-        entries.splice(entries.indexOf(entry), 1);
-        row2.remove();
-        opener.focus();
-      });
-      entries.push(entry);
-      list.append(row2);
-      return row2;
-    };
-    initial.forEach(append);
-    const name = el("input", { id: "custom-name", type: "text", autocomplete: "off", maxlength: "64" });
-    const hint = el("p", { id: "custom-name-hint", class: "message bad" });
-    hint.hidden = true;
-    name.setAttribute("aria-describedby", hint.id);
-    let kind = "text";
-    const chips = KINDS.map(({ type, words }) => {
-      const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(type === kind) }, words);
-      chip.addEventListener("click", () => {
-        kind = type;
-        chips.forEach((other, at2) => other.setAttribute("aria-pressed", String(KINDS[at2]?.type === kind)));
-      });
-      return chip;
-    });
-    const add = el("button", { type: "button", class: "primary" }, "Add field");
-    const cancel = el("button", { type: "button", class: "quiet" }, "Cancel");
-    const panel = el(
-      "div",
-      { class: "custom-add" },
-      el("div", { class: "field" }, el("label", { for: name.id }, "Field name"), name, hint),
-      el("div", { class: "chips", role: "group", "aria-label": "Kind of field" }, ...chips),
-      el("div", { class: "actions" }, add, cancel)
-    );
-    panel.hidden = true;
-    const opener = el("button", { type: "button", class: "quiet add-field", "aria-expanded": "false" }, icon("plus"), el("span", {}, "Add a field"));
-    const close = () => {
-      panel.hidden = true;
-      opener.hidden = false;
-      opener.setAttribute("aria-expanded", "false");
-    };
-    opener.addEventListener("click", () => {
-      name.value = "";
-      hint.hidden = true;
-      name.removeAttribute("aria-invalid");
-      panel.hidden = false;
-      opener.hidden = true;
-      opener.setAttribute("aria-expanded", "true");
-      name.focus();
-    });
-    const submit = () => {
-      const problem2 = customLabelProblem(name.value, [...taken, ...entries.map((entry) => entry.field.label)]);
-      hint.hidden = problem2 === null;
-      fill(hint, problem2 ?? "");
-      if (problem2 !== null) {
-        name.setAttribute("aria-invalid", "true");
-        name.focus();
-        return;
-      }
-      const row2 = append({ label: name.value.trim(), type: kind, value: null });
-      close();
-      row2.querySelector("input")?.focus();
-    };
-    add.addEventListener("click", submit);
-    cancel.addEventListener("click", () => {
-      close();
-      opener.focus();
-    });
-    name.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        submit();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        close();
-        opener.focus();
-      }
-    });
-    const section = el("fieldset", { class: "record-section" }, el("legend", {}, CUSTOM_SECTION), list, opener, panel);
-    return { section, current: () => entries.map(({ field: field3, control: control2 }) => ({ field: field3, control: control2 })) };
-  }
 
   // src/base64url.ts
   function encode(bytes) {
@@ -544,16 +315,6 @@
     const standard = text2.replaceAll("-", "+").replaceAll("_", "/");
     return Uint8Array.from(atob(standard.padEnd(Math.ceil(standard.length / 4) * 4, "=")), (character) => character.charCodeAt(0));
   }
-
-  // src/crypto/errors.ts
-  var VaultCryptoError = class extends Error {
-    reason;
-    constructor(reason) {
-      super(`refused: ${reason}`);
-      this.name = "VaultCryptoError";
-      this.reason = reason;
-    }
-  };
 
   // src/crypto/bytes.ts
   var ENCODER = new TextEncoder();
@@ -728,43 +489,107 @@
     };
   }
 
-  // src/records-model.ts
+  // src/records/share-targets.ts
   var isRecord3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  var isText2 = (v) => typeof v === "string" && v !== "";
   var isId = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isText2 = (v) => typeof v === "string" && v !== "";
+  function readMemberList(v) {
+    if (!isRecord3(v) || !Array.isArray(v["members"])) {
+      return null;
+    }
+    const members = v["members"].map((member) => {
+      if (!isRecord3(member) || !isRecord3(member["account"]) || typeof member["state"] !== "string") {
+        return null;
+      }
+      const { id, name, email } = member["account"];
+      const { role } = member;
+      return isId(id) && isText2(name) && isText2(email) && (role === "owner" || role === "admin" || role === "member") ? { account: id, name, email, role, active: member["state"] === "active" } : null;
+    });
+    return members.every((member) => member !== null) ? members : null;
+  }
+  function readGroupList(v) {
+    if (!isRecord3(v) || !Array.isArray(v["groups"])) {
+      return null;
+    }
+    const groups = v["groups"].map((group) => {
+      if (!isRecord3(group) || !isId(group["id"]) || !isText2(group["name"])) {
+        return null;
+      }
+      const { kind } = group;
+      return kind === "company" || kind === "department" || kind === "team" ? { id: group["id"], kind, name: group["name"] } : null;
+    });
+    return groups.every((group) => group !== null) ? groups : null;
+  }
+  function shareTargets(members, groups, directory, groupKeys, author, shared) {
+    const open3 = (id) => id !== author && !shared.includes(id);
+    const people = members.filter((member) => member.active && open3(member.account)).map((member) => {
+      const listed = directory.get(member.account);
+      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
+      return listed === void 0 || keyId === null ? { id: member.account, label: member.name, detail: member.email, recipient: null, missing: "hasn't set an unlock password yet" } : { id: member.account, label: member.name, detail: member.email, recipient: { recipient: { kind: "member", account: member.account }, keyId, listed: listed.agreementPublic } };
+    });
+    const teams = groups.filter((group) => open3(group.id)).map((group) => {
+      const listed = groupKeys.get(group.id);
+      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
+      const detail = groupDetail(group.kind);
+      return listed === void 0 || keyId === null ? { id: group.id, label: group.name, detail, recipient: null, missing: "has no key yet" } : { id: group.id, label: group.name, detail, recipient: { recipient: { kind: "group", group: group.id }, keyId, listed: listed.public } };
+    });
+    return [...people, ...teams];
+  }
+  function filterTargets(targets, text2) {
+    const wanted = text2.trim().toLowerCase();
+    return targets.filter((target) => `${target.label}
+${target.detail}`.toLowerCase().includes(wanted));
+  }
+  function sharedRows(shares, members, groups) {
+    return shares.map((share2) => {
+      const { target, right } = share2;
+      if (share2.kind === "member") {
+        const member = members.find((each) => each.account === target);
+        return member === void 0 ? { target, label: "A member no longer listed", detail: "", right } : { target, label: member.name, detail: member.email, right };
+      }
+      const group = groups.find((each) => each.id === target);
+      return group === void 0 ? { target, label: "A group no longer listed", detail: "", right } : { target, label: group.name, detail: groupDetail(group.kind), right };
+    });
+  }
+  var groupDetail = (kind) => kind === "company" ? "Everyone in the company" : kind === "department" ? "Department" : "Team";
+
+  // src/records-model.ts
+  var isRecord4 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isText3 = (v) => typeof v === "string" && v !== "";
+  var isId2 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   var isWhole = (v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
   function readRow(v) {
-    if (!isRecord3(v)) {
+    if (!isRecord4(v)) {
       return null;
     }
     const { id, record_type: recordType, revision, key_id: keyId, author, created, updated, rotation_due: rotationDue } = v;
-    return isId(id) && isText2(recordType) && isWhole(revision) && revision > 0 && isId(keyId) && isId(author) && isWhole(created) && isWhole(updated) && typeof rotationDue === "boolean" ? { id, recordType, revision, keyId, author, created, updated, rotationDue } : null;
+    return isId2(id) && isText3(recordType) && isWhole(revision) && revision > 0 && isId2(keyId) && isId2(author) && isWhole(created) && isWhole(updated) && typeof rotationDue === "boolean" ? { id, recordType, revision, keyId, author, created, updated, rotationDue } : null;
   }
   function readRecipient(v) {
     if (typeof v !== "string") {
       return null;
     }
     const [kind, keyId, extra] = v.split(":");
-    return (kind === "member" || kind === "group") && isId(keyId) && extra === void 0 ? { kind, keyId } : null;
+    return (kind === "member" || kind === "group") && isId2(keyId) && extra === void 0 ? { kind, keyId } : null;
   }
   function readOpened(v) {
-    if (!isRecord3(v)) {
+    if (!isRecord4(v)) {
       return null;
     }
     const row2 = readRow(v["record"]);
     const recipient = readRecipient(v["recipient"]);
-    const [body, signature, wrap] = [v["body"], v["signature"], v["wrap"]].map((part) => isText2(part) ? decode(part) : null);
+    const [body, signature, wrap] = [v["body"], v["signature"], v["wrap"]].map((part) => isText3(part) ? decode(part) : null);
     const authorKey = v["author_key"];
     const through = v["through"];
     const revisedBy = v["revised_by"];
-    return row2 !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey) && isId(revisedBy) && Array.isArray(through) && through.every(isId) ? { row: row2, body, signature, authorKey, revisedBy, recipient, wrap, through } : null;
+    return row2 !== null && recipient !== null && body != null && signature != null && wrap != null && isId2(authorKey) && isId2(revisedBy) && Array.isArray(through) && through.every(isId2) ? { row: row2, body, signature, authorKey, revisedBy, recipient, wrap, through } : null;
   }
   function readOpenedPage(v) {
-    if (!isRecord3(v) || !Array.isArray(v["records"])) {
+    if (!isRecord4(v) || !Array.isArray(v["records"])) {
       return null;
     }
     const next = v["next"];
-    if (next !== null && !isId(next)) {
+    if (next !== null && !isId2(next)) {
       return null;
     }
     const records = [];
@@ -779,21 +604,79 @@
   }
   var openedPagePath = (company, cursor) => `/api/companies/${encodeURIComponent(company)}/records?opened=true${cursor === null ? "" : `&after=${encodeURIComponent(cursor)}`}`;
   function readGroupIds(v) {
-    if (!isRecord3(v) || !Array.isArray(v["groups"])) {
+    if (!isRecord4(v) || !Array.isArray(v["groups"])) {
       return null;
     }
-    const ids = v["groups"].map((group) => isRecord3(group) && isId(group["id"]) ? group["id"] : null);
+    const ids = v["groups"].map((group) => isRecord4(group) && isId2(group["id"]) ? group["id"] : null);
     return ids.every((id) => id !== null) ? ids : null;
   }
   function readGroupKey(v) {
-    if (!isRecord3(v) || typeof v["key_id"] !== "string" || !isText2(v["public"])) {
+    if (!isRecord4(v) || typeof v["key_id"] !== "string" || !isText3(v["public"])) {
       return null;
     }
     const keyId = keyIdBytes(v["key_id"]);
     const listed = decode(v["public"]);
     const wrapped = v["wrap"];
-    const wrap = wrapped === null ? null : isText2(wrapped) ? decode(wrapped) ?? void 0 : void 0;
+    const wrap = wrapped === null ? null : isText3(wrapped) ? decode(wrapped) ?? void 0 : void 0;
     return keyId !== null && listed !== null && listed.length === 32 && wrap !== void 0 ? { keyId, public: listed, wrap } : null;
+  }
+
+  // src/records/audience.ts
+  var ORDER = { company: 0, department: 1, team: 2 };
+  function companyAndGroups(company, groups) {
+    const itself = { id: company.id, kind: "company", name: company.name };
+    return [itself, ...groups.filter((group) => group.id !== company.id)].sort(
+      (one, other) => ORDER[one.kind] - ORDER[other.kind] || one.name.localeCompare(other.name)
+    );
+  }
+  function audienceChoices(company, groups, groupKeys) {
+    return shareTargets([], companyAndGroups(company, groups), /* @__PURE__ */ new Map(), groupKeys, "", []);
+  }
+
+  // src/icons.ts
+  var SVG = "http://www.w3.org/2000/svg";
+  var box = (x, y, w, h, r) => `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${h - 2 * r}a${r} ${r} 0 0 1 -${r} ${r}h-${w - 2 * r}a${r} ${r} 0 0 1 -${r} -${r}v-${h - 2 * r}a${r} ${r} 0 0 1 ${r} -${r}z`;
+  var ring = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 -${2 * r} 0`;
+  var SHAPES = {
+    records: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
+    members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
+    sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
+    moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
+    lock: [box(5, 11, 14, 10, 2), "M8 11V7.5a4 4 0 0 1 8 0V11"],
+    "sign-out": ["M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4", "M15 8l4 4-4 4", "M19 12H9"],
+    switch: ["M7 4L3 8l4 4", "M3 8h14", "M17 12l4 4-4 4", "M21 16H7"],
+    copy: [box(8, 8, 13, 13, 2), "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"],
+    eye: ["M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z", ring(12, 12, 3)],
+    "eye-off": [
+      "M3 3l18 18",
+      "M10.6 5.1A9.7 9.7 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.9 3.9",
+      "M6.6 6.6C3.9 8.4 2.5 12 2.5 12s3.5 7 9.5 7a9.3 9.3 0 0 0 5.4-1.6",
+      "M9.9 9.9a3 3 0 0 0 4.2 4.2"
+    ],
+    edit: ["M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16z", "M13.5 6.5l4 4"],
+    share: [ring(6, 12, 2.5), ring(18, 6, 2.5), ring(18, 18, 2.5), "M8.2 10.8l7.6-3.6", "M8.2 13.2l7.6 3.6"],
+    trash: ["M4 7h16", "M9.5 7V4.5h5V7", "M6.5 7l1 13h9l1-13", "M10 11v5.5", "M14 11v5.5"],
+    close: ["M6 6l12 12", "M18 6L6 18"],
+    plus: ["M12 5v14", "M5 12h14"],
+    search: [ring(11, 11, 6.5), "M20 20l-4.2-4.2"]
+  };
+  function icon(name) {
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "icon");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    for (const d of SHAPES[name]) {
+      const path = document.createElementNS(SVG, "path");
+      path.setAttribute("d", d);
+      svg.append(path);
+    }
+    return svg;
   }
 
   // src/screen.ts
@@ -804,271 +687,6 @@
     { class: "crumbs", "aria-label": "Breadcrumb" },
     el("ol", {}, ...trail.map((crumb) => el("li", {}, crumb.href === null ? el("span", { "aria-current": "page" }, crumb.label) : el("a", { href: crumb.href }, crumb.label))))
   );
-
-  // src/records/crumbs.ts
-  var RECORDS = "Records";
-  var named = (title) => title === null ? "Record" : title === "" ? "Untitled" : title;
-  var recordCrumbs = (records, title) => [
-    { label: RECORDS, href: records },
-    { label: named(title), href: null }
-  ];
-  var editCrumbs = (records, record, title) => [
-    { label: RECORDS, href: records },
-    { label: named(title), href: record },
-    { label: "Edit", href: null }
-  ];
-  function newCrumbs(records, chooser, typeName2) {
-    const top = { label: RECORDS, href: records };
-    return typeName2 === null ? [top, { label: "New record", href: null }] : [top, { label: "New record", href: chooser }, { label: typeName2, href: null }];
-  }
-
-  // src/crypto/labels.ts
-  var PREFIX = "tessaridb-vault/v1/";
-  var LABEL = {
-    /** HKDF info for the unlock wrap key derived from the master key. */
-    unlockWrap: `${PREFIX}unlock-wrap`,
-    /** HKDF info for a revision's content key derived from its record key. */
-    recordContent: `${PREFIX}record-content`,
-    /** Associated-data prefix of a record body. */
-    record: `${PREFIX}record`,
-    /** HKDF info for a file's key derived from its record key. */
-    file: `${PREFIX}file`,
-    /** Associated-data prefix of every chunk of a file. */
-    fileChunk: `${PREFIX}file-chunk`,
-    /** Associated-data prefix of a membership private key wrapped under the unlock key. */
-    memberKey: `${PREFIX}member-key`,
-    /** Associated-data prefix of the company owner's public key, pinned under the unlock key in a member's key set. */
-    ownerPin: `${PREFIX}owner-pin`,
-    /** HPKE `info` prefix of a key wrap. */
-    wrap: `${PREFIX}wrap`,
-    /** Ed25519 domain prefix of a vouching statement. */
-    statement: `${PREFIX}statement`,
-    /** Ed25519 domain prefix of a revision signature. */
-    revision: `${PREFIX}revision`,
-    /** SHA-256 prefix of the key fingerprint two people compare before one vouches for the other's key. */
-    fingerprint: `${PREFIX}fingerprint`
-  };
-  var FORMAT_VERSION = 1;
-  var ALGORITHM = {
-    recordBody: 1,
-    keyWrap: 2,
-    memberKey: 3,
-    signature: 4,
-    file: 5
-  };
-
-  // src/crypto/files.ts
-  var FILE_CHUNK_BYTES = 64 * 1024;
-  var FILE_MAX_BYTES = 256 * 1024 * 1024;
-  var TAG_BYTES = 16;
-  var SEALED_CHUNK_BYTES = FILE_CHUNK_BYTES + TAG_BYTES;
-  var MAX_CHUNKS = FILE_MAX_BYTES / FILE_CHUNK_BYTES;
-
-  // src/records/totp.ts
-  var HASH = { SHA1: "SHA-1", SHA256: "SHA-256", SHA512: "SHA-512" };
-  async function totpCode(params, unixSeconds) {
-    if (!Number.isSafeInteger(params.period) || params.period < 1 || !Number.isSafeInteger(unixSeconds) || unixSeconds < 0) {
-      throw new VaultCryptoError("malformed");
-    }
-    const key = await crypto.subtle.importKey("raw", params.secret, { name: "HMAC", hash: HASH[params.algorithm] }, false, [
-      "sign"
-    ]);
-    const step = integer(Math.floor(unixSeconds / params.period), 8);
-    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, step));
-    const offset = (mac[mac.length - 1] ?? 0) & 15;
-    const binary = ((mac[offset] ?? 0) & 127) << 24 | (mac[offset + 1] ?? 0) << 16 | (mac[offset + 2] ?? 0) << 8 | (mac[offset + 3] ?? 0);
-    return String(binary % 10 ** params.digits).padStart(params.digits, "0");
-  }
-  var ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  function base32Decode(text2) {
-    const clean = text2.replace(/\s+/g, "").toUpperCase().replace(/=+$/, "");
-    const out = [];
-    let buffer = 0;
-    let bits = 0;
-    for (const character of clean) {
-      const value = ALPHABET.indexOf(character);
-      if (value < 0) {
-        throw new VaultCryptoError("malformed");
-      }
-      buffer = buffer << 5 | value;
-      bits += 5;
-      if (bits >= 8) {
-        out.push(buffer >> bits - 8 & 255);
-        bits -= 8;
-      }
-      buffer &= (1 << bits) - 1;
-    }
-    if (bits >= 5 || buffer !== 0) {
-      throw new VaultCryptoError("malformed");
-    }
-    return Uint8Array.from(out);
-  }
-
-  // src/records/fields.ts
-  var FIELD_TYPES = [
-    "text",
-    "multiline",
-    "concealed",
-    "url",
-    "email",
-    "phone",
-    "number",
-    "date",
-    "month-year",
-    "boolean",
-    "otp",
-    "file",
-    "security-question",
-    "ssh-key"
-  ];
-  var MAX_TEXT = 65536;
-  var SHAPES2 = {
-    url: (text2) => URL.canParse(text2),
-    email: (text2) => /^[^\s@]+@[^\s@]+$/.test(text2),
-    phone: (text2) => /^[+0-9 ().-]{1,32}$/.test(text2),
-    number: (text2) => /^-?\d+(\.\d+)?$/.test(text2),
-    date: (text2) => {
-      const match2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text2);
-      if (match2 === null) {
-        return false;
-      }
-      const [year, month, day] = [Number(match2[1]), Number(match2[2]), Number(match2[3])];
-      const date = new Date(Date.UTC(year, month - 1, day));
-      return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-    },
-    "month-year": (text2) => /^\d{4}-(0[1-9]|1[0-2])$/.test(text2)
-  };
-  function fail() {
-    throw new VaultCryptoError("malformed");
-  }
-  function exactly(raw, keys) {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      return fail();
-    }
-    const present = Object.keys(raw);
-    if (present.length !== keys.length || !keys.every((key) => present.includes(key))) {
-      return fail();
-    }
-    return Object.fromEntries(Object.entries(raw));
-  }
-  function readText(raw) {
-    if (typeof raw !== "string") {
-      return fail();
-    }
-    if (raw.length > MAX_TEXT) {
-      throw new VaultCryptoError("too-large");
-    }
-    return raw;
-  }
-  function readOtp(raw) {
-    const value = exactly(raw, ["secret", "algorithm", "digits", "period"]);
-    const secret = readText(value["secret"]);
-    const { algorithm, digits, period } = value;
-    if (base32Decode(secret).length === 0 || algorithm !== "SHA1" && algorithm !== "SHA256" && algorithm !== "SHA512" || digits !== 6 && digits !== 8 || typeof period !== "number" || !Number.isInteger(period) || period < 1 || period > 3600) {
-      return fail();
-    }
-    return { secret, algorithm, digits, period };
-  }
-  function readFile(raw) {
-    const value = exactly(raw, ["id", "name", "size", "mediaType"]);
-    const size = value["size"];
-    if (typeof size !== "number" || !Number.isInteger(size) || size < 0 || size > FILE_MAX_BYTES) {
-      return fail();
-    }
-    return { id: readText(value["id"]), name: readText(value["name"]), size, mediaType: readText(value["mediaType"]) };
-  }
-  function orNull(raw, read) {
-    return raw === null ? null : read(raw);
-  }
-  function readShaped(type, raw) {
-    const text2 = readText(raw);
-    return text2 === "" || SHAPES2[type](text2) ? text2 : fail();
-  }
-  function readSecurityQuestion(raw) {
-    const value = exactly(raw, ["question", "answer"]);
-    return { question: readText(value["question"]), answer: readText(value["answer"]) };
-  }
-  function readSshKey(raw) {
-    const value = exactly(raw, ["privateKey", "publicKey", "fingerprint"]);
-    return {
-      privateKey: readText(value["privateKey"]),
-      publicKey: readText(value["publicKey"]),
-      fingerprint: readText(value["fingerprint"])
-    };
-  }
-  function isFieldType(raw) {
-    return FIELD_TYPES.some((type) => type === raw);
-  }
-  function readField(raw) {
-    const field3 = exactly(raw, ["label", "type", "value"]);
-    const { type, value } = field3;
-    if (!isFieldType(type)) {
-      return fail();
-    }
-    const label = readText(field3["label"]);
-    switch (type) {
-      case "text":
-      case "multiline":
-      case "concealed":
-        return { label, type, value: orNull(value, readText) };
-      case "url":
-      case "email":
-      case "phone":
-      case "number":
-      case "date":
-      case "month-year":
-        return { label, type, value: orNull(value, (text2) => readShaped(type, text2)) };
-      case "boolean":
-        return { label, type, value: orNull(value, (flag) => typeof flag === "boolean" ? flag : fail()) };
-      case "otp":
-        return { label, type, value: orNull(value, readOtp) };
-      case "file":
-        return { label, type, value: orNull(value, readFile) };
-      case "security-question":
-        return { label, type, value: orNull(value, readSecurityQuestion) };
-      case "ssh-key":
-        return { label, type, value: orNull(value, readSshKey) };
-    }
-  }
-
-  // src/records/editing.ts
-  var fieldAt = (section, field3) => `${section}.${field3}`;
-  var FORMAT = {
-    url: "Use a full address starting with https://.",
-    email: "Use an address like name@example.com.",
-    phone: "Use digits, spaces and + ( ) - only.",
-    number: "Use digits only.",
-    date: "Use a date like 2027-02-28.",
-    "month-year": "Use a month like 2028-11.",
-    otp: "Paste the setup key exactly as the issuer showed it."
-  };
-  function problem(type, refused) {
-    if (refused instanceof VaultCryptoError && refused.reason === "too-large") {
-      return "This value is too long to keep.";
-    }
-    return FORMAT[type] ?? "This value isn't in a form the record can keep.";
-  }
-  function edited(document2, title, values) {
-    const problems = /* @__PURE__ */ new Map();
-    const named2 = title.trim();
-    if (named2 === "") {
-      problems.set("title", "Give the record a title, so you can find it again.");
-    }
-    const sections = document2.sections.map((section, sectionIndex) => ({
-      name: section.name,
-      fields: section.fields.map((field3, fieldIndex) => {
-        const at2 = fieldAt(sectionIndex, fieldIndex);
-        const typed = values.has(at2) ? values.get(at2) : field3.value;
-        try {
-          return readField({ label: field3.label, type: field3.type, value: typed === "" ? null : typed });
-        } catch (refused) {
-          problems.set(at2, problem(field3.type, refused));
-          return field3;
-        }
-      })
-    }));
-    return problems.size === 0 ? { ok: true, document: { ...document2, title: named2, sections } } : { ok: false, problems };
-  }
 
   // src/records/types.ts
   function main(name, id, fields) {
@@ -1232,20 +850,20 @@
 
   // src/chain-model.ts
   var OWNER_KEY_BYTES = 32;
-  var isRecord4 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  var isText3 = (v) => typeof v === "string" && v !== "";
+  var isRecord5 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isText4 = (v) => typeof v === "string" && v !== "";
   function readChain(v) {
-    if (!isRecord4(v) || !Array.isArray(v["statements"])) {
+    if (!isRecord5(v) || !Array.isArray(v["statements"])) {
       return null;
     }
     const pinned = v["owner_signing"];
-    const ownerSigning = pinned === null ? null : isText3(pinned) ? decode(pinned) : void 0;
+    const ownerSigning = pinned === null ? null : isText4(pinned) ? decode(pinned) : void 0;
     if (ownerSigning === void 0 || ownerSigning !== null && ownerSigning.length !== OWNER_KEY_BYTES) {
       return null;
     }
     const statements = [];
     for (const [index, item] of v["statements"].entries()) {
-      if (!isRecord4(item) || item["seq"] !== index + 1 || !isText3(item["bytes"]) || !isText3(item["signature"])) {
+      if (!isRecord5(item) || item["seq"] !== index + 1 || !isText4(item["bytes"]) || !isText4(item["signature"])) {
         return null;
       }
       const [bytes, signature] = [decode(item["bytes"]), decode(item["signature"])];
@@ -1269,6 +887,41 @@
     signature: encode(statement.signature),
     owner_signing: encode(ownerSigning)
   });
+
+  // src/crypto/labels.ts
+  var PREFIX = "tessaridb-vault/v1/";
+  var LABEL = {
+    /** HKDF info for the unlock wrap key derived from the master key. */
+    unlockWrap: `${PREFIX}unlock-wrap`,
+    /** HKDF info for a revision's content key derived from its record key. */
+    recordContent: `${PREFIX}record-content`,
+    /** Associated-data prefix of a record body. */
+    record: `${PREFIX}record`,
+    /** HKDF info for a file's key derived from its record key. */
+    file: `${PREFIX}file`,
+    /** Associated-data prefix of every chunk of a file. */
+    fileChunk: `${PREFIX}file-chunk`,
+    /** Associated-data prefix of a membership private key wrapped under the unlock key. */
+    memberKey: `${PREFIX}member-key`,
+    /** Associated-data prefix of the company owner's public key, pinned under the unlock key in a member's key set. */
+    ownerPin: `${PREFIX}owner-pin`,
+    /** HPKE `info` prefix of a key wrap. */
+    wrap: `${PREFIX}wrap`,
+    /** Ed25519 domain prefix of a vouching statement. */
+    statement: `${PREFIX}statement`,
+    /** Ed25519 domain prefix of a revision signature. */
+    revision: `${PREFIX}revision`,
+    /** SHA-256 prefix of the key fingerprint two people compare before one vouches for the other's key. */
+    fingerprint: `${PREFIX}fingerprint`
+  };
+  var FORMAT_VERSION = 1;
+  var ALGORITHM = {
+    recordBody: 1,
+    keyWrap: 2,
+    memberKey: 3,
+    signature: 4,
+    file: 5
+  };
 
   // src/crypto/keys.ts
   var PKCS8_PREFIX_X25519 = Uint8Array.of(48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 110, 4, 34, 4, 32);
@@ -1348,7 +1001,7 @@
   // src/crypto/statements.ts
   var KEY_BYTES2 = 32;
   var DIGEST_BYTES = 32;
-  var KINDS2 = ["member", "admin", "group", "revoke", "recovery"];
+  var KINDS = ["member", "admin", "group", "revoke", "recovery"];
   var Vouched = class {
     #members;
     #groups;
@@ -1374,7 +1027,7 @@
   function encode2(company, seq, prev, fields, signerPublic) {
     return concat(
       utf8(LABEL.statement),
-      Uint8Array.of(FORMAT_VERSION, KINDS2.indexOf(fields.kind) + 1),
+      Uint8Array.of(FORMAT_VERSION, KINDS.indexOf(fields.kind) + 1),
       field2(utf8(company)),
       integer(seq, 8),
       prev,
@@ -1392,7 +1045,7 @@
     if (reader.integer(1) !== FORMAT_VERSION) {
       throw new VaultCryptoError("unknown-version");
     }
-    const kind = KINDS2[reader.integer(1) - 1];
+    const kind = KINDS[reader.integer(1) - 1];
     if (kind === void 0) {
       throw new VaultCryptoError("chain-broken");
     }
@@ -1510,7 +1163,7 @@
   var KEY_ID_BYTES = 16;
   var SALT_BYTES = 32;
   var NONCE_BYTES = 12;
-  var TAG_BYTES2 = 16;
+  var TAG_BYTES = 16;
   async function importRecordKey(raw) {
     if (raw.length !== 32) {
       throw new VaultCryptoError("malformed");
@@ -1566,7 +1219,7 @@
     const salt = reader.take(SALT_BYTES);
     const nonce = reader.take(NONCE_BYTES);
     const ciphertext = reader.rest();
-    if (ciphertext.length < TAG_BYTES2) {
+    if (ciphertext.length < TAG_BYTES) {
       throw new VaultCryptoError("malformed");
     }
     if (!sameBytes(keyId, context2.keyId)) {
@@ -1737,6 +1390,180 @@
     const enc = reader.take(ENC_BYTES);
     const ciphertext = reader.rest();
     return open(recipientPrivate, recipientPublic, enc, infoOf(context2), new Uint8Array(0), ciphertext);
+  }
+
+  // src/crypto/files.ts
+  var FILE_CHUNK_BYTES = 64 * 1024;
+  var FILE_MAX_BYTES = 256 * 1024 * 1024;
+  var TAG_BYTES2 = 16;
+  var SEALED_CHUNK_BYTES = FILE_CHUNK_BYTES + TAG_BYTES2;
+  var MAX_CHUNKS = FILE_MAX_BYTES / FILE_CHUNK_BYTES;
+
+  // src/records/totp.ts
+  var HASH = { SHA1: "SHA-1", SHA256: "SHA-256", SHA512: "SHA-512" };
+  async function totpCode(params, unixSeconds) {
+    if (!Number.isSafeInteger(params.period) || params.period < 1 || !Number.isSafeInteger(unixSeconds) || unixSeconds < 0) {
+      throw new VaultCryptoError("malformed");
+    }
+    const key = await crypto.subtle.importKey("raw", params.secret, { name: "HMAC", hash: HASH[params.algorithm] }, false, [
+      "sign"
+    ]);
+    const step = integer(Math.floor(unixSeconds / params.period), 8);
+    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, step));
+    const offset = (mac[mac.length - 1] ?? 0) & 15;
+    const binary = ((mac[offset] ?? 0) & 127) << 24 | (mac[offset + 1] ?? 0) << 16 | (mac[offset + 2] ?? 0) << 8 | (mac[offset + 3] ?? 0);
+    return String(binary % 10 ** params.digits).padStart(params.digits, "0");
+  }
+  var ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  function base32Decode(text2) {
+    const clean = text2.replace(/\s+/g, "").toUpperCase().replace(/=+$/, "");
+    const out = [];
+    let buffer = 0;
+    let bits = 0;
+    for (const character of clean) {
+      const value = ALPHABET.indexOf(character);
+      if (value < 0) {
+        throw new VaultCryptoError("malformed");
+      }
+      buffer = buffer << 5 | value;
+      bits += 5;
+      if (bits >= 8) {
+        out.push(buffer >> bits - 8 & 255);
+        bits -= 8;
+      }
+      buffer &= (1 << bits) - 1;
+    }
+    if (bits >= 5 || buffer !== 0) {
+      throw new VaultCryptoError("malformed");
+    }
+    return Uint8Array.from(out);
+  }
+
+  // src/records/fields.ts
+  var FIELD_TYPES = [
+    "text",
+    "multiline",
+    "concealed",
+    "url",
+    "email",
+    "phone",
+    "number",
+    "date",
+    "month-year",
+    "boolean",
+    "otp",
+    "file",
+    "security-question",
+    "ssh-key"
+  ];
+  var MAX_TEXT = 65536;
+  var SHAPES2 = {
+    url: (text2) => URL.canParse(text2),
+    email: (text2) => /^[^\s@]+@[^\s@]+$/.test(text2),
+    phone: (text2) => /^[+0-9 ().-]{1,32}$/.test(text2),
+    number: (text2) => /^-?\d+(\.\d+)?$/.test(text2),
+    date: (text2) => {
+      const match2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text2);
+      if (match2 === null) {
+        return false;
+      }
+      const [year, month, day] = [Number(match2[1]), Number(match2[2]), Number(match2[3])];
+      const date = new Date(Date.UTC(year, month - 1, day));
+      return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+    },
+    "month-year": (text2) => /^\d{4}-(0[1-9]|1[0-2])$/.test(text2)
+  };
+  function fail() {
+    throw new VaultCryptoError("malformed");
+  }
+  function exactly(raw, keys) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return fail();
+    }
+    const present = Object.keys(raw);
+    if (present.length !== keys.length || !keys.every((key) => present.includes(key))) {
+      return fail();
+    }
+    return Object.fromEntries(Object.entries(raw));
+  }
+  function readText(raw) {
+    if (typeof raw !== "string") {
+      return fail();
+    }
+    if (raw.length > MAX_TEXT) {
+      throw new VaultCryptoError("too-large");
+    }
+    return raw;
+  }
+  function readOtp(raw) {
+    const value = exactly(raw, ["secret", "algorithm", "digits", "period"]);
+    const secret = readText(value["secret"]);
+    const { algorithm, digits, period } = value;
+    if (base32Decode(secret).length === 0 || algorithm !== "SHA1" && algorithm !== "SHA256" && algorithm !== "SHA512" || digits !== 6 && digits !== 8 || typeof period !== "number" || !Number.isInteger(period) || period < 1 || period > 3600) {
+      return fail();
+    }
+    return { secret, algorithm, digits, period };
+  }
+  function readFile(raw) {
+    const value = exactly(raw, ["id", "name", "size", "mediaType"]);
+    const size = value["size"];
+    if (typeof size !== "number" || !Number.isInteger(size) || size < 0 || size > FILE_MAX_BYTES) {
+      return fail();
+    }
+    return { id: readText(value["id"]), name: readText(value["name"]), size, mediaType: readText(value["mediaType"]) };
+  }
+  function orNull(raw, read) {
+    return raw === null ? null : read(raw);
+  }
+  function readShaped(type, raw) {
+    const text2 = readText(raw);
+    return text2 === "" || SHAPES2[type](text2) ? text2 : fail();
+  }
+  function readSecurityQuestion(raw) {
+    const value = exactly(raw, ["question", "answer"]);
+    return { question: readText(value["question"]), answer: readText(value["answer"]) };
+  }
+  function readSshKey(raw) {
+    const value = exactly(raw, ["privateKey", "publicKey", "fingerprint"]);
+    return {
+      privateKey: readText(value["privateKey"]),
+      publicKey: readText(value["publicKey"]),
+      fingerprint: readText(value["fingerprint"])
+    };
+  }
+  function isFieldType(raw) {
+    return FIELD_TYPES.some((type) => type === raw);
+  }
+  function readField(raw) {
+    const field3 = exactly(raw, ["label", "type", "value"]);
+    const { type, value } = field3;
+    if (!isFieldType(type)) {
+      return fail();
+    }
+    const label = readText(field3["label"]);
+    switch (type) {
+      case "text":
+      case "multiline":
+      case "concealed":
+        return { label, type, value: orNull(value, readText) };
+      case "url":
+      case "email":
+      case "phone":
+      case "number":
+      case "date":
+      case "month-year":
+        return { label, type, value: orNull(value, (text2) => readShaped(type, text2)) };
+      case "boolean":
+        return { label, type, value: orNull(value, (flag) => typeof flag === "boolean" ? flag : fail()) };
+      case "otp":
+        return { label, type, value: orNull(value, readOtp) };
+      case "file":
+        return { label, type, value: orNull(value, readFile) };
+      case "security-question":
+        return { label, type, value: orNull(value, readSecurityQuestion) };
+      case "ssh-key":
+        return { label, type, value: orNull(value, readSshKey) };
+    }
   }
 
   // src/records/document.ts
@@ -1913,70 +1740,6 @@
     }
   };
 
-  // src/records/share-targets.ts
-  var isRecord5 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  var isId2 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
-  var isText4 = (v) => typeof v === "string" && v !== "";
-  function readMemberList(v) {
-    if (!isRecord5(v) || !Array.isArray(v["members"])) {
-      return null;
-    }
-    const members = v["members"].map((member) => {
-      if (!isRecord5(member) || !isRecord5(member["account"]) || typeof member["state"] !== "string") {
-        return null;
-      }
-      const { id, name, email } = member["account"];
-      const { role } = member;
-      return isId2(id) && isText4(name) && isText4(email) && (role === "owner" || role === "admin" || role === "member") ? { account: id, name, email, role, active: member["state"] === "active" } : null;
-    });
-    return members.every((member) => member !== null) ? members : null;
-  }
-  function readGroupList(v) {
-    if (!isRecord5(v) || !Array.isArray(v["groups"])) {
-      return null;
-    }
-    const groups = v["groups"].map((group) => {
-      if (!isRecord5(group) || !isId2(group["id"]) || !isText4(group["name"])) {
-        return null;
-      }
-      const { kind } = group;
-      return kind === "company" || kind === "department" || kind === "team" ? { id: group["id"], kind, name: group["name"] } : null;
-    });
-    return groups.every((group) => group !== null) ? groups : null;
-  }
-  function shareTargets(members, groups, directory, groupKeys, author, shared) {
-    const open3 = (id) => id !== author && !shared.includes(id);
-    const people = members.filter((member) => member.active && open3(member.account)).map((member) => {
-      const listed = directory.get(member.account);
-      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
-      return listed === void 0 || keyId === null ? { id: member.account, label: member.name, detail: member.email, recipient: null, missing: "hasn't set an unlock password yet" } : { id: member.account, label: member.name, detail: member.email, recipient: { recipient: { kind: "member", account: member.account }, keyId, listed: listed.agreementPublic } };
-    });
-    const teams = groups.filter((group) => open3(group.id)).map((group) => {
-      const listed = groupKeys.get(group.id);
-      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
-      const detail = groupDetail(group.kind);
-      return listed === void 0 || keyId === null ? { id: group.id, label: group.name, detail, recipient: null, missing: "has no key yet" } : { id: group.id, label: group.name, detail, recipient: { recipient: { kind: "group", group: group.id }, keyId, listed: listed.public } };
-    });
-    return [...people, ...teams];
-  }
-  function filterTargets(targets, text2) {
-    const wanted = text2.trim().toLowerCase();
-    return targets.filter((target) => `${target.label}
-${target.detail}`.toLowerCase().includes(wanted));
-  }
-  function sharedRows(shares, members, groups) {
-    return shares.map((share2) => {
-      const { target, right } = share2;
-      if (share2.kind === "member") {
-        const member = members.find((each) => each.account === target);
-        return member === void 0 ? { target, label: "A member no longer listed", detail: "", right } : { target, label: member.name, detail: member.email, right };
-      }
-      const group = groups.find((each) => each.id === target);
-      return group === void 0 ? { target, label: "A group no longer listed", detail: "", right } : { target, label: group.name, detail: groupDetail(group.kind), right };
-    });
-  }
-  var groupDetail = (kind) => kind === "company" ? "Everyone in the company" : kind === "department" ? "Department" : "Team";
-
   // src/records/list-view.ts
   var when = new Intl.DateTimeFormat(void 0, { dateStyle: "medium", timeStyle: "short" });
   var loadFailure = (failure) => failure.code === "network" ? "The vault didn't answer. Check your connection, then try again." : "The vault couldn't load your records. Try again in a minute.";
@@ -2145,40 +1908,57 @@ ${target.detail}`.toLowerCase().includes(wanted));
     return wrapSecret(vouched, context2, secret);
   }
 
-  // src/records/save-record.ts
-  var ID_BYTES = 16;
-  var RECORD_KEY_BYTES = 32;
-  async function sealed(company, keys, id, revision, document2, vouched, others) {
-    const keyId = random(ID_BYTES);
-    const raw = random(RECORD_KEY_BYTES);
-    const context2 = (recipientKind, recipientKeyId) => ({ company, wrappedKind: "record", wrappedKeyId: keyId, recipientKind, recipientKeyId });
-    const copy2 = raw.slice();
-    let wrap;
-    const wraps = [];
+  // src/records/share-record.ts
+  async function shareBody(company, vouched, reader, opened, to, right) {
+    const raw = await recordKeyOf(company, vouched, reader, opened);
     try {
-      wrap = await wrapSecret(keys.agreementPublic, context2("member", keys.keyId), copy2);
-      for (const other of others) {
-        if (vouched === null) {
-          throw new RangeError("a revision shared with others needs the verified chain");
-        }
-        const made = await wrapToVouched(vouched, other.recipient, other.listed, context2(other.recipient.kind, other.keyId), copy2);
-        wraps.push({ recipient: `${other.recipient.kind}:${hex(other.keyId)}`, wrap: encode(made) });
+      const wrappedKeyId = keyIdBytes(opened.row.keyId);
+      if (wrappedKeyId === null) {
+        throw new VaultCryptoError("key-mismatch");
       }
+      const context2 = { company, wrappedKind: "record", wrappedKeyId, recipientKind: to.recipient.kind, recipientKeyId: to.keyId };
+      const wrap = await wrapToVouched(vouched, to.recipient, to.listed, context2, raw);
+      const target = to.recipient.kind === "member" ? { member: to.recipient.account } : { group: to.recipient.group };
+      return { ...target, right, key_id: hex(to.keyId), wrap: encode(wrap) };
     } finally {
-      wipe(copy2);
+      wipe(raw);
     }
-    const place = { company, record: id, revision };
-    const body = await sealRevision(await importRecordKey(raw), { ...place, keyId }, encodeRecord(document2));
-    const signature = await signRevision(keys.signingPrivate, place, body);
-    return { key_id: hex(keyId), body: encode(body), signature: encode(signature), author_key: hex(keys.keyId), wrap: encode(wrap), wraps };
   }
-  async function newRecord(company, keys, document2) {
-    const id = hex(random(ID_BYTES));
-    const { wraps: _none, ...parts } = await sealed(company, keys, id, 1, document2, null, []);
-    return { id, body: { id, record_type: document2.type, ...parts } };
+
+  // src/records/share-words.ts
+  var REOPEN = "This record or its sharing changed while you were deciding. Open it again, then share it.";
+  function shareFailure(status, code, fallback) {
+    if (status === 403) {
+      return "You can read this record but not share it.";
+    }
+    if (status !== 409) {
+      return fallback;
+    }
+    switch (code) {
+      case "already_shared":
+        return "This record is shared with them already.";
+      case "no_key":
+        return "They have no key yet, so nothing can be shared with them. Ask them to set their unlock password first.";
+      case "unknown_key":
+        return "Their key changed while you were deciding. Open the record again, then share it.";
+      case "stale_revision":
+      case "stale_shares":
+        return REOPEN;
+      default:
+        return fallback;
+    }
   }
-  async function revisedRecord(company, keys, vouched, row2, document2, others) {
-    return { revision: row2.revision, ...await sealed(company, keys, row2.id, row2.revision + 1, document2, vouched, others) };
+  function sealFailure(reason) {
+    return reason === "unvouched-recipient" ? "Their key is not vouched for in the company yet, so nothing can be shared with them. An admin vouches for new keys." : "This record could not be opened to share it. Open it again, then share it.";
+  }
+  function removeShareFailure(status, _code, fallback) {
+    if (status === 403) {
+      return "You can read this record but not change who it is shared with.";
+    }
+    if (status === 404) {
+      return "The record is no longer shared with them, or it is gone.";
+    }
+    return fallback;
   }
 
   // src/records/shares-model.ts
@@ -2235,6 +2015,395 @@ ${target.detail}`.toLowerCase().includes(wanted));
       });
     }
     return recipients;
+  }
+
+  // src/records/sharing.ts
+  var failed = (answer) => ({ ok: false, words: loadFailure(answer) });
+  async function loadSharing(held2, id) {
+    const path = companyPath(held2);
+    const [listed, members, groups, directory] = await Promise.all([
+      call("GET", `${path}/records/${encodeURIComponent(id)}/shares`, readShares),
+      call("GET", `${path}/members`, readMemberList),
+      call("GET", `${path}/groups`, readGroupList),
+      call("GET", `${path}/keys`, readDirectory)
+    ]);
+    if (!listed.ok) {
+      return listed.status === 403 ? null : failed(listed);
+    }
+    if (!members.ok) {
+      return failed(members);
+    }
+    if (!groups.ok) {
+      return failed(groups);
+    }
+    if (!directory.ok) {
+      return failed(directory);
+    }
+    const all = companyAndGroups({ id: held2.company, name: held2.companyName }, groups.value);
+    const groupKeys = await loadGroupKeys(held2, all);
+    if (!groupKeys.ok) {
+      return failed(groupKeys);
+    }
+    const { author, shares } = listed.value;
+    return {
+      ok: true,
+      rows: sharedRows(shares, members.value, all),
+      targets: shareTargets(members.value, all, directory.value, groupKeys.keys, author.account, shares.map((share2) => share2.target))
+    };
+  }
+  async function loadGroupKeys(held2, groups) {
+    const path = companyPath(held2);
+    const answers = await Promise.all(
+      groups.map((group) => call("GET", `${path}/groups/${encodeURIComponent(group.id)}/key`, readGroupKey).then((key) => [group.id, key]))
+    );
+    const keys = /* @__PURE__ */ new Map();
+    for (const [group, key] of answers) {
+      if (key.ok) {
+        keys.set(group, { keyId: hex(key.value.keyId), public: key.value.public });
+      } else if (key.status !== 404) {
+        return key;
+      }
+    }
+    return { ok: true, keys };
+  }
+
+  // src/records/audience-view.ts
+  async function loadAudience(held2) {
+    const groups = await call("GET", `${companyPath(held2)}/groups`, readGroupList);
+    if (!groups.ok) {
+      return { ok: false, words: loadFailure(groups) };
+    }
+    const company = { id: held2.company, name: held2.companyName };
+    const keys = await loadGroupKeys(held2, [{ id: company.id, kind: "company", name: company.name }, ...groups.value]);
+    return keys.ok ? { ok: true, choices: audienceChoices(company, groups.value, keys.keys) } : { ok: false, words: loadFailure(keys) };
+  }
+  function audiencePicker(choices) {
+    let chosen = null;
+    const row2 = (id, label, detail, choose, checked, disabled) => {
+      const radio = el("input", { id, type: "radio", name: "record-audience", ...checked ? { checked: "" } : {} });
+      radio.disabled = disabled;
+      radio.addEventListener("change", choose);
+      return el("div", { class: "choice" }, radio, el("label", { for: id }, label, el("span", { class: "detail" }, detail)));
+    };
+    const rows = [
+      row2("audience-only-me", "Only you", "No one else until you share it", () => chosen = null, true, false),
+      ...choices.map(
+        (choice) => row2(
+          `audience-${choice.id}`,
+          choice.label,
+          choice.recipient === null ? `${choice.detail} · ${choice.missing}` : choice.detail,
+          () => chosen = choice,
+          false,
+          choice.recipient === null
+        )
+      )
+    ];
+    const section = el("fieldset", { class: "choices" }, el("legend", {}, "Who can open it"), el("div", { class: "targets" }, ...rows));
+    return { section, chosen: () => chosen };
+  }
+  async function shareCreated(held2, id, to) {
+    const path = companyPath(held2);
+    const [chain, answer] = await Promise.all([vouchedChain(held2), call("GET", `${path}/records/${encodeURIComponent(id)}`, readOpened)]);
+    if (!chain.ok) {
+      return "problem" in chain ? CHAIN_REFUSED : loadFailure(chain);
+    }
+    if (!answer.ok) {
+      return loadFailure(answer);
+    }
+    let body;
+    try {
+      const opener = new Opener(held2, chain.vouched);
+      body = await shareBody(held2.company, chain.vouched, await opener.keyFor(answer.value), answer.value, to, "read");
+    } catch (problem2) {
+      return sealFailure(problem2 instanceof VaultCryptoError ? problem2.reason : "malformed");
+    }
+    const shared = await call("POST", `${path}/records/${encodeURIComponent(id)}/shares`, ignored, { body });
+    return shared.ok ? null : shareFailure(shared.status, shared.code, loadFailure(shared));
+  }
+
+  // src/records/custom-fields.ts
+  var CUSTOM_SECTION = "Custom fields";
+  var MAX_LABEL = 64;
+  var isCustom = (field3) => field3.type === "text" || field3.type === "concealed";
+  function splitCustom(document2) {
+    const last = document2.sections.at(-1);
+    if (last === void 0 || last.name !== CUSTOM_SECTION || !last.fields.every(isCustom)) {
+      return { base: document2, custom: [] };
+    }
+    return { base: { ...document2, sections: document2.sections.slice(0, -1) }, custom: last.fields.filter(isCustom) };
+  }
+  function joinCustom(base, custom) {
+    return custom.length === 0 ? base : { ...base, sections: [...base.sections, { name: CUSTOM_SECTION, fields: [...custom] }] };
+  }
+  function customLabelProblem(label, taken) {
+    const name = label.trim();
+    if (name === "") {
+      return "Give the field a name.";
+    }
+    if (name.length > MAX_LABEL) {
+      return "Keep the name to 64 characters.";
+    }
+    const folded = name.toLocaleLowerCase();
+    return taken.some((other) => other.trim().toLocaleLowerCase() === folded) ? "This record already has a field called that." : null;
+  }
+
+  // src/icon-action.ts
+  var OPEN_DELAY_MS = 500;
+  var INSTANT_WINDOW_MS = 400;
+  function iconAction(name, tip, label, tone = "quiet") {
+    return el("button", { type: "button", class: `icon-action ${tone}`, "aria-label": label, "data-tip": tip }, icon(name));
+  }
+  function installTips() {
+    const tip = el("div", { class: "tip", role: "tooltip", "aria-hidden": "true" });
+    document.body.append(tip);
+    let anchor = null;
+    let timer;
+    let closedAt = Number.NEGATIVE_INFINITY;
+    const place = (target2) => {
+      const box2 = target2.getBoundingClientRect();
+      const own = tip.getBoundingClientRect();
+      const above = box2.top - own.height - 6;
+      const below = above < 4;
+      const left = Math.min(Math.max(4, box2.left + box2.width / 2 - own.width / 2), window.innerWidth - own.width - 4);
+      tip.style.left = `${left}px`;
+      tip.style.top = `${below ? box2.bottom + 6 : above}px`;
+      tip.dataset["side"] = below ? "below" : "above";
+    };
+    const show = (target2, instant) => {
+      anchor = target2;
+      tip.textContent = target2.dataset["tip"] ?? "";
+      tip.toggleAttribute("data-instant", instant);
+      tip.dataset["open"] = "";
+      place(target2);
+    };
+    const hide = () => {
+      window.clearTimeout(timer);
+      if (anchor !== null) {
+        closedAt = performance.now();
+      }
+      anchor = null;
+      delete tip.dataset["open"];
+    };
+    const target = (event) => event.target instanceof Element ? event.target.closest("[data-tip]") : null;
+    document.addEventListener("pointerover", (event) => {
+      const over = target(event);
+      if (over === null || over === anchor) {
+        return;
+      }
+      hide();
+      const instant = performance.now() - closedAt < INSTANT_WINDOW_MS;
+      timer = window.setTimeout(() => show(over, instant), instant ? 0 : OPEN_DELAY_MS);
+    });
+    document.addEventListener("pointerout", (event) => {
+      if (target(event) !== null) {
+        hide();
+      }
+    });
+    document.addEventListener("focusin", (event) => {
+      const focused = target(event);
+      if (focused !== null && focused.matches(":focus-visible")) {
+        hide();
+        show(focused, true);
+      }
+    });
+    document.addEventListener("focusout", hide);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        hide();
+      }
+    });
+    window.addEventListener("scroll", hide, { capture: true, passive: true });
+  }
+
+  // src/records/custom-fields-view.ts
+  var KINDS2 = [
+    { type: "text", words: "Text" },
+    { type: "concealed", words: "Secret" }
+  ];
+  function customEditor(initial, controlFor, taken) {
+    let made = 0;
+    const entries = [];
+    const list = el("div", { class: "custom-fields" });
+    const append = (field3) => {
+      made += 1;
+      const control2 = controlFor(field3, `custom-${made}`);
+      const remove = iconAction("trash", "Remove field", `Remove the field ${field3.label}`, "danger");
+      const input = control2.row.querySelector("input");
+      const line = el("div", { class: "input-line" });
+      input?.replaceWith(line);
+      line.append(...input === null ? [] : [input], remove);
+      const row2 = el("div", { class: "custom-row" }, control2.row);
+      const entry = { field: field3, control: control2, row: row2 };
+      remove.addEventListener("click", () => {
+        entries.splice(entries.indexOf(entry), 1);
+        row2.remove();
+        opener.focus();
+      });
+      entries.push(entry);
+      list.append(row2);
+      return row2;
+    };
+    initial.forEach(append);
+    const name = el("input", { id: "custom-name", type: "text", autocomplete: "off", maxlength: "64" });
+    const hint = el("p", { id: "custom-name-hint", class: "message bad" });
+    hint.hidden = true;
+    name.setAttribute("aria-describedby", hint.id);
+    let kind = "text";
+    const chips = KINDS2.map(({ type, words }) => {
+      const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(type === kind) }, words);
+      chip.addEventListener("click", () => {
+        kind = type;
+        chips.forEach((other, at2) => other.setAttribute("aria-pressed", String(KINDS2[at2]?.type === kind)));
+      });
+      return chip;
+    });
+    const add = el("button", { type: "button", class: "primary" }, "Add field");
+    const cancel = el("button", { type: "button", class: "quiet" }, "Cancel");
+    const panel = el(
+      "div",
+      { class: "custom-add" },
+      el("div", { class: "field" }, el("label", { for: name.id }, "Field name"), name, hint),
+      el("div", { class: "chips", role: "group", "aria-label": "Kind of field" }, ...chips),
+      el("div", { class: "actions" }, add, cancel)
+    );
+    panel.hidden = true;
+    const opener = el("button", { type: "button", class: "quiet add-field", "aria-expanded": "false" }, icon("plus"), el("span", {}, "Add a field"));
+    const close = () => {
+      panel.hidden = true;
+      opener.hidden = false;
+      opener.setAttribute("aria-expanded", "false");
+    };
+    opener.addEventListener("click", () => {
+      name.value = "";
+      hint.hidden = true;
+      name.removeAttribute("aria-invalid");
+      panel.hidden = false;
+      opener.hidden = true;
+      opener.setAttribute("aria-expanded", "true");
+      name.focus();
+    });
+    const submit = () => {
+      const problem2 = customLabelProblem(name.value, [...taken, ...entries.map((entry) => entry.field.label)]);
+      hint.hidden = problem2 === null;
+      fill(hint, problem2 ?? "");
+      if (problem2 !== null) {
+        name.setAttribute("aria-invalid", "true");
+        name.focus();
+        return;
+      }
+      const row2 = append({ label: name.value.trim(), type: kind, value: null });
+      close();
+      row2.querySelector("input")?.focus();
+    };
+    add.addEventListener("click", submit);
+    cancel.addEventListener("click", () => {
+      close();
+      opener.focus();
+    });
+    name.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submit();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        opener.focus();
+      }
+    });
+    const section = el("fieldset", { class: "record-section" }, el("legend", {}, CUSTOM_SECTION), list, opener, panel);
+    return { section, current: () => entries.map(({ field: field3, control: control2 }) => ({ field: field3, control: control2 })) };
+  }
+
+  // src/records/crumbs.ts
+  var RECORDS = "Records";
+  var named = (title) => title === null ? "Record" : title === "" ? "Untitled" : title;
+  var recordCrumbs = (records, title) => [
+    { label: RECORDS, href: records },
+    { label: named(title), href: null }
+  ];
+  var editCrumbs = (records, record, title) => [
+    { label: RECORDS, href: records },
+    { label: named(title), href: record },
+    { label: "Edit", href: null }
+  ];
+  function newCrumbs(records, chooser, typeName2) {
+    const top = { label: RECORDS, href: records };
+    return typeName2 === null ? [top, { label: "New record", href: null }] : [top, { label: "New record", href: chooser }, { label: typeName2, href: null }];
+  }
+
+  // src/records/editing.ts
+  var fieldAt = (section, field3) => `${section}.${field3}`;
+  var FORMAT = {
+    url: "Use a full address starting with https://.",
+    email: "Use an address like name@example.com.",
+    phone: "Use digits, spaces and + ( ) - only.",
+    number: "Use digits only.",
+    date: "Use a date like 2027-02-28.",
+    "month-year": "Use a month like 2028-11.",
+    otp: "Paste the setup key exactly as the issuer showed it."
+  };
+  function problem(type, refused) {
+    if (refused instanceof VaultCryptoError && refused.reason === "too-large") {
+      return "This value is too long to keep.";
+    }
+    return FORMAT[type] ?? "This value isn't in a form the record can keep.";
+  }
+  function edited(document2, title, values) {
+    const problems = /* @__PURE__ */ new Map();
+    const named2 = title.trim();
+    if (named2 === "") {
+      problems.set("title", "Give the record a title, so you can find it again.");
+    }
+    const sections = document2.sections.map((section, sectionIndex) => ({
+      name: section.name,
+      fields: section.fields.map((field3, fieldIndex) => {
+        const at2 = fieldAt(sectionIndex, fieldIndex);
+        const typed = values.has(at2) ? values.get(at2) : field3.value;
+        try {
+          return readField({ label: field3.label, type: field3.type, value: typed === "" ? null : typed });
+        } catch (refused) {
+          problems.set(at2, problem(field3.type, refused));
+          return field3;
+        }
+      })
+    }));
+    return problems.size === 0 ? { ok: true, document: { ...document2, title: named2, sections } } : { ok: false, problems };
+  }
+
+  // src/records/save-record.ts
+  var ID_BYTES = 16;
+  var RECORD_KEY_BYTES = 32;
+  async function sealed(company, keys, id, revision, document2, vouched, others) {
+    const keyId = random(ID_BYTES);
+    const raw = random(RECORD_KEY_BYTES);
+    const context2 = (recipientKind, recipientKeyId) => ({ company, wrappedKind: "record", wrappedKeyId: keyId, recipientKind, recipientKeyId });
+    const copy2 = raw.slice();
+    let wrap;
+    const wraps = [];
+    try {
+      wrap = await wrapSecret(keys.agreementPublic, context2("member", keys.keyId), copy2);
+      for (const other of others) {
+        if (vouched === null) {
+          throw new RangeError("a revision shared with others needs the verified chain");
+        }
+        const made = await wrapToVouched(vouched, other.recipient, other.listed, context2(other.recipient.kind, other.keyId), copy2);
+        wraps.push({ recipient: `${other.recipient.kind}:${hex(other.keyId)}`, wrap: encode(made) });
+      }
+    } finally {
+      wipe(copy2);
+    }
+    const place = { company, record: id, revision };
+    const body = await sealRevision(await importRecordKey(raw), { ...place, keyId }, encodeRecord(document2));
+    const signature = await signRevision(keys.signingPrivate, place, body);
+    return { key_id: hex(keyId), body: encode(body), signature: encode(signature), author_key: hex(keys.keyId), wrap: encode(wrap), wraps };
+  }
+  async function newRecord(company, keys, document2) {
+    const id = hex(random(ID_BYTES));
+    const { wraps: _none, ...parts } = await sealed(company, keys, id, 1, document2, null, []);
+    return { id, body: { id, record_type: document2.type, ...parts } };
+  }
+  async function revisedRecord(company, keys, vouched, row2, document2, others) {
+    return { revision: row2.revision, ...await sealed(company, keys, row2.id, row2.revision + 1, document2, vouched, others) };
   }
 
   // src/records/share-recipients.ts
@@ -2317,7 +2486,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         return fallback;
     }
   }
-  function form(main2, title, document2, trail, save) {
+  function form(main2, title, document2, trail, extra, save) {
     const name = el("input", { id: "record-title", type: "text", autocomplete: "off", value: document2.title });
     const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
     nameHint.hidden = true;
@@ -2340,7 +2509,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     );
     const submit = el("button", { type: "submit", class: "primary" }, "Save record");
     const said = el("div", { "aria-live": "polite" });
-    const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, own.section, submit, said);
+    const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, own.section, extra, submit, said);
     body.addEventListener("submit", (event) => {
       event.preventDefault();
       const added = own.current();
@@ -2374,20 +2543,33 @@ ${target.detail}`.toLowerCase().includes(wanted));
     fill(main2, breadcrumbs(trail), head, body);
     name.focus();
   }
-  function drawNew(main2, held2, type, back, chooser, opened, newOf) {
+  async function drawNew(main2, held2, type, back, chooser, opened, newOf) {
     const template = BUILT_IN_TYPES.find((each) => each.id === type);
     if (template === void 0) {
       const choices = el("ul", { class: "records", "aria-label": "Record types" }, ...BUILT_IN_TYPES.map((each) => el("li", { class: "record" }, el("a", { class: "record-title", href: newOf(each.id) }, each.name))));
       fill(main2, breadcrumbs(newCrumbs(back, chooser, null)), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
       return;
     }
-    form(main2, "New record", recordFromTemplate(template, ""), newCrumbs(back, chooser, template.name), async (made) => {
+    const trail = newCrumbs(back, chooser, template.name);
+    fill(main2, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), el("p", { class: "muted", role: "status" }, "Opening the form."));
+    const audience = await loadAudience(held2);
+    if (!audience.ok) {
+      fill(main2, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), refusal(audience.words));
+      return;
+    }
+    const picker = audiencePicker(audience.choices);
+    form(main2, "New record", recordFromTemplate(template, ""), trail, picker.section, async (made) => {
       const record = await newRecord(held2.company, held2.keys, made);
       const answer = await call("POST", `${companyPath(held2)}/records`, readRow, { body: record.body });
       if (!answer.ok) {
         return saveFailure(answer.code, loadFailure(answer));
       }
+      const to = picker.chosen()?.recipient ?? null;
+      const unshared = to === null ? null : await shareCreated(held2, record.id, to);
       opened(record.id);
+      if (unshared !== null) {
+        announce(`The record was saved for you only. ${unshared}`);
+      }
       return null;
     });
   }
@@ -2409,7 +2591,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       return;
     }
     const row2 = item.row;
-    form(main2, "Edit record", item.document, editCrumbs(records, back, item.document.title), async (made) => {
+    form(main2, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, async (made) => {
       const sharing = await sharedWith(held2, id);
       if (!sharing.ok) {
         return sharing.words;
@@ -2556,59 +2738,6 @@ ${target.detail}`.toLowerCase().includes(wanted));
       });
     });
     return [open3, dialog];
-  }
-
-  // src/records/share-record.ts
-  async function shareBody(company, vouched, reader, opened, to, right) {
-    const raw = await recordKeyOf(company, vouched, reader, opened);
-    try {
-      const wrappedKeyId = keyIdBytes(opened.row.keyId);
-      if (wrappedKeyId === null) {
-        throw new VaultCryptoError("key-mismatch");
-      }
-      const context2 = { company, wrappedKind: "record", wrappedKeyId, recipientKind: to.recipient.kind, recipientKeyId: to.keyId };
-      const wrap = await wrapToVouched(vouched, to.recipient, to.listed, context2, raw);
-      const target = to.recipient.kind === "member" ? { member: to.recipient.account } : { group: to.recipient.group };
-      return { ...target, right, key_id: hex(to.keyId), wrap: encode(wrap) };
-    } finally {
-      wipe(raw);
-    }
-  }
-
-  // src/records/share-words.ts
-  var REOPEN = "This record or its sharing changed while you were deciding. Open it again, then share it.";
-  function shareFailure(status, code, fallback) {
-    if (status === 403) {
-      return "You can read this record but not share it.";
-    }
-    if (status !== 409) {
-      return fallback;
-    }
-    switch (code) {
-      case "already_shared":
-        return "This record is shared with them already.";
-      case "no_key":
-        return "They have no key yet, so nothing can be shared with them. Ask them to set their unlock password first.";
-      case "unknown_key":
-        return "Their key changed while you were deciding. Open the record again, then share it.";
-      case "stale_revision":
-      case "stale_shares":
-        return REOPEN;
-      default:
-        return fallback;
-    }
-  }
-  function sealFailure(reason) {
-    return reason === "unvouched-recipient" ? "Their key is not vouched for in the company yet, so nothing can be shared with them. An admin vouches for new keys." : "This record could not be opened to share it. Open it again, then share it.";
-  }
-  function removeShareFailure(status, _code, fallback) {
-    if (status === 403) {
-      return "You can read this record but not change who it is shared with.";
-    }
-    if (status === 404) {
-      return "The record is no longer shared with them, or it is gone.";
-    }
-    return fallback;
   }
 
   // src/records/share-dialog.ts
@@ -2764,47 +2893,6 @@ ${target.detail}`.toLowerCase().includes(wanted));
       items.length === 0 ? el("p", { class: "muted" }, "It isn't shared with anyone; only its author can open it.") : el("ul", { class: "shares" }, ...items)
     );
     return [section, dialog];
-  }
-
-  // src/records/sharing.ts
-  var failed = (answer) => ({ ok: false, words: loadFailure(answer) });
-  async function loadSharing(held2, id) {
-    const path = companyPath(held2);
-    const [listed, members, groups, directory] = await Promise.all([
-      call("GET", `${path}/records/${encodeURIComponent(id)}/shares`, readShares),
-      call("GET", `${path}/members`, readMemberList),
-      call("GET", `${path}/groups`, readGroupList),
-      call("GET", `${path}/keys`, readDirectory)
-    ]);
-    if (!listed.ok) {
-      return listed.status === 403 ? null : failed(listed);
-    }
-    if (!members.ok) {
-      return failed(members);
-    }
-    if (!groups.ok) {
-      return failed(groups);
-    }
-    if (!directory.ok) {
-      return failed(directory);
-    }
-    const keys = await Promise.all(
-      groups.value.map((group) => call("GET", `${path}/groups/${encodeURIComponent(group.id)}/key`, readGroupKey).then((key) => [group.id, key]))
-    );
-    const groupKeys = /* @__PURE__ */ new Map();
-    for (const [group, key] of keys) {
-      if (key.ok) {
-        groupKeys.set(group, { keyId: hex(key.value.keyId), public: key.value.public });
-      } else if (key.status !== 404) {
-        return failed(key);
-      }
-    }
-    const { author, shares } = listed.value;
-    return {
-      ok: true,
-      rows: sharedRows(shares, members.value, groups.value),
-      targets: shareTargets(members.value, groups.value, directory.value, groupKeys, author.account, shares.map((share2) => share2.target))
-    };
   }
 
   // src/records/record-view.ts
@@ -3826,7 +3914,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         const held2 = unlocked();
         if (held2 !== null) {
           const opened = (record) => go(router.href("record", { record }));
-          drawNew(view2, held2, outcome.match.query.type, router.href("records", {}), router.href("newRecord", {}), opened, (type) => router.href("newRecord", {}, { type }));
+          void drawNew(view2, held2, outcome.match.query.type, router.href("records", {}), router.href("newRecord", {}), opened, (type) => router.href("newRecord", {}, { type }));
         }
         break;
       }

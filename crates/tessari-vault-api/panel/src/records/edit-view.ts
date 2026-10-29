@@ -3,7 +3,8 @@
 // said beside its field; the form keeps everything typed.
 
 import { call } from "../api.ts";
-import { el, fill } from "../dom.ts";
+import { announce, el, fill } from "../dom.ts";
+import { audiencePicker, loadAudience, shareCreated } from "./audience-view.ts";
 import { joinCustom, splitCustom } from "./custom-fields.ts";
 import { customEditor } from "./custom-fields-view.ts";
 import { readOpened, readRow, type RecordRow } from "../records-model.ts";
@@ -80,7 +81,7 @@ function saveFailure(code: string, fallback: string): string {
 }
 
 /** The form for `document`; `save` seals and sends it and answers a refusal in words, or null when it is kept. */
-function form(main: HTMLElement, title: string, document: RecordDocument, trail: readonly Crumb[], save: (made: RecordDocument) => Promise<string | null>): void {
+function form(main: HTMLElement, title: string, document: RecordDocument, trail: readonly Crumb[], extra: HTMLElement | null, save: (made: RecordDocument) => Promise<string | null>): void {
   const name = el("input", { id: "record-title", type: "text", autocomplete: "off", value: document.title });
   const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
   nameHint.hidden = true;
@@ -103,7 +104,7 @@ function form(main: HTMLElement, title: string, document: RecordDocument, trail:
   );
   const submit = el("button", { type: "submit", class: "primary" }, "Save record");
   const said = el("div", { "aria-live": "polite" });
-  const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, own.section, submit, said);
+  const body = el("form", { novalidate: "" }, el("div", { class: "field" }, el("label", { for: name.id }, "Title"), name, nameHint), ...sections, own.section, extra, submit, said);
   body.addEventListener("submit", (event) => {
     event.preventDefault();
     const added = own.current();
@@ -139,20 +140,35 @@ function form(main: HTMLElement, title: string, document: RecordDocument, trail:
 }
 
 /** A new record of built-in `type`, or the choice of type when none is named; `chooser` is the choice's own link. */
-export function drawNew(main: HTMLElement, held: Unlocked, type: string | null, back: string, chooser: string, opened: (record: string) => void, newOf: (type: string) => string): void {
+export async function drawNew(main: HTMLElement, held: Unlocked, type: string | null, back: string, chooser: string, opened: (record: string) => void, newOf: (type: string) => string): Promise<void> {
   const template = BUILT_IN_TYPES.find((each) => each.id === type);
   if (template === undefined) {
     const choices = el("ul", { class: "records", "aria-label": "Record types" }, ...BUILT_IN_TYPES.map((each) => el("li", { class: "record" }, el("a", { class: "record-title", href: newOf(each.id) }, each.name))));
     fill(main, breadcrumbs(newCrumbs(back, chooser, null)), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
     return;
   }
-  form(main, "New record", recordFromTemplate(template, ""), newCrumbs(back, chooser, template.name), async (made) => {
+  const trail = newCrumbs(back, chooser, template.name);
+  fill(main, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), el("p", { class: "muted", role: "status" }, "Opening the form."));
+  const audience = await loadAudience(held);
+  if (!audience.ok) {
+    fill(main, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), refusal(audience.words));
+    return;
+  }
+  const picker = audiencePicker(audience.choices);
+  form(main, "New record", recordFromTemplate(template, ""), trail, picker.section, async (made) => {
     const record = await newRecord(held.company, held.keys, made);
     const answer = await call("POST", `${companyPath(held)}/records`, readRow, { body: record.body });
     if (!answer.ok) {
       return saveFailure(answer.code, loadFailure(answer));
     }
+    // The record exists now: a share that fails is said on its page rather than here, where saving again would make a
+    // second record.
+    const to = picker.chosen()?.recipient ?? null;
+    const unshared = to === null ? null : await shareCreated(held, record.id, to);
     opened(record.id);
+    if (unshared !== null) {
+      announce(`The record was saved for you only. ${unshared}`);
+    }
     return null;
   });
 }
@@ -176,7 +192,7 @@ export async function drawEdit(main: HTMLElement, held: Unlocked, id: string, re
     return;
   }
   const row: RecordRow = item.row;
-  form(main, "Edit record", item.document, editCrumbs(records, back, item.document.title), async (made) => {
+  form(main, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, async (made) => {
     const sharing = await sharedWith(held, id);
     if (!sharing.ok) {
       return sharing.words;
