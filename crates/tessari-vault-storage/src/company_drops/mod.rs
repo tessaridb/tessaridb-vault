@@ -175,7 +175,8 @@ impl CompanyDropService {
         let script = format!(
             "BEGIN; {GUARD} THROW 'not found' IF (GET company_drops:$company) = NONE; \
              DELETE company_drops:$company; \
-             UPDATE groups:$company SET state = 'active' WHERE state = 'dropping'; {RECORD} COMMIT;"
+             UPDATE groups SET state = 'active' WHERE group_id = $company AND state = 'dropping'; \
+             {RECORD} COMMIT;"
         );
         self.database
             .transact_at(&self.place, &script, "", parameters)

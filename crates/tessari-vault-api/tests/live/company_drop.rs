@@ -202,6 +202,31 @@ async fn the_platform_admin_confirms_and_the_company_waits_read_only_until_an_ow
         StatusCode::FORBIDDEN,
         "the queue is the platform admin's: {body}"
     );
+    // An owner may take back a request the platform admin has not confirmed yet, and ask again.
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &format!("{base}/cancel"),
+            Some(&owner),
+            Some(cancelling(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "a request is cancelled before it is confirmed: {body}"
+    );
+    let (status, body) = standing(&world, a, &owner).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &base,
+            Some(&owner),
+            Some(asked(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
     let (status, body) = standing(&world, a, &cast.admin_a).await;
     assert_eq!(
         status,
