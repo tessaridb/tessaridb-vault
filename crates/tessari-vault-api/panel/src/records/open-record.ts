@@ -20,21 +20,36 @@ export interface RecipientKey {
   readonly agreementPublic: Bytes;
 }
 
-/** Opens `opened` in `company` with `recipient`, trusting its author only as far as `vouched` does. */
-export async function openRecord(company: string, vouched: Vouched, recipient: RecipientKey, opened: OpenedRecord): Promise<RecordDocument> {
+/** The record key of `opened`'s latest revision out of its wrap, once its author's signature checks out. */
+async function unwrapped(company: string, vouched: Vouched, recipient: RecipientKey, opened: OpenedRecord): Promise<{ raw: Bytes; keyId: Bytes }> {
   const { row } = opened;
   const keyId = keyIdBytes(row.keyId);
   if (keyId === null || opened.recipient.kind !== recipient.kind || opened.recipient.keyId !== hex(recipient.keyId)) {
     throw new VaultCryptoError("key-mismatch");
   }
-  const place = { company, record: row.id, revision: row.revision };
-  await verifyRevision(vouched, row.author, place, opened.body, opened.signature);
+  await verifyRevision(vouched, row.author, { company, record: row.id, revision: row.revision }, opened.body, opened.signature);
   const raw = await unwrapSecret(
     recipient.agreementPrivate,
     recipient.agreementPublic,
     { company, wrappedKind: "record", wrappedKeyId: keyId, recipientKind: recipient.kind, recipientKeyId: recipient.keyId },
     opened.wrap,
   );
+  return { raw, keyId };
+}
+
+/**
+ * The record key of `opened`'s latest revision as bytes, for wrapping it to a new share's key: the caller wipes it as
+ * soon as that wrap is made, and nothing keeps it.
+ */
+export async function recordKeyOf(company: string, vouched: Vouched, recipient: RecipientKey, opened: OpenedRecord): Promise<Bytes> {
+  return (await unwrapped(company, vouched, recipient, opened)).raw;
+}
+
+/** Opens `opened` in `company` with `recipient`, trusting its author only as far as `vouched` does. */
+export async function openRecord(company: string, vouched: Vouched, recipient: RecipientKey, opened: OpenedRecord): Promise<RecordDocument> {
+  const { row } = opened;
+  const { raw, keyId } = await unwrapped(company, vouched, recipient, opened);
+  const place = { company, record: row.id, revision: row.revision };
   const recordKey = await importRecordKey(raw);
   const plaintext = await openRevision(new Map([[row.keyId, recordKey]]), { ...place, keyId }, opened.body);
   try {

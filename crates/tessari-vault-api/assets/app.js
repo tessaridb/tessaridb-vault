@@ -1515,20 +1515,25 @@
   }
 
   // src/records/open-record.ts
-  async function openRecord(company, vouched, recipient, opened) {
+  async function unwrapped(company, vouched, recipient, opened) {
     const { row: row2 } = opened;
     const keyId = keyIdBytes(row2.keyId);
     if (keyId === null || opened.recipient.kind !== recipient.kind || opened.recipient.keyId !== hex(recipient.keyId)) {
       throw new VaultCryptoError("key-mismatch");
     }
-    const place = { company, record: row2.id, revision: row2.revision };
-    await verifyRevision(vouched, row2.author, place, opened.body, opened.signature);
+    await verifyRevision(vouched, row2.author, { company, record: row2.id, revision: row2.revision }, opened.body, opened.signature);
     const raw = await unwrapSecret(
       recipient.agreementPrivate,
       recipient.agreementPublic,
       { company, wrappedKind: "record", wrappedKeyId: keyId, recipientKind: recipient.kind, recipientKeyId: recipient.keyId },
       opened.wrap
     );
+    return { raw, keyId };
+  }
+  async function openRecord(company, vouched, recipient, opened) {
+    const { row: row2 } = opened;
+    const { raw, keyId } = await unwrapped(company, vouched, recipient, opened);
+    const place = { company, record: row2.id, revision: row2.revision };
     const recordKey = await importRecordKey(raw);
     const plaintext = await openRevision(/* @__PURE__ */ new Map([[row2.keyId, recordKey]]), { ...place, keyId }, opened.body);
     try {
