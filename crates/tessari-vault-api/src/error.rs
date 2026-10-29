@@ -213,6 +213,10 @@ const fn conflicted(conflict: Conflict) -> ApiError {
         ),
         Conflict::NoKey => ("no_key", "the group or member holds no key to share with"),
         Conflict::AlreadyShared => ("already_shared", "the record is shared with them already"),
+        Conflict::SignInCurrent => (
+            "sign_in_current",
+            "the member's password still opens under the service key; they can sign in",
+        ),
         Conflict::KeysMoving => (
             "keys_moving",
             "the company's keys are being moved to a new service key; try again shortly",

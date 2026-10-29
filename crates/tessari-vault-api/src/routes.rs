@@ -85,6 +85,11 @@ pub fn routes() -> Vec<Route> {
             "/api/companies/{company}/members/{account}/enrolment",
             post(enrolment::issue),
         ),
+        route(
+            Method::POST,
+            "/api/accounts/{account}/sign-in/reset",
+            post(enrolment::reset),
+        ),
         route(Method::GET, "/api/sign-in/methods", get(sign_in::methods)),
         route(Method::POST, "/api/sign-in", post(sign_in::password)),
         route(Method::POST, "/api/sign-in/code", post(sign_in::code)),

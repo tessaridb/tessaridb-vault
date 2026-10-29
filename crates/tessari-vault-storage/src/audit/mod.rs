@@ -82,6 +82,20 @@ pub(crate) fn binds(actor: &Actor, event: &Event<'_>) -> Vec<(String, Value)> {
     ]
 }
 
+/// [`RECORD`] for the `n`th of several events in one transaction, each bound by [`binds_numbered`] under names of
+/// its own, so one change can join the trails of several companies.
+pub(crate) fn record_numbered(n: usize) -> String {
+    RECORD.replace("$audit_", &format!("$audit{n}_"))
+}
+
+/// The values [`record_numbered`] binds for the `n`th event.
+pub(crate) fn binds_numbered(n: usize, actor: &Actor, event: &Event<'_>) -> Vec<(String, Value)> {
+    binds(actor, event)
+        .into_iter()
+        .map(|(name, value)| (name.replacen("audit_", &format!("audit{n}_"), 1), value))
+        .collect()
+}
+
 /// Now, in seconds since 1970.
 pub(crate) fn epoch_seconds() -> i64 {
     SystemTime::now()

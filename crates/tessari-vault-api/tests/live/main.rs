@@ -131,6 +131,8 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ("POST", "/api/companies/{company}/suspend" | "/api/companies/{company}/resume") => {
             row(None, platform, other_platform)
         }
+        // A sign-in belongs to the person, not to one company: the platform admin's alone.
+        ("POST", "/api/accounts/{account}/sign-in/reset") => row(None, platform, other_platform),
         ("GET", "/api/companies/{company}/members" | "/api/companies/{company}/groups") => {
             row(None, None, hidden)
         }

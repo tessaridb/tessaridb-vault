@@ -197,6 +197,12 @@ impl Passwords {
         .await
     }
 
+    /// Whether the ring still holds `epoch`, so a verifier made under it can be checked.
+    #[must_use]
+    pub fn holds(&self, epoch: u32) -> bool {
+        self.pepper(epoch).is_some()
+    }
+
     /// The pepper of `epoch`, when the ring holds it.
     fn pepper(&self, epoch: u32) -> Option<&hmac::Key> {
         self.peppers

@@ -41,7 +41,7 @@ async fn row(world: &World, company: &str) -> (Option<Value>, Option<Value>) {
 }
 
 /// Enrol a new member of company A with a password and an authenticator, so a sealed seed exists.
-async fn enrol(world: &World, cast: &Cast, email: &str) {
+async fn enrol(world: &World, cast: &Cast, email: &str) -> String {
     let account = add_member(world, &cast.company_a, &cast.admin_a, email, "member").await;
     let token = issue(world, &cast.admin_a, &cast.company_a, &account)
         .await
@@ -61,6 +61,7 @@ async fn enrol(world: &World, cast: &Cast, email: &str) {
     let code = format!("{:06}", totp::code_at(&base32(&secret), step));
     let (status, body) = complete(world, &token, "a passphrase of my own", &code).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+    account
 }
 
 /// The epoch each enrolled credential's sealed seed names.
@@ -256,4 +257,78 @@ async fn a_move_cut_short_refuses_requests_and_is_finished_by_the_next_rotation(
         row(&world, &cast.company_a).await,
         (Some(Value::from(2_i64)), Some(Value::from(false)))
     );
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn the_platform_admin_resets_a_sign_in_resting_on_a_retired_epoch_and_no_one_else_may() {
+    use crate::world::call_app;
+
+    let world = World::on_ring(&older_epoch_key()).await;
+    let cast = Cast::new(&world).await;
+    let member = enrol(&world, &cast, "stranded@alpha.test").await;
+    // A member of both companies, so the reset joins both trails.
+    let in_b = add_member(
+        &world,
+        &cast.company_b,
+        &cast.admin_b,
+        "stranded@alpha.test",
+        "member",
+    )
+    .await;
+    assert_eq!(in_b, member, "one account in two companies");
+    let platform = world.platform_admin().await;
+    let reset = format!("/api/accounts/{member}/sign-in/reset");
+    // While the ring still holds epoch 1 the member can sign in and move their password themselves.
+    let holding = world.app_on(&added_epoch());
+    let (status, body) =
+        call_app(holding.clone(), Method::POST, &reset, Some(&platform), None).await;
+    assert_eq!(
+        (status, body["error_code"].as_str()),
+        (StatusCode::CONFLICT, Some("sign_in_current")),
+        "{body}"
+    );
+    // Epoch 1 has left the ring: only the platform admin may reset, and the link that comes back enrols them again.
+    let retired = world.app_on(&format!("2 {}\n", "cd".repeat(32)));
+    let (status, body) = call_app(
+        retired.clone(),
+        Method::POST,
+        &reset,
+        Some(&cast.admin_a),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a company admin: {body}");
+    let (status, body) =
+        call_app(retired.clone(), Method::POST, &reset, Some(&platform), None).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let token = body["token"].as_str().expect("a link").to_owned();
+    let (status, body) = call_app(
+        retired.clone(),
+        Method::POST,
+        "/api/enrolment/begin",
+        None,
+        Some(serde_json::json!({ "token": token })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "the link begins an enrolment: {body}"
+    );
+    for company in [&cast.company_a, &cast.company_b] {
+        let trail = world
+            .database
+            .run_at(
+                &world.place,
+                "SELECT action, target FROM audit_events WHERE company = $c AND action = 'sign_in.reset';",
+                vec![bound("c", company)],
+            )
+            .await
+            .expect("the trail reads back");
+        assert!(
+            matches!(trail.last(), Some(Answer::Records { records, .. }) if records.len() == 1),
+            "one reset on the trail of {company}: {trail:?}"
+        );
+    }
 }

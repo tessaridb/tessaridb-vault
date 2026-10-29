@@ -7,6 +7,7 @@
 //! works once and an account is enrolled once.
 
 pub(crate) mod record;
+mod reset;
 
 use std::sync::Arc;
 

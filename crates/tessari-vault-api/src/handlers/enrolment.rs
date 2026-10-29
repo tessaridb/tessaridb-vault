@@ -37,6 +37,27 @@ pub(crate) async fn issue(
     ))
 }
 
+/// The platform admin resets the sign-in of an account whose password rests on a retired service-key epoch, and
+/// receives the link that enrols them again.
+pub(crate) async fn reset(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(account): Path<String>,
+) -> Result<(StatusCode, Json<Link>), ApiError> {
+    let account = account_id(&account)?;
+    let token = state
+        .storage
+        .enrolments
+        .reset_retired(&actor, &account)
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(Link {
+            token: token.expose().to_owned(),
+        }),
+    ))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Begin {

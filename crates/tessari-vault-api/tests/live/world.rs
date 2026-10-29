@@ -289,6 +289,15 @@ impl World {
         }
     }
 
+    /// The router of a second server over this world's namespace, holding the ring `ring`.
+    pub fn app_on(&self, ring: &str) -> Router {
+        router(AppState {
+            storage: self.storage_on(ring).0,
+            oidc: None,
+            passkeys: None,
+        })
+    }
+
     /// The server's storage over this world's namespace as a server holding the ring `ring` would build it.
     pub fn storage_on(&self, ring: &str) -> (Storage, std::sync::Arc<VaultKeys>) {
         storage_on(&self.server_database, &self.place, ring)

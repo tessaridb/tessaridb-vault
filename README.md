@@ -128,8 +128,11 @@ and exits; `tessaridb-vault health` asks the running server whether it answers.
    node for a while, and this keeps a racing request from spending them. A run cut short is finished by running it
    again.
 3. The command prints what still rests on each epoch. Company vaults and TOTP seeds move at once; a sign-in
-   password moves when its member next signs in, so keep the old epoch until no password rests on it: a member whose
-   password rests on a removed epoch cannot sign in, and enrolling them again is not built yet.
+   password moves when its member next signs in. A member whose password still rests on a removed epoch cannot sign
+   in; the platform admin resets their sign-in with `POST /api/accounts/{account}/sign-in/reset`, which is recorded
+   on the trail of every company they belong to and answers a new single-use enrolment link (their records stay
+   sealed under their own unlock password). A company's admin cannot: a sign-in belongs to the person, not to one
+   company.
 4. When nothing rests on the old epoch, remove its line and restart. A backup of the key file that still holds that
    epoch still opens what it opened, so expire those backups too: a database backup taken before the rotation stays
    readable at the store layer for as long as one of them exists, while record bodies stay sealed by the browser
