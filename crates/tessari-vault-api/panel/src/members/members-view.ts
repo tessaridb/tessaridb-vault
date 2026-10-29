@@ -1,11 +1,12 @@
 // The members page: everyone in the company with their key's state and fingerprint, the person's own fingerprint to
 // read out to an admin, and for owners and admins a way to vouch for a key that is waiting and to add someone. Vouching is a statement the
-// browser signs and checks against the whole chain before the server keeps it.
+// browser signs and checks against the whole chain before the server keeps it. The same people keep the chain in step
+// with the company: admin standing follows each role, and a key still vouched for after its holder left is ended.
 
 import { call, ignored } from "../api.ts";
 import { readChain } from "../chain-model.ts";
 import { VaultCryptoError } from "../crypto/errors.ts";
-import { verifyChain } from "../crypto/statements.ts";
+import { verifyChain, type Statement } from "../crypto/statements.ts";
 import { el, fill } from "../dom.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
@@ -13,7 +14,8 @@ import { CHAIN_REFUSED, loadFailure } from "../records/list-view.ts";
 import { companyPath } from "../records/load.ts";
 import { readMemberList } from "../records/share-targets.ts";
 import { readDirectory } from "../records/shares-model.ts";
-import { memberRows, statementBody, vouchStatement, type MemberRow } from "./members-model.ts";
+import { memberRows, statementBody, type MemberRow } from "./members-model.ts";
+import { departedAccounts, leaveStatement, standingOf, standingStatements, vouchStatements } from "./standing.ts";
 import { keyStateWords, vouchFailure, vouchRefused } from "./members-words.ts";
 import { addMemberForm, invitedBlock, type Invited } from "./add-member.ts";
 import { mayManage } from "./member-admin.ts";
@@ -49,6 +51,24 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, pageOf: (ac
   const me = rows.find((row) => row.account === held.account);
   const mayVouch = me?.role === "owner" || me?.role === "admin";
   const again = (words: string | null = null): void => void drawMembers(main, held, pageOf, words);
+  const signer = { privateKey: held.keys.signingPrivate, publicBytes: held.keys.signingPublic };
+  /** Sends `made` in order after the chain this page read; null once all are kept, else what to say. */
+  const send = async (made: readonly Statement[]): Promise<{ words: string; stale: boolean } | null> => {
+    for (const [index, statement] of made.entries()) {
+      const answer = await call("POST", `${path}/statements`, ignored, { body: statementBody(chain.value.statements.length + 1 + index, statement) });
+      if (!answer.ok) {
+        return { words: vouchFailure(answer.status, answer.code, loadFailure(answer)), stale: answer.code === "stale_chain" };
+      }
+    }
+    return null;
+  };
+  /** Makes statements with `make` and sends them, redrawing the page once kept or saying why not in `say`. */
+  const act = (make: () => Promise<readonly Statement[]>, say: (words: string) => void): void => {
+    void make()
+      .then(send)
+      .then((failed) => (failed === null || failed.stale ? again(failed?.words ?? null) : say(failed.words)))
+      .catch((problem: unknown) => say(vouchRefused(problem instanceof VaultCryptoError ? problem.reason : "chain-broken")));
+  };
 
   const fingerprint = el("p", { class: "fingerprint" });
   const dialogSaid = el("div", { "aria-live": "polite" });
@@ -74,28 +94,13 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, pageOf: (ac
     }
     confirm.disabled = true;
     fill(dialogSaid, el("p", { class: "muted", role: "status" }, "Vouching for the key."));
-    const signer = { privateKey: held.keys.signingPrivate, publicBytes: held.keys.signingPublic };
-    void vouchStatement(held.company, owner, chain.value.statements, signer, row.account, key)
-      .then(async (statement) => {
-        const answer = await call("POST", `${path}/statements`, ignored, { body: statementBody(chain.value.statements.length + 1, statement) });
+    act(
+      () => vouchStatements(held.company, owner, chain.value.statements, signer, row.account, row.role, key),
+      (words) => {
         confirm.disabled = false;
-        if (answer.ok) {
-          dialog.close();
-          again();
-          return;
-        }
-        const words = vouchFailure(answer.status, answer.code, loadFailure(answer));
-        if (answer.code === "stale_chain") {
-          dialog.close();
-          again(words);
-          return;
-        }
         fill(dialogSaid, refusal(words));
-      })
-      .catch((problem: unknown) => {
-        confirm.disabled = false;
-        fill(dialogSaid, refusal(vouchRefused(problem instanceof VaultCryptoError ? problem.reason : "chain-broken")));
-      });
+      },
+    );
   });
 
   const items = rows.map((row) => {
@@ -107,6 +112,18 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, pageOf: (ac
       fill(dialogSaid, null);
       dialog.showModal();
     });
+    const standing = row.state === "vouched" ? standingOf(row.role, row.account, vouched, owner) : "matches";
+    const vouchedKey = directory.value.get(row.account);
+    let align: HTMLButtonElement | null = null;
+    if (mayVouch && !row.suspended && standing !== "matches" && vouchedKey !== undefined) {
+      const give = standing === "needs-admin";
+      const button = el("button", { type: "button", "aria-label": `${give ? "Give" : "End"} ${row.label}'s admin standing` }, give ? "Give admin standing" : "End admin standing");
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        act(() => standingStatements(held.company, owner, chain.value.statements, signer, row.account, vouchedKey, standing), again);
+      });
+      align = button;
+    }
     const shownName = row.account === held.account ? `${row.label} (you)` : row.label;
     return el(
       "li",
@@ -114,8 +131,17 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, pageOf: (ac
       el("div", {}, me !== undefined && mayManage(me.role, row.role) ? el("a", { class: "share-name", href: pageOf(row.account) }, shownName) : el("span", { class: "share-name" }, shownName), el("span", { class: "detail" }, row.detail)),
       el("span", { class: "muted" }, ROLE_WORDS[row.role]),
       row.suspended ? el("span", { class: "state" }, "Suspended") : el("span", { class: `state ${row.state}` }, keyStateWords(row.state)),
-      vouch ?? el("span", {}),
+      vouch ?? align ?? el("span", {}),
     );
+  });
+  const departed = mayVouch ? departedAccounts(members.value, vouched, owner) : [];
+  const left = departed.map((account) => {
+    const end = el("button", { type: "button", "aria-label": `End the key of former member ${account.slice(0, 8)}` }, "End their key");
+    end.addEventListener("click", () => {
+      end.disabled = true;
+      act(() => leaveStatement(held.company, owner, chain.value.statements, signer, account), again);
+    });
+    return el("li", { class: "share member" }, el("div", {}, el("span", { class: "share-name" }, "A former member"), el("span", { class: "detail" }, `Account ${account.slice(0, 8)}`)), end);
   });
   const own = me?.fingerprint ?? null;
   fill(
@@ -125,6 +151,15 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, pageOf: (ac
     invited === null ? null : invitedBlock(invited),
     own === null ? null : el("section", { class: "record-section", "aria-labelledby": "own-key" }, el("h2", { id: "own-key" }, "Your key's fingerprint"), el("p", { class: "fingerprint" }, own)),
     el("section", { class: "record-section", "aria-labelledby": "everyone" }, el("h2", { id: "everyone" }, "Everyone in the company"), el("ul", { class: "shares" }, ...items)),
+    left.length === 0
+      ? null
+      : el(
+          "section",
+          { class: "record-section", "aria-labelledby": "left" },
+          el("h2", { id: "left" }, "Keys of people who left"),
+          el("p", { class: "muted" }, "These people are no longer in the company, but their keys still count. End each key: what they wrote stays readable, and nothing new can be written in their name."),
+          el("ul", { class: "shares" }, ...left),
+        ),
     me === undefined || !mayVouch ? null : addMemberForm(held, me.role, (added) => void drawMembers(main, held, pageOf, null, added)),
     dialog,
   );

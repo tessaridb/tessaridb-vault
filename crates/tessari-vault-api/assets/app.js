@@ -1051,20 +1051,30 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/crypto/statements.ts
   var KEY_BYTES2 = 32;
   var DIGEST_BYTES = 32;
-  var KINDS = ["member", "admin", "group", "revoke", "recovery"];
+  var KINDS = ["member", "admin", "group", "revoke", "recovery", "leave"];
   var Vouched = class {
     #members;
     #groups;
     #recovery;
     #history;
+    #admins;
     /** The seq of the chain's last statement: the position a revision sealed now is signed at. */
     length;
-    constructor(members, groups, recovery, history2 = /* @__PURE__ */ new Map(), length = 0) {
+    constructor(members, groups, recovery, history2 = /* @__PURE__ */ new Map(), length = 0, admins = /* @__PURE__ */ new Set()) {
       this.#members = members;
       this.#groups = groups;
       this.#recovery = recovery;
       this.#history = history2;
       this.length = length;
+      this.#admins = admins;
+    }
+    /** Whether the chain lets `account`'s current key sign statements as an admin. */
+    hasAdminStanding(account) {
+      return this.#admins.has(account);
+    }
+    /** Every account the chain vouches a key for now. */
+    accounts() {
+      return this.#members.keys();
     }
     /** The signing key vouched for `account` at chain position `seq`, or nothing when the reader's chain cannot say. */
     signingKeyAt(account, seq) {
@@ -1152,6 +1162,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         return agreement === KEY_BYTES2 && signing === 0;
       case "admin":
       case "revoke":
+      case "leave":
         return agreement === 0 && signing === 0;
     }
   }
@@ -1219,6 +1230,16 @@ ${target.detail}`.toLowerCase().includes(wanted));
           }
           recovery = { keyId: decoded.subject, agreementPublic: decoded.agreementPublic };
           break;
+        case "leave": {
+          if (decoded.subject === ownerAccount || !forget2(decoded.subject)) {
+            throw new VaultCryptoError("chain-broken");
+          }
+          const open3 = history2.get(decoded.subject)?.at(-1);
+          if (open3 !== void 0 && open3.until === void 0) {
+            open3.until = decoded.seq;
+          }
+          break;
+        }
         case "revoke":
           if (decoded.subject === ownerAccount || !forget2(decoded.subject) && !groups.delete(decoded.subject)) {
             throw new VaultCryptoError("chain-broken");
@@ -1228,7 +1249,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
       }
       expectedPrev = await digest(statement);
     }
-    return new Vouched(members, groups, recovery, history2, chain.length);
+    const admins = new Set([...members].filter(([, keys]) => adminKeys.has(hex(keys.signing))).map(([account]) => account));
+    return new Vouched(members, groups, recovery, history2, chain.length, admins);
   }
 
   // src/crypto/record.ts
@@ -3796,16 +3818,47 @@ ${END}
       })
     );
   }
-  async function vouchStatement(company, ownerSigning, chain, signer, account, key) {
-    const statement = await appendStatement(company, chain.at(-1), { kind: "member", subject: account, agreementPublic: key.agreementPublic, signingPublic: key.signingPublic }, signer);
-    await verifyChain(company, ownerSigning, [...chain, statement]);
-    return statement;
-  }
   var statementBody = (seq, statement) => ({
     seq,
     bytes: encode(statement.bytes),
     signature: encode(statement.signature)
   });
+
+  // src/members/standing.ts
+  var NONE2 = new Uint8Array(0);
+  function wantsAdmin(role, signing, ownerSigning) {
+    return role === "admin" || role === "owner" && (signing === void 0 || !sameBytes(signing, ownerSigning));
+  }
+  function standingOf(role, account, vouched, ownerSigning) {
+    const wanted = wantsAdmin(role, vouched.signingKeyOf(account), ownerSigning);
+    const held2 = vouched.hasAdminStanding(account);
+    return wanted && !held2 ? "needs-admin" : !wanted && held2 ? "needs-demotion" : "matches";
+  }
+  var memberFields = (account, key) => ({ kind: "member", subject: account, agreementPublic: key.agreementPublic, signingPublic: key.signingPublic });
+  var bareFields = (kind, account) => ({ kind, subject: account, agreementPublic: NONE2, signingPublic: NONE2 });
+  async function appended(company, ownerSigning, chain, signer, fields) {
+    const added = [];
+    for (const one of fields) {
+      added.push(await appendStatement(company, added.at(-1) ?? chain.at(-1), one, signer));
+    }
+    await verifyChain(company, ownerSigning, [...chain, ...added]);
+    return added;
+  }
+  function vouchStatements(company, ownerSigning, chain, signer, account, role, key) {
+    const fields = [memberFields(account, key), ...wantsAdmin(role, key.signingPublic, ownerSigning) ? [bareFields("admin", account)] : []];
+    return appended(company, ownerSigning, chain, signer, fields);
+  }
+  function standingStatements(company, ownerSigning, chain, signer, account, key, standing) {
+    const fields = standing === "needs-admin" ? bareFields("admin", account) : memberFields(account, key);
+    return appended(company, ownerSigning, chain, signer, [fields]);
+  }
+  function departedAccounts(members, vouched, ownerSigning) {
+    const listed = new Set(members.map((member) => member.account));
+    return [...vouched.accounts()].filter((account) => !listed.has(account) && !sameBytes(vouched.signingKeyOf(account) ?? NONE2, ownerSigning));
+  }
+  function leaveStatement(company, ownerSigning, chain, signer, account) {
+    return appended(company, ownerSigning, chain, signer, [bareFields("leave", account)]);
+  }
 
   // src/members/members-words.ts
   function keyStateWords(state) {
@@ -3860,6 +3913,19 @@ ${END}
     const me = rows.find((row2) => row2.account === held2.account);
     const mayVouch = me?.role === "owner" || me?.role === "admin";
     const again = (words = null) => void drawMembers(main2, held2, pageOf, words);
+    const signer = { privateKey: held2.keys.signingPrivate, publicBytes: held2.keys.signingPublic };
+    const send = async (made) => {
+      for (const [index, statement] of made.entries()) {
+        const answer = await call("POST", `${path2}/statements`, ignored, { body: statementBody(chain.value.statements.length + 1 + index, statement) });
+        if (!answer.ok) {
+          return { words: vouchFailure(answer.status, answer.code, loadFailure(answer)), stale: answer.code === "stale_chain" };
+        }
+      }
+      return null;
+    };
+    const act = (make, say) => {
+      void make().then(send).then((failed2) => failed2 === null || failed2.stale ? again(failed2?.words ?? null) : say(failed2.words)).catch((problem2) => say(vouchRefused(problem2 instanceof VaultCryptoError ? problem2.reason : "chain-broken")));
+    };
     const fingerprint = el("p", { class: "fingerprint" });
     const dialogSaid = el("div", { "aria-live": "polite" });
     const dialogTitle = el("h2", { id: "vouch-title" });
@@ -3884,26 +3950,13 @@ ${END}
       }
       confirm.disabled = true;
       fill(dialogSaid, el("p", { class: "muted", role: "status" }, "Vouching for the key."));
-      const signer = { privateKey: held2.keys.signingPrivate, publicBytes: held2.keys.signingPublic };
-      void vouchStatement(held2.company, owner, chain.value.statements, signer, row2.account, key).then(async (statement) => {
-        const answer = await call("POST", `${path2}/statements`, ignored, { body: statementBody(chain.value.statements.length + 1, statement) });
-        confirm.disabled = false;
-        if (answer.ok) {
-          dialog.close();
-          again();
-          return;
+      act(
+        () => vouchStatements(held2.company, owner, chain.value.statements, signer, row2.account, row2.role, key),
+        (words) => {
+          confirm.disabled = false;
+          fill(dialogSaid, refusal(words));
         }
-        const words = vouchFailure(answer.status, answer.code, loadFailure(answer));
-        if (answer.code === "stale_chain") {
-          dialog.close();
-          again(words);
-          return;
-        }
-        fill(dialogSaid, refusal(words));
-      }).catch((problem2) => {
-        confirm.disabled = false;
-        fill(dialogSaid, refusal(vouchRefused(problem2 instanceof VaultCryptoError ? problem2.reason : "chain-broken")));
-      });
+      );
     });
     const items = rows.map((row2) => {
       const vouch = mayVouch && !row2.suspended && row2.state === "waiting" ? el("button", { type: "button", "aria-label": `Vouch for ${row2.label}'s key` }, "Vouch") : null;
@@ -3914,6 +3967,18 @@ ${END}
         fill(dialogSaid, null);
         dialog.showModal();
       });
+      const standing = row2.state === "vouched" ? standingOf(row2.role, row2.account, vouched, owner) : "matches";
+      const vouchedKey2 = directory.value.get(row2.account);
+      let align = null;
+      if (mayVouch && !row2.suspended && standing !== "matches" && vouchedKey2 !== void 0) {
+        const give = standing === "needs-admin";
+        const button = el("button", { type: "button", "aria-label": `${give ? "Give" : "End"} ${row2.label}'s admin standing` }, give ? "Give admin standing" : "End admin standing");
+        button.addEventListener("click", () => {
+          button.disabled = true;
+          act(() => standingStatements(held2.company, owner, chain.value.statements, signer, row2.account, vouchedKey2, standing), again);
+        });
+        align = button;
+      }
       const shownName = row2.account === held2.account ? `${row2.label} (you)` : row2.label;
       return el(
         "li",
@@ -3921,8 +3986,17 @@ ${END}
         el("div", {}, me !== void 0 && mayManage(me.role, row2.role) ? el("a", { class: "share-name", href: pageOf(row2.account) }, shownName) : el("span", { class: "share-name" }, shownName), el("span", { class: "detail" }, row2.detail)),
         el("span", { class: "muted" }, ROLE_WORDS3[row2.role]),
         row2.suspended ? el("span", { class: "state" }, "Suspended") : el("span", { class: `state ${row2.state}` }, keyStateWords(row2.state)),
-        vouch ?? el("span", {})
+        vouch ?? align ?? el("span", {})
       );
+    });
+    const departed = mayVouch ? departedAccounts(members.value, vouched, owner) : [];
+    const left = departed.map((account) => {
+      const end = el("button", { type: "button", "aria-label": `End the key of former member ${account.slice(0, 8)}` }, "End their key");
+      end.addEventListener("click", () => {
+        end.disabled = true;
+        act(() => leaveStatement(held2.company, owner, chain.value.statements, signer, account), again);
+      });
+      return el("li", { class: "share member" }, el("div", {}, el("span", { class: "share-name" }, "A former member"), el("span", { class: "detail" }, `Account ${account.slice(0, 8)}`)), end);
     });
     const own = me?.fingerprint ?? null;
     fill(
@@ -3932,6 +4006,13 @@ ${END}
       invited === null ? null : invitedBlock(invited),
       own === null ? null : el("section", { class: "record-section", "aria-labelledby": "own-key" }, el("h2", { id: "own-key" }, "Your key's fingerprint"), el("p", { class: "fingerprint" }, own)),
       el("section", { class: "record-section", "aria-labelledby": "everyone" }, el("h2", { id: "everyone" }, "Everyone in the company"), el("ul", { class: "shares" }, ...items)),
+      left.length === 0 ? null : el(
+        "section",
+        { class: "record-section", "aria-labelledby": "left" },
+        el("h2", { id: "left" }, "Keys of people who left"),
+        el("p", { class: "muted" }, "These people are no longer in the company, but their keys still count. End each key: what they wrote stays readable, and nothing new can be written in their name."),
+        el("ul", { class: "shares" }, ...left)
+      ),
       me === void 0 || !mayVouch ? null : addMemberForm(held2, me.role, (added) => void drawMembers(main2, held2, pageOf, null, added)),
       dialog
     );

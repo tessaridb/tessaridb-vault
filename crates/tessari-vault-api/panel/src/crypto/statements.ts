@@ -15,14 +15,14 @@ import { sign, verify } from "./signatures.ts";
 const KEY_BYTES = 32;
 const DIGEST_BYTES = 32;
 // New kinds go at the end: a kind is encoded by its position.
-const KINDS = ["member", "admin", "group", "revoke", "recovery"] as const;
+const KINDS = ["member", "admin", "group", "revoke", "recovery", "leave"] as const;
 
 export type StatementKind = (typeof KINDS)[number];
 
 /** What a statement says; the chain position and the signer are added by `appendStatement`. */
 export interface StatementFields {
   kind: StatementKind;
-  /** An account id (member, admin, revoke), a group id (group, revoke) or a recovery key id in hex (recovery). */
+  /** An account id (member, admin, revoke, leave), a group id (group, revoke) or a recovery key id in hex (recovery). */
   subject: string;
   /** The subject's X25519 public key: required for member, group and recovery, empty otherwise. */
   agreementPublic: Bytes;
@@ -71,6 +71,7 @@ export class Vouched {
   readonly #groups: ReadonlyMap<string, Bytes>;
   readonly #recovery: RecoveryKey | undefined;
   readonly #history: ReadonlyMap<string, readonly Held[]>;
+  readonly #admins: ReadonlySet<string>;
   /** The seq of the chain's last statement: the position a revision sealed now is signed at. */
   readonly length: number;
 
@@ -80,12 +81,24 @@ export class Vouched {
     recovery?: RecoveryKey,
     history: ReadonlyMap<string, readonly Held[]> = new Map(),
     length = 0,
+    admins: ReadonlySet<string> = new Set(),
   ) {
     this.#members = members;
     this.#groups = groups;
     this.#recovery = recovery;
     this.#history = history;
     this.length = length;
+    this.#admins = admins;
+  }
+
+  /** Whether the chain lets `account`'s current key sign statements as an admin. */
+  hasAdminStanding(account: string): boolean {
+    return this.#admins.has(account);
+  }
+
+  /** Every account the chain vouches a key for now. */
+  accounts(): IterableIterator<string> {
+    return this.#members.keys();
   }
 
   /** The signing key vouched for `account` at chain position `seq`, or nothing when the reader's chain cannot say. */
@@ -189,6 +202,7 @@ function hasShape(statement: Decoded): boolean {
       return agreement === KEY_BYTES && signing === 0;
     case "admin":
     case "revoke":
+    case "leave":
       return agreement === 0 && signing === 0;
   }
 }
@@ -260,6 +274,17 @@ export async function verifyChain(company: string, ownerSigningPublic: Bytes, ch
         }
         recovery = { keyId: decoded.subject, agreementPublic: decoded.agreementPublic };
         break;
+      case "leave": {
+        // A departure ends the key where it stands and keeps what it signed before.
+        if (decoded.subject === ownerAccount || !forget(decoded.subject)) {
+          throw new VaultCryptoError("chain-broken");
+        }
+        const open = history.get(decoded.subject)?.at(-1);
+        if (open !== undefined && open.until === undefined) {
+          open.until = decoded.seq;
+        }
+        break;
+      }
       case "revoke":
         if (decoded.subject === ownerAccount || (!forget(decoded.subject) && !groups.delete(decoded.subject))) {
           throw new VaultCryptoError("chain-broken");
@@ -270,5 +295,6 @@ export async function verifyChain(company: string, ownerSigningPublic: Bytes, ch
     }
     expectedPrev = await digest(statement);
   }
-  return new Vouched(members, groups, recovery, history, chain.length);
+  const admins = new Set([...members].filter(([, keys]) => adminKeys.has(hex(keys.signing))).map(([account]) => account));
+  return new Vouched(members, groups, recovery, history, chain.length, admins);
 }

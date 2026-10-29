@@ -1,11 +1,10 @@
 // The members page without a DOM: each member with their key's state against the company's chain and its fingerprint,
-// and the statement an owner or admin appends to vouch for a member's key, checked against the whole chain first.
-// The server keeps statements without reading them, so one the chain would refuse would break it for everyone.
+// and the body that carries a statement to the server (the statements themselves are made in standing.ts).
 
 import { encode } from "../base64url.ts";
-import { sameBytes, type Bytes } from "../crypto/bytes.ts";
+import { sameBytes } from "../crypto/bytes.ts";
 import { keyFingerprint } from "../crypto/fingerprint.ts";
-import { appendStatement, verifyChain, type Signer, type Statement, type Vouched } from "../crypto/statements.ts";
+import type { Statement, Vouched } from "../crypto/statements.ts";
 import type { ListedMember } from "../records/share-targets.ts";
 import type { DirectoryKey } from "../records/shares-model.ts";
 
@@ -40,16 +39,6 @@ export async function memberRows(members: readonly ListedMember[], directory: Re
       return { ...base, state: matches ? "vouched" : "waiting", fingerprint: await keyFingerprint(listed.agreementPublic, listed.signingPublic) };
     }),
   );
-}
-
-/**
- * The statement vouching for `account`'s listed `key`, signed by `signer` after the last of `chain`; refused with the
- * chain's own reason when the whole chain with it would not verify from the owner key `ownerSigning`.
- */
-export async function vouchStatement(company: string, ownerSigning: Bytes, chain: readonly Statement[], signer: Signer, account: string, key: DirectoryKey): Promise<Statement> {
-  const statement = await appendStatement(company, chain.at(-1), { kind: "member", subject: account, agreementPublic: key.agreementPublic, signingPublic: key.signingPublic }, signer);
-  await verifyChain(company, ownerSigning, [...chain, statement]);
-  return statement;
 }
 
 /** The body `POST /api/companies/{company}/statements` takes for a statement after the genesis. */

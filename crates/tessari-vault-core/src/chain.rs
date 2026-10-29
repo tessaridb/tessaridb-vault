@@ -54,6 +54,7 @@ enum Kind {
     Group,
     Revoke,
     Recovery,
+    Leave,
 }
 
 struct Decoded<'a> {
@@ -108,6 +109,7 @@ fn decode(bytes: &[u8]) -> Result<Decoded<'_>, ChainRefused> {
         3 => Kind::Group,
         4 => Kind::Revoke,
         5 => Kind::Recovery,
+        6 => Kind::Leave,
         _ => return Err(ChainRefused::Broken),
     };
     let company = reader.field()?;
@@ -159,7 +161,7 @@ fn has_shape(statement: &Decoded<'_>) -> bool {
     match statement.kind {
         Kind::Member => agreement == KEY_BYTES && signing == KEY_BYTES,
         Kind::Group | Kind::Recovery => agreement == KEY_BYTES && signing == 0,
-        Kind::Admin | Kind::Revoke => agreement == 0 && signing == 0,
+        Kind::Admin | Kind::Revoke | Kind::Leave => agreement == 0 && signing == 0,
     }
 }
 
@@ -219,6 +221,16 @@ pub fn verify(
             // Escrow to this key reaches every member's keys, so no admin may name it.
             Kind::Recovery if !by_owner => return Err(ChainRefused::UnvouchedSigner),
             Kind::Recovery => {}
+            // A departure ends the member's key and admin standing; what they signed before stays theirs.
+            Kind::Leave => {
+                if decoded.subject == owner_account {
+                    return Err(ChainRefused::Broken);
+                }
+                let signing = members
+                    .remove(decoded.subject)
+                    .ok_or(ChainRefused::Broken)?;
+                admin_keys.remove(signing);
+            }
             Kind::Revoke => {
                 if decoded.subject == owner_account {
                     return Err(ChainRefused::Broken);

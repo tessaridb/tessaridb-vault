@@ -44,11 +44,18 @@ const fork = await twoAfter([
   [{ kind: "group", subject: "group-f", agreementPublic: x(10), signingPublic: none }, owner],
   [{ kind: "group", subject: "group-g", agreementPublic: x(11), signingPublic: none }, owner],
 ], prefix.slice(0, 2));
+const leaveOwner = await alt({ kind: "leave", subject: "owner-account", agreementPublic: none, signingPublic: none }, owner);
+const leaveStranger = await alt({ kind: "leave", subject: "nobody-account", agreementPublic: none, signingPublic: none }, owner);
+const departedAdmin = await twoAfter([
+  [{ kind: "leave", subject: "admin-account", agreementPublic: none, signingPublic: none }, owner],
+  [{ kind: "group", subject: "group-9", agreementPublic: x(9), signingPublic: none }, admin],
+]);
 const byStranger = await alt({ kind: "group", subject: "group-1", agreementPublic: x(6), signingPublic: new Uint8Array(0) }, stranger);
 await add({ kind: "group", subject: "group-1", agreementPublic: x(3), signingPublic: new Uint8Array(0) }, admin);
 await add({ kind: "recovery", subject: "bb".repeat(16), agreementPublic: x(4), signingPublic: new Uint8Array(0) }, owner);
 await add({ kind: "revoke", subject: "group-1", agreementPublic: new Uint8Array(0), signingPublic: new Uint8Array(0) }, admin);
 await add({ kind: "member", subject: "member-account", agreementPublic: x(7), signingPublic: x(8) }, admin);
+await add({ kind: "leave", subject: "member-account", agreementPublic: new Uint8Array(0), signingPublic: new Uint8Array(0) }, admin);
 // Signed by the owner key, but naming another key as the owner's own signing key.
 const genesisNamingAnotherKey = await appendStatement(company, undefined,
   { kind: "member", subject: "owner-account", agreementPublic: x(1), signingPublic: stranger.publicBytes }, owner);
@@ -57,5 +64,6 @@ console.log(JSON.stringify({
   genesis_naming_another_key: out(genesisNamingAnotherKey),
   company, owner_signing: hex(owner.publicBytes), chain: chain.map(out),
   after_three: { recovery_by_admin: [out(recoveryByAdmin)], revoke_owner: [out(revokeOwner)], by_stranger: [out(byStranger)],
-    rekey_then_old_admin: rekeyThenOldAdmin.map(out), revoked_admin: revokedAdmin.map(out), fork_fourth: [out(fork[1]!)] },
+    rekey_then_old_admin: rekeyThenOldAdmin.map(out), revoked_admin: revokedAdmin.map(out), fork_fourth: [out(fork[1]!)],
+    leave_owner: [out(leaveOwner)], leave_stranger: [out(leaveStranger)], departed_admin: departedAdmin.map(out) },
 }, null, 1));

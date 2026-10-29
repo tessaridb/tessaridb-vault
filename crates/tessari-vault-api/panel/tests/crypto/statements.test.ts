@@ -39,7 +39,7 @@ function member(who: Person): StatementFields {
   return { kind: "member", subject: who.account, agreementPublic: who.agreementPublic, signingPublic: who.signer.publicBytes };
 }
 
-function bare(kind: "admin" | "revoke", subject: string): StatementFields {
+function bare(kind: "admin" | "revoke" | "leave", subject: string): StatementFields {
   return { kind, subject, agreementPublic: new Uint8Array(0), signingPublic: new Uint8Array(0) };
 }
 
@@ -105,6 +105,37 @@ describe("the vouching chain", () => {
     const vouched = await verifyChain(COMPANY, owner.signer.publicBytes, chain);
     assert.equal(vouched.agreementKeyOf("alice"), undefined);
     assert.equal(vouched.signingKeyOf("alice"), undefined);
+  });
+
+  it("ends a departed member's key and admin standing, so nothing they sign after counts", async () => {
+    const { owner, bob, dave, chain } = await world();
+    chain.push(await appendStatement(COMPANY, chain.at(-1), bare("leave", "bob"), owner.signer));
+    const vouched = await verifyChain(COMPANY, owner.signer.publicBytes, chain);
+    assert.equal(vouched.signingKeyOf("bob"), undefined);
+    assert.equal(vouched.hasAdminStanding("bob"), false);
+    chain.push(await appendStatement(COMPANY, chain.at(-1), member(dave), bob.signer));
+    await refusedWith(verifyChain(COMPANY, owner.signer.publicBytes, chain), "unvouched-signer");
+  });
+
+  it("refuses a departure of the genesis owner or of an account the chain does not vouch for", async () => {
+    const { owner, chain } = await world();
+    for (const subject of ["owner", "dave", "group-1"]) {
+      const departed = [...chain, await appendStatement(COMPANY, chain.at(-1), bare("leave", subject), owner.signer)];
+      await refusedWith(verifyChain(COMPANY, owner.signer.publicBytes, departed), "chain-broken");
+    }
+  });
+
+  it("answers who holds admin standing and which accounts it vouches for, a fresh member statement demoting", async () => {
+    const { owner, alice, bob, chain } = await world();
+    const before = await verifyChain(COMPANY, owner.signer.publicBytes, chain);
+    assert.equal(before.hasAdminStanding("bob"), true);
+    assert.equal(before.hasAdminStanding("alice"), false);
+    assert.deepEqual([...before.accounts()].sort(), ["alice", "bob", "carol", "owner"]);
+    chain.push(await appendStatement(COMPANY, chain.at(-1), member(bob), owner.signer));
+    const after = await verifyChain(COMPANY, owner.signer.publicBytes, chain);
+    assert.equal(after.hasAdminStanding("bob"), false);
+    assert.equal(toHex(after.signingKeyOf("bob") ?? new Uint8Array()), toHex(bob.signer.publicBytes));
+    assert.equal(after.hasAdminStanding("alice"), false, toHex(alice.signer.publicBytes));
   });
 
   it("refuses a statement signed by a member who is not an admin", async () => {
@@ -198,6 +229,16 @@ describe("revision signatures (algorithm 0x04)", () => {
     const after = { ...REVISION, revision: 4, chainSeq: 7 };
     await verifyRevision(vouched, "alice", after, BODY, await signRevision(renewed.signer.privateKey, after, BODY));
     await refusedWith(verifyRevision(vouched, "alice", after, BODY, await signRevision(alice.signer.privateKey, after, BODY)), "bad-signature");
+  });
+
+  it("accepts a revision a departed author signed before leaving, and refuses one claiming a later position", async () => {
+    const { owner, alice, chain } = await world();
+    const before = await signRevision(alice.signer.privateKey, REVISION, BODY);
+    chain.push(await appendStatement(COMPANY, chain.at(-1), bare("leave", "alice"), owner.signer));
+    const vouched = await verifyChain(COMPANY, owner.signer.publicBytes, chain);
+    await verifyRevision(vouched, "alice", REVISION, BODY, before);
+    const after = { ...REVISION, revision: 4, chainSeq: 7 };
+    await refusedWith(verifyRevision(vouched, "alice", after, BODY, await signRevision(alice.signer.privateKey, after, BODY)), "unvouched-signer");
   });
 
   it("refuses a revision claiming a chain position the reader has not verified", async () => {

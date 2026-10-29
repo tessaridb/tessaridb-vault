@@ -8,7 +8,8 @@ import { random, type Bytes } from "../../src/crypto/bytes.ts";
 import { generatePair, publicBytes } from "../../src/crypto/keys.ts";
 import { appendStatement, verifyChain, type Statement } from "../../src/crypto/statements.ts";
 import { keyFingerprint } from "../../src/crypto/fingerprint.ts";
-import { memberRows, vouchStatement } from "../../src/members/members-model.ts";
+import { memberRows } from "../../src/members/members-model.ts";
+import { vouchStatements } from "../../src/members/standing.ts";
 import type { ListedMember } from "../../src/records/share-targets.ts";
 import type { DirectoryKey } from "../../src/records/shares-model.ts";
 import { refusedWith } from "../crypto/support.ts";
@@ -55,13 +56,13 @@ describe("vouching for a member's key", () => {
     assert.deepEqual(before.map((row) => [row.label, row.state]), [["Olive Owner", "vouched"], ["Sam Member", "waiting"], ["Ned New", "no-key"]]);
     assert.equal(before[1]?.fingerprint, await keyFingerprint(sam.agreementPublic, sam.signingPublic));
 
-    const statement = await vouchStatement(COMPANY, owner.signingPublic, chain, { privateKey: owner.signing.privateKey, publicBytes: owner.signingPublic }, SAM, directory.get(SAM) as DirectoryKey);
-    const after = await memberRows(members, directory, await verifyChain(COMPANY, owner.signingPublic, [...chain, statement]));
+    const statements = await vouchStatements(COMPANY, owner.signingPublic, chain, { privateKey: owner.signing.privateKey, publicBytes: owner.signingPublic }, SAM, "member", directory.get(SAM) as DirectoryKey);
+    const after = await memberRows(members, directory, await verifyChain(COMPANY, owner.signingPublic, [...chain, ...statements]));
     assert.equal(after[1]?.state, "vouched");
 
     // A member nobody made admin signs a statement the chain would refuse: it is refused here, before anything is sent.
     await refusedWith(
-      vouchStatement(COMPANY, owner.signingPublic, chain, { privateKey: sam.signing.privateKey, publicBytes: sam.signingPublic }, SAM, directory.get(SAM) as DirectoryKey),
+      vouchStatements(COMPANY, owner.signingPublic, chain, { privateKey: sam.signing.privateKey, publicBytes: sam.signingPublic }, SAM, "member", directory.get(SAM) as DirectoryKey),
       "unvouched-signer",
     );
   });

@@ -50,7 +50,7 @@ fn signed(chain: &[(Vec<u8>, Vec<u8>)]) -> Vec<Signed<'_>> {
 #[test]
 fn the_chain_the_browser_wrote_verifies_whole_and_at_every_length() {
     let vector = vector();
-    assert_eq!(vector.chain.len(), 7);
+    assert_eq!(vector.chain.len(), 8);
     for length in 1..=vector.chain.len() {
         let chain = signed(&vector.chain[..length]);
         assert_eq!(
@@ -71,6 +71,9 @@ fn a_signed_step_the_rules_forbid_is_refused_for_its_reason() {
         ("rekey_then_old_admin", ChainRefused::UnvouchedSigner),
         ("revoked_admin", ChainRefused::UnvouchedSigner),
         ("fork_fourth", ChainRefused::Broken),
+        ("leave_owner", ChainRefused::Broken),
+        ("leave_stranger", ChainRefused::Broken),
+        ("departed_admin", ChainRefused::UnvouchedSigner),
     ] {
         let mut chain = vector.chain[..3].to_vec();
         chain.extend(
