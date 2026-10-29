@@ -6,7 +6,7 @@ import { call } from "../api.ts";
 import { announce, el, fill } from "../dom.ts";
 import { audiencePicker, loadAudience, shareCreated } from "./audience-view.ts";
 import { joinCustom, splitCustom } from "./custom-fields.ts";
-import { customEditor } from "./custom-fields-view.ts";
+import { customEditor, type Control } from "./custom-fields-view.ts";
 import { readOpened, readRow, type RecordRow } from "../records-model.ts";
 import { breadcrumbs, heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
@@ -21,7 +21,8 @@ import { newRecord, revisedRecord } from "./save-record.ts";
 import { sharedWith } from "./share-recipients.ts";
 import { sshKeyControl } from "./ssh-field-view.ts";
 import { fileControl, type Attach } from "./file-field-view.ts";
-import { uploadFile } from "./file-io.ts";
+import { deleteFile, uploadFile } from "./file-io.ts";
+import { saveWithFiles } from "./save-with-files.ts";
 import { otpFromInput } from "./otp-input.ts";
 import { BUILT_IN_TYPES, recordFromTemplate } from "./types.ts";
 
@@ -37,7 +38,7 @@ const INPUT: Partial<Record<Field["type"], string>> = {
 };
 
 /** One field's control and a way to read what it holds; types the form cannot edit yet keep their value. */
-function control(field: Field, id: string, attach: Attach | null): { readonly row: HTMLElement; readonly read: () => unknown; readonly mark: (words: string | null) => void } {
+function control(field: Field, id: string, attach: Attach | null): Control {
   if (field.type === "file") {
     return fileControl(field.label, field.value, id, attach);
   }
@@ -109,7 +110,7 @@ function form(main: HTMLElement, title: string, document: RecordDocument, trail:
   const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
   nameHint.hidden = true;
   name.setAttribute("aria-describedby", nameHint.id);
-  const controls = new Map<string, ReturnType<typeof control>>();
+  const controls = new Map<string, Control>();
   const { base, custom } = splitCustom(document);
   const own = customEditor(custom, (field, id) => control(field, id, attach), base.sections.flatMap((section) => section.fields.map((field) => field.label)));
   const sections = base.sections.map((section, sectionIndex) =>
@@ -152,7 +153,7 @@ function form(main: HTMLElement, title: string, document: RecordDocument, trail:
     name.removeAttribute("aria-invalid");
     submit.disabled = true;
     fill(said, el("p", { class: "muted", role: "status" }, "Sealing and saving the record."));
-    void save(result.document).then((refused) => {
+    void saveWithFiles([...all.values()], attach, () => edited(joinCustom(base, added.map((entry) => entry.field)), name.value, new Map([...all].map(([at, made]) => [at, made.read()] as const))), save).then((refused) => {
       submit.disabled = false;
       fill(said, refused === null ? null : refusal(refused));
     });
@@ -219,7 +220,7 @@ export async function drawEdit(main: HTMLElement, held: Unlocked, id: string, re
     return;
   }
   const row: RecordRow = item.row;
-  form(main, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, (file) => uploadFile(held, id, file), async (made) => {
+  form(main, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, { send: (file) => uploadFile(held, id, file), discard: (file) => deleteFile(held, id, file) }, async (made) => {
     const sharing = await sharedWith(held, id);
     if (!sharing.ok) {
       return sharing.words;

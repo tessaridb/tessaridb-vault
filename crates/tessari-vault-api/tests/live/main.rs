@@ -15,6 +15,7 @@ mod chain_position;
 mod company_drop;
 mod concurrency;
 mod enrolment;
+mod file_delete;
 mod files;
 mod group_keys;
 mod identity_reads;
@@ -331,6 +332,10 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             low: not_author,
             cross: hidden,
         }),
+        // Only its uploader deletes a file: everyone else finds none.
+        ("DELETE", "/api/companies/{company}/records/{record}/files/{file}") => {
+            row(None, not_author, hidden)
+        }
         ("GET", "/api/companies/{company}/records/{record}/files/{file}") => Some(Probe {
             path: format!("{path}?offset=0&limit=1"),
             body: None,

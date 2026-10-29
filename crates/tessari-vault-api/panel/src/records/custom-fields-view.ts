@@ -12,7 +12,14 @@ export interface Control {
   readonly row: HTMLElement;
   readonly read: () => unknown;
   readonly mark: (words: string | null) => void;
+  /** For a file chosen in the form: send it now that the record is being saved, answering the id it was sent as. */
+  readonly settle?: () => Promise<Settled>;
+  /** After a save that did not happen: hold the chosen file again, and the value from before it was sent. */
+  readonly undo?: () => void;
 }
+
+/** What settling a control did: the file it sent, if any, or why it could not. */
+export type Settled = { readonly ok: true; readonly sent: string | null } | { readonly ok: false; readonly words: string };
 
 export interface CustomEditor {
   readonly section: HTMLElement;

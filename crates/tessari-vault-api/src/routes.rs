@@ -251,6 +251,11 @@ pub fn routes() -> Vec<Route> {
             "/api/companies/{company}/records/{record}/files/{file}",
             get(files::read),
         ),
+        route(
+            Method::DELETE,
+            "/api/companies/{company}/records/{record}/files/{file}",
+            delete(files::delete),
+        ),
     ];
     table.extend(key_routes::routes());
     table.extend(

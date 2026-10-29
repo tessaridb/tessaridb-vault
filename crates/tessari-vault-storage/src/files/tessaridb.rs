@@ -10,7 +10,7 @@ use super::entity::{FileEntity, Kept};
 use super::repository::{FileRef, FileRepository, Part};
 use crate::access::{GUARD, bind, thrown};
 use crate::audit::RECORD;
-use crate::records::{COMPANYS_RECORD, RecordVaults, SHARES_UNCHANGED};
+use crate::records::{COMPANYS_RECORD, RecordVaults, SHARES_UNCHANGED, parts};
 use crate::{Error, Result, answers};
 
 /// Refuses a part unless the file holds exactly the bytes before it.
@@ -107,6 +107,37 @@ impl FileRepository for TessaridbFiles {
         );
         self.database
             .transact_at(place, &script, "", guard)
+            .await
+            .map_err(|error| thrown(error.into()))?;
+        Ok(())
+    }
+
+    async fn delete(
+        &self,
+        place: &Place,
+        mut guard: Vec<(String, Value)>,
+        at: &FileRef<'_>,
+        file: &FileEntity,
+        vault_key: VaultKey,
+    ) -> Result<()> {
+        let vault = RecordVaults::name(at.company);
+        guard.extend(located(at));
+        let mut bytes = String::new();
+        if file.kept == Kept::Vault.word() {
+            bytes.push_str(&format!("DELETE {vault}:$vid;"));
+        } else {
+            for index in 0..parts(file.size)? {
+                bytes.push_str(&format!(" DELETE record_files:$part{index};"));
+                guard.push(bind(&format!("part{index}"), part_path(at, index).as_str()));
+            }
+        }
+        // The uploader alone, checked again where the row is deleted, so a file named by nobody else is never another's.
+        let script = format!(
+            "BEGIN; {GUARD} THROW 'not found' IF (GET files:$file).author != $author \
+             OR (GET files:$file).record != $record; {bytes} DELETE files:$file; {RECORD} COMMIT;"
+        );
+        self.database
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())

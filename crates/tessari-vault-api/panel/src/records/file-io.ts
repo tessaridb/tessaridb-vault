@@ -1,8 +1,8 @@
-// Attaching a file to a saved record and reading it back. The file is sealed in this page under a key of its own, made
+// Attaching a file to a saved record, deleting one a save then failed to name, and reading one back. The file is sealed in this page under a key of its own, made
 // here; the server is told the sealed size, answers the file's id, and takes the sealed bytes in parts, in order. Reading
 // fetches the parts and opens them with the key the record's file field carries.
 
-import { call, callBytes } from "../api.ts";
+import { call, callBytes, ignored } from "../api.ts";
 import { concat, type Bytes } from "../crypto/bytes.ts";
 import { VaultCryptoError } from "../crypto/errors.ts";
 import { FILE_MAX_BYTES, fileKeyId, importFileKey, newFileKey, openFile, sealFile, sealedSize } from "../crypto/files.ts";
@@ -39,6 +39,12 @@ export async function uploadFile(held: Unlocked, record: string, file: File): Pr
     }
   }
   return { ok: true, value: { id: created.value, name: file.name, size: data.length, mediaType: file.type === "" ? "application/octet-stream" : file.type, ...own } };
+}
+
+/** Deletes the file `id` this page sent to record `record` when the save that was to name it did not happen; the vault
+ * keeps no file nobody names, and one left behind by a failed delete stays sealed under a key nobody kept. */
+export async function deleteFile(held: Unlocked, record: string, id: string): Promise<void> {
+  await call("DELETE", `${filesPath(held, record)}/${encodeURIComponent(id)}`, ignored);
 }
 
 /** Reads the file `value` names on record `record` and opens it; a file that does not check out is refused whole. */

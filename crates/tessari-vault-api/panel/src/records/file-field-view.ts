@@ -1,15 +1,18 @@
-// A file field: in the edit form, the file it holds and a way to choose one, sealed and sent as soon as it is chosen; on
-// the record page, Download opens it here and hands it to the browser to save. A file belongs to a saved record, so a
-// record not saved yet says to save it first.
+// A file field: in the edit form, the file it holds and a way to choose one, sealed and sent when the record is saved, so
+// a form left without saving leaves nothing behind; on the record page, Download opens it here and hands it to the
+// browser to save. A file belongs to a saved record, so a record not saved yet says to save it first.
 
 import { announce, el, fill } from "../dom.ts";
 import type { Unlocked } from "../vault.ts";
-import type { Control } from "./custom-fields-view.ts";
+import type { Control, Settled } from "./custom-fields-view.ts";
 import type { FileValue } from "./fields.ts";
 import { downloadFile } from "./file-io.ts";
 
-/** Sends a chosen file and answers the field's new value, or why it wasn't kept. */
-export type Attach = (file: File) => Promise<{ readonly ok: true; readonly value: FileValue } | { readonly ok: false; readonly words: string }>;
+/** Sends a chosen file and answers the field's new value, or why it wasn't kept; and deletes a file sent for a save that did not happen. */
+export interface Attach {
+  readonly send: (file: File) => Promise<{ readonly ok: true; readonly value: FileValue } | { readonly ok: false; readonly words: string }>;
+  readonly discard: (id: string) => Promise<void>;
+}
 
 const sizeWords = (bytes: number): string => new Intl.NumberFormat(undefined, { style: "unit", unit: "kilobyte" }).format(Math.ceil(bytes / 1024));
 
@@ -37,29 +40,43 @@ export function fileControl(label: string, initial: FileValue | null, id: string
     return { row: el("div", { class: "field" }, el("p", { class: "field-label" }, label), shown, later), read: () => value, mark };
   }
   const input = el("input", { id, type: "file", "aria-describedby": hint.id });
+  let chosen: File | null = null;
+  let before = value;
   input.addEventListener("change", () => {
-    const chosen = input.files?.[0];
-    if (chosen === undefined) {
+    const picked = input.files?.[0];
+    if (picked === undefined) {
       return;
     }
     mark(null);
+    chosen = picked;
+    status.textContent = value === null ? `${picked.name} is sent when you save the record.` : `${picked.name} is sent when you save the record, and replaces the file above.`;
+  });
+  const settle = async (): Promise<Settled> => {
+    if (chosen === null) {
+      return { ok: true, sent: null };
+    }
     input.disabled = true;
     status.textContent = `Sealing and sending ${chosen.name}.`;
-    void attach(chosen).then((made) => {
-      input.disabled = false;
-      input.value = "";
-      if (!made.ok) {
-        status.textContent = "";
-        mark(made.words);
-        return;
-      }
-      const had = value !== null;
-      value = made.value;
-      draw();
-      status.textContent = had ? `${chosen.name} is sent. It replaces the old file when you save the record.` : `${chosen.name} is sent. Save the record to keep it.`;
-    });
-  });
-  return { row: el("div", { class: "field" }, name, shown, input, status, hint), read: () => value, mark };
+    const made = await attach.send(chosen);
+    input.disabled = false;
+    if (!made.ok) {
+      status.textContent = "";
+      mark(made.words);
+      return made;
+    }
+    before = value;
+    value = made.value;
+    draw();
+    return { ok: true, sent: made.value.id };
+  };
+  const undo = (): void => {
+    value = before;
+    draw();
+    if (chosen !== null) {
+      status.textContent = `${chosen.name} is sent when you save the record.`;
+    }
+  };
+  return { row: el("div", { class: "field" }, name, shown, input, status, hint), read: () => value, mark, settle, undo };
 }
 
 /** Opens the file `value` names on record `record` and gives it to the browser to save. */

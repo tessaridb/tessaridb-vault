@@ -51,6 +51,15 @@ pub(crate) trait FileRepository: Send + Sync {
         part: Part<'_>,
         vault_key: VaultKey,
     ) -> Result<()>;
+    /// Delete `file`, its row and its sealed bytes, refused as not found unless `at.author` uploaded it.
+    async fn delete(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        at: &FileRef<'_>,
+        file: &FileEntity,
+        vault_key: VaultKey,
+    ) -> Result<()>;
     /// Record the read on the trail, then read `limit` bytes from `offset`.
     async fn read(
         &self,

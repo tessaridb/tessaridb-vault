@@ -127,3 +127,19 @@ pub(crate) async fn read(
         .await?;
     Ok(([(header::CONTENT_TYPE, "application/octet-stream")], bytes))
 }
+
+pub(crate) async fn delete(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path((company, record, file)): Path<(String, String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let company = company_id(&company)?;
+    let record = record_id(&record)?;
+    let file = file_id(&file)?;
+    state
+        .storage
+        .files
+        .delete(&actor, &company, &record, &file)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}

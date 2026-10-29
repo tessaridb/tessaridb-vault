@@ -225,6 +225,52 @@ impl FileService {
             .await
     }
 
+    /// Delete a file the caller uploaded, as a save that failed to name it does; on the company's trail.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Refused`] per the decision and for a caller who only reads the record; [`Error::NotFound`] for a file
+    /// on a record the caller does not reach, or one somebody else uploaded.
+    pub async fn delete(
+        &self,
+        actor: &Actor,
+        company: &CompanyId,
+        record: &RecordId,
+        file: &FileId,
+    ) -> Result<()> {
+        let standing = access::authorize(
+            &self.database,
+            &self.place,
+            actor,
+            company,
+            Action::ReviseRecord,
+        )
+        .await?;
+        let (entity, reached) = self.records.reached(actor, company, record).await?;
+        reached.editing()?;
+        let at = FileRef {
+            company,
+            record,
+            file,
+            author: actor.account(),
+            share_version: entity.share_version,
+        };
+        let held = self
+            .repository
+            .get(&self.place, &at)
+            .await?
+            .ok_or(Error::NotFound)?;
+        self.repository
+            .delete(
+                &self.place,
+                recorded(actor, company, &standing, "file.delete", file.as_str()),
+                &at,
+                &held,
+                self.vaults.key(company, standing.key_epoch)?,
+            )
+            .await
+    }
+
     async fn found(&self, at: &FileRef<'_>) -> Result<FileMeta> {
         self.repository
             .get(&self.place, at)

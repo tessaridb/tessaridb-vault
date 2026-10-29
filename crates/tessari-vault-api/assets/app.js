@@ -2873,6 +2873,9 @@ ${END}
     }
     return { ok: true, value: { id: created.value, name: file.name, size: data.length, mediaType: file.type === "" ? "application/octet-stream" : file.type, ...own } };
   }
+  async function deleteFile(held2, record, id) {
+    await call("DELETE", `${filesPath(held2, record)}/${encodeURIComponent(id)}`, ignored);
+  }
   async function downloadFile(held2, record, value) {
     const parts = [];
     for (const part of partsOf(sealedSize(value.size))) {
@@ -2916,29 +2919,43 @@ ${END}
       return { row: el("div", { class: "field" }, el("p", { class: "field-label" }, label), shown, later), read: () => value, mark: mark2 };
     }
     const input = el("input", { id, type: "file", "aria-describedby": hint.id });
+    let chosen = null;
+    let before = value;
     input.addEventListener("change", () => {
-      const chosen = input.files?.[0];
-      if (chosen === void 0) {
+      const picked = input.files?.[0];
+      if (picked === void 0) {
         return;
       }
       mark2(null);
+      chosen = picked;
+      status.textContent = value === null ? `${picked.name} is sent when you save the record.` : `${picked.name} is sent when you save the record, and replaces the file above.`;
+    });
+    const settle = async () => {
+      if (chosen === null) {
+        return { ok: true, sent: null };
+      }
       input.disabled = true;
       status.textContent = `Sealing and sending ${chosen.name}.`;
-      void attach(chosen).then((made) => {
-        input.disabled = false;
-        input.value = "";
-        if (!made.ok) {
-          status.textContent = "";
-          mark2(made.words);
-          return;
-        }
-        const had = value !== null;
-        value = made.value;
-        draw2();
-        status.textContent = had ? `${chosen.name} is sent. It replaces the old file when you save the record.` : `${chosen.name} is sent. Save the record to keep it.`;
-      });
-    });
-    return { row: el("div", { class: "field" }, name, shown, input, status, hint), read: () => value, mark: mark2 };
+      const made = await attach.send(chosen);
+      input.disabled = false;
+      if (!made.ok) {
+        status.textContent = "";
+        mark2(made.words);
+        return made;
+      }
+      before = value;
+      value = made.value;
+      draw2();
+      return { ok: true, sent: made.value.id };
+    };
+    const undo = () => {
+      value = before;
+      draw2();
+      if (chosen !== null) {
+        status.textContent = `${chosen.name} is sent when you save the record.`;
+      }
+    };
+    return { row: el("div", { class: "field" }, name, shown, input, status, hint), read: () => value, mark: mark2, settle, undo };
   }
   async function saveToDevice(held2, record, value) {
     announce(`Opening ${value.name}.`);
@@ -2954,6 +2971,31 @@ ${END}
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
     announce(`${value.name} is ready in your downloads.`);
+  }
+
+  // src/records/save-with-files.ts
+  async function saveWithFiles(controls, attach, values, save) {
+    const sent = [];
+    const undo = async () => {
+      await Promise.all(sent.map((id) => attach?.discard(id)));
+      controls.forEach((made) => made.undo?.());
+    };
+    for (const made of controls) {
+      const settled = await made.settle?.() ?? { ok: true, sent: null };
+      if (!settled.ok) {
+        await undo();
+        return settled.words;
+      }
+      if (settled.sent !== null) {
+        sent.push(settled.sent);
+      }
+    }
+    const result = values();
+    const refused2 = result.ok ? await save(result.document) : "Some values can't be kept. Each one says why below its label.";
+    if (refused2 !== null) {
+      await undo();
+    }
+    return refused2;
   }
 
   // src/records/otp-input.ts
@@ -3109,7 +3151,7 @@ ${END}
       name.removeAttribute("aria-invalid");
       submit.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Sealing and saving the record."));
-      void save(result.document).then((refused2) => {
+      void saveWithFiles([...all.values()], attach, () => edited(joinCustom(base, added.map((entry) => entry.field)), name.value, new Map([...all].map(([at3, made]) => [at3, made.read()]))), save).then((refused2) => {
         submit.disabled = false;
         fill(said, refused2 === null ? null : refusal(refused2));
       });
@@ -3170,7 +3212,7 @@ ${END}
       return;
     }
     const row2 = item.row;
-    form(main2, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, (file) => uploadFile(held2, id, file), async (made) => {
+    form(main2, "Edit record", item.document, editCrumbs(records, back, item.document.title), null, { send: (file) => uploadFile(held2, id, file), discard: (file) => deleteFile(held2, id, file) }, async (made) => {
       const sharing = await sharedWith(held2, id);
       if (!sharing.ok) {
         return sharing.words;
