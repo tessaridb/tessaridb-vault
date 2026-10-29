@@ -2503,7 +2503,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     number: "Use digits only.",
     date: "Use a date like 2027-02-28.",
     "month-year": "Use a month like 2028-11.",
-    otp: "Paste the setup key exactly as the issuer showed it."
+    otp: "Paste the setup key or the otpauth:// link exactly as the issuer showed it."
   };
   function problem(type, refused) {
     if (refused instanceof VaultCryptoError && refused.reason === "too-large") {
@@ -2924,6 +2924,41 @@ ${END}
     announce(`${value.name} is ready in your downloads.`);
   }
 
+  // src/records/otp-input.ts
+  var ALGORITHMS = ["SHA1", "SHA256", "SHA512"];
+  function secretOf(text3) {
+    const clean = text3.replace(/\s+/g, "").toUpperCase().replace(/=+$/, "");
+    try {
+      return base32Decode(clean).length === 0 ? null : clean;
+    } catch {
+      return null;
+    }
+  }
+  function otpFromInput(text3) {
+    const trimmed = text3.trim();
+    if (!/^otpauth:/i.test(trimmed)) {
+      const secret2 = secretOf(trimmed);
+      return secret2 === null ? null : { secret: secret2, algorithm: "SHA1", digits: 6, period: 30 };
+    }
+    let link;
+    try {
+      link = new URL(trimmed);
+    } catch {
+      return null;
+    }
+    if (link.host.toLowerCase() !== "totp") {
+      return null;
+    }
+    const secret = secretOf(link.searchParams.get("secret") ?? "");
+    const algorithm = ALGORITHMS.find((each) => each === (link.searchParams.get("algorithm") ?? "SHA1").toUpperCase());
+    const digits = Number(link.searchParams.get("digits") ?? "6");
+    const period = Number(link.searchParams.get("period") ?? "30");
+    if (secret === null || algorithm === void 0 || digits !== 6 && digits !== 8 || !Number.isInteger(period) || period < 1 || period > 3600) {
+      return null;
+    }
+    return { secret, algorithm, digits, period };
+  }
+
   // src/records/edit-view.ts
   var INPUT = {
     text: "text",
@@ -2952,6 +2987,12 @@ ${END}
       box2.checked = field3.value === true;
       read = () => box2.checked;
       input = box2;
+    } else if (field3.type === "otp") {
+      const kept2 = field3.value;
+      const secret = el("input", { id, type: "password", autocomplete: "off", spellcheck: "false" });
+      secret.value = kept2?.secret ?? "";
+      read = () => kept2 !== null && secret.value === kept2.secret ? kept2 : secret.value.trim() === "" ? null : otpFromInput(secret.value) ?? secret.value;
+      input = secret;
     } else if (field3.type === "multiline") {
       const area = el("textarea", { id, rows: "4" });
       area.value = field3.value ?? "";

@@ -17,7 +17,7 @@ const FORMAT: Partial<Record<FieldType, string>> = {
   number: "Use digits only.",
   date: "Use a date like 2027-02-28.",
   "month-year": "Use a month like 2028-11.",
-  otp: "Paste the setup key exactly as the issuer showed it.",
+  otp: "Paste the setup key or the otpauth:// link exactly as the issuer showed it.",
 };
 
 function problem(type: FieldType, refused: unknown): string {

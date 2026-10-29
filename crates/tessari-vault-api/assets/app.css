@@ -853,6 +853,12 @@ fieldset.choices {
   text-align: start;
 }
 
+/* After a list or anything else that ends without a margin of its own, the choice still stands apart from it; after
+   a field the two margins collapse into one, so nothing moves there. */
+* + fieldset.choices {
+  margin-block-start: var(--s-5);
+}
+
 fieldset.choices legend {
   font-weight: 600;
   font-size: var(--t-data);

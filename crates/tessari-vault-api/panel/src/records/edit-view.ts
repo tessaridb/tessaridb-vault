@@ -22,6 +22,7 @@ import { sharedWith } from "./share-recipients.ts";
 import { sshKeyControl } from "./ssh-field-view.ts";
 import { fileControl, type Attach } from "./file-field-view.ts";
 import { uploadFile } from "./file-io.ts";
+import { otpFromInput } from "./otp-input.ts";
 import { BUILT_IN_TYPES, recordFromTemplate } from "./types.ts";
 
 const INPUT: Partial<Record<Field["type"], string>> = {
@@ -53,6 +54,14 @@ function control(field: Field, id: string, attach: Attach | null): { readonly ro
     box.checked = field.value === true;
     read = () => box.checked;
     input = box;
+  } else if (field.type === "otp") {
+    // The secret is shown as dots and read back as it was unless it is changed, so an issuer's own algorithm, digits
+    // and period survive an edit that doesn't touch them; a changed value is a setup key or an otpauth:// link.
+    const kept = field.value;
+    const secret = el("input", { id, type: "password", autocomplete: "off", spellcheck: "false" });
+    secret.value = kept?.secret ?? "";
+    read = () => (kept !== null && secret.value === kept.secret ? kept : secret.value.trim() === "" ? null : (otpFromInput(secret.value) ?? secret.value));
+    input = secret;
   } else if (field.type === "multiline") {
     const area = el("textarea", { id, rows: "4" });
     area.value = field.value ?? "";
