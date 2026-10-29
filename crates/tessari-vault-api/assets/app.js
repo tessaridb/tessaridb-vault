@@ -3167,17 +3167,101 @@ ${target.detail}`.toLowerCase().includes(wanted));
     wraps: made.wraps.map((each) => ({ key_id: hex(each.keyId), wrap: encode(each.wrap) }))
   });
 
-  // src/groups/groups-model.ts
-  var KEY_BYTES5 = 32;
+  // src/groups/group-members.ts
   var isRecord7 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   var isId4 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   var isText5 = (v) => typeof v === "string" && v !== "";
+  function readGroupMembers(v) {
+    if (!isRecord7(v) || !Array.isArray(v["members"])) {
+      return null;
+    }
+    const members = v["members"].map(
+      (member) => isRecord7(member) && isId4(member["id"]) && isText5(member["email"]) && isText5(member["name"]) ? { account: member["id"], email: member["email"], name: member["name"] } : null
+    );
+    return members.every((member) => member !== null) ? members : null;
+  }
+  function addable(company, inGroup) {
+    const inside = new Set(inGroup.map((member) => member.account));
+    return company.filter((member) => member.active && !inside.has(member.account)).sort((one, other) => one.name.localeCompare(other.name));
+  }
+
+  // src/groups/group-members-view.ts
+  function membersControl(held2, row2, changed) {
+    const path = `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}/members`;
+    const body = el("div", {});
+    const said = el("div", { "aria-live": "polite" });
+    const close = el("button", { type: "button" }, "Close");
+    const dialog = el("dialog", { class: "confirm", "aria-labelledby": `members-${row2.id}` }, el("h2", { id: `members-${row2.id}` }, `People in “${row2.name}”`), body, said, el("div", { class: "actions" }, close));
+    let touched = false;
+    const act = (method, url, payload) => {
+      fill(said, el("p", { class: "muted", role: "status" }, "Saving."));
+      void call(method, url, ignored, payload === void 0 ? {} : { body: payload }).then((answer) => {
+        if (!answer.ok) {
+          fill(said, refusal(answer.code === "not_a_member" ? "Only an active member of the company can join a group." : loadFailure(answer)));
+          return;
+        }
+        touched = true;
+        fill(said, null);
+        void draw2();
+      });
+    };
+    const draw2 = async () => {
+      const [inGroup, company] = await Promise.all([call("GET", path, readGroupMembers), call("GET", `${companyPath(held2)}/members`, readMemberList)]);
+      if (!inGroup.ok || !company.ok) {
+        const failed2 = !inGroup.ok ? inGroup : company;
+        fill(body, failed2.ok ? null : refusal(loadFailure(failed2)));
+        return;
+      }
+      const people = inGroup.value.map((member) => {
+        const remove = el("button", { type: "button", "aria-label": `Take ${member.name} out of ${row2.name}` }, "Take out");
+        remove.addEventListener("click", () => act("DELETE", `${path}/${encodeURIComponent(member.account)}`));
+        return el("li", { class: "share member" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove);
+      });
+      const candidates = addable(company.value, inGroup.value);
+      let chosen = null;
+      const choices = candidates.map((member) => {
+        const id = `join-${row2.id}-${member.account}`;
+        const radio = el("input", { id, type: "radio", name: `join-${row2.id}` });
+        radio.addEventListener("change", () => chosen = member.account);
+        return el("div", { class: "choice" }, radio, el("label", { for: id }, member.name, el("span", { class: "detail" }, member.email)));
+      });
+      const add = el("button", { type: "button", class: "primary" }, "Add to group");
+      add.addEventListener("click", () => chosen === null ? fill(said, refusal("Choose who to add.")) : act("POST", path, { account_id: chosen }));
+      fill(
+        body,
+        people.length === 0 ? el("p", { class: "muted" }, "Nobody is in this group yet.") : el("ul", { class: "shares" }, ...people),
+        candidates.length === 0 ? null : el("fieldset", { class: "choices" }, el("legend", {}, "Add someone"), el("div", { class: "targets" }, ...choices)),
+        candidates.length === 0 ? null : add
+      );
+    };
+    const open3 = el("button", { type: "button", "aria-label": `People in ${row2.name}` }, "Members");
+    open3.addEventListener("click", () => {
+      touched = false;
+      fill(said, null);
+      fill(body, el("p", { class: "muted", role: "status" }, "Loading who is in the group."));
+      dialog.showModal();
+      void draw2();
+    });
+    close.addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => {
+      if (touched) {
+        changed();
+      }
+    });
+    return [open3, dialog];
+  }
+
+  // src/groups/groups-model.ts
+  var KEY_BYTES5 = 32;
+  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isId5 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isText6 = (v) => typeof v === "string" && v !== "";
   function readGroupRows(v) {
-    if (!isRecord7(v) || !Array.isArray(v["groups"])) {
+    if (!isRecord8(v) || !Array.isArray(v["groups"])) {
       return null;
     }
     const rows = v["groups"].map((group) => {
-      if (!isRecord7(group) || !isId4(group["id"]) || !isText5(group["name"]) || !isId4(group["parent"])) {
+      if (!isRecord8(group) || !isId5(group["id"]) || !isText6(group["name"]) || !isId5(group["parent"])) {
         return null;
       }
       const { kind } = group;
@@ -3192,11 +3276,11 @@ ${target.detail}`.toLowerCase().includes(wanted));
     return [{ id: company.id, kind: "company", name: company.name, depth: 0 }, ...departments, ...teamsOf(company.id, 1)];
   }
   function readPending(v) {
-    if (!isRecord7(v) || !Array.isArray(v["pending"])) {
+    if (!isRecord8(v) || !Array.isArray(v["pending"])) {
       return null;
     }
     const keys = v["pending"].map((item) => {
-      if (!isRecord7(item) || !isId4(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
+      if (!isRecord8(item) || !isId5(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
         return null;
       }
       const keyId = keyIdBytes(item["key_id"]);
@@ -3216,7 +3300,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
   }
   function readRotationDue(v) {
-    return isRecord7(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
+    return isRecord8(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
   }
 
   // src/groups/groups-view.ts
@@ -3295,7 +3379,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       { class: "share group", "data-depth": String(row2.depth) },
       el("div", {}, el("span", { class: "share-name" }, row2.name), el("span", { class: "detail" }, KIND_WORDS[row2.kind])),
       el("span", { class: `state ${keyed && !rotate ? "vouched" : "waiting"}` }, rotate ? "Needs a new key" : keyed ? "Has a key" : "No key yet"),
-      key ?? give ?? el("span", {}),
+      el("div", { class: "row-actions" }, key ?? give, ...row2.kind === "company" ? [] : membersControl(held2, row2, () => again())),
       said
     );
   }
@@ -3398,22 +3482,22 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
 
   // src/sign-in-model.ts
-  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord9 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readMethods(v) {
-    if (!isRecord8(v)) {
+    if (!isRecord9(v)) {
       return null;
     }
     const { password, passkey: passkey2, provider } = v;
     return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
   }
   function readChallenge(v) {
-    return isRecord8(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+    return isRecord9(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
   }
   function readSession(v) {
-    return isRecord8(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+    return isRecord9(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
   function readPasskeyRequest(v) {
-    return isRecord8(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+    return isRecord9(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
   function signInFailure(failure) {
     switch (failure.code) {

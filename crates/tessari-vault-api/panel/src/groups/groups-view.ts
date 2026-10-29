@@ -15,6 +15,7 @@ import { companyPath } from "../records/load.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { groupKeyBody, newGroupKey, pendingWraps, wrapsBody } from "./group-key.ts";
+import { membersControl } from "./group-members-view.ts";
 import { createFailure, groupTree, readGroupRows, readPending, readRotationDue, type TreeRow } from "./groups-model.ts";
 
 const KIND_WORDS = { company: "Company", department: "Department", team: "Team" } as const;
@@ -104,7 +105,7 @@ function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: numb
     { class: "share group", "data-depth": String(row.depth) },
     el("div", {}, el("span", { class: "share-name" }, row.name), el("span", { class: "detail" }, KIND_WORDS[row.kind])),
     el("span", { class: `state ${keyed && !rotate ? "vouched" : "waiting"}` }, rotate ? "Needs a new key" : keyed ? "Has a key" : "No key yet"),
-    key ?? give ?? el("span", {}),
+    el("div", { class: "row-actions" }, key ?? give, ...(row.kind === "company" ? [] : membersControl(held, row, () => again()))),
     said,
   );
 }

@@ -1431,3 +1431,10 @@ table.records .message {
 .share.group > [aria-live] {
   grid-column: 1 / -1;
 }
+
+.share.group .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  justify-content: flex-end;
+}
