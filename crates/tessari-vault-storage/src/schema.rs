@@ -3,7 +3,8 @@
 //! Every definition carries `IF NOT EXISTS`, so running it on a store that already holds the shape changes nothing.
 //! A company is its own `company` group; a member's role in the company lives on the `memberships` row, which is
 //! queried like a row (by company, by account, by role); the company's row also names the service-key epoch its
-//! records vault is keyed under (`key_epoch`, which every other group carries at its default), while department and team membership is the `in_group`
+//! records vault is keyed under (`key_epoch`) and whether a rotation is moving it
+//! (`key_moving`), which every other group carries at their defaults, while department and team membership is the `in_group`
 //! edge of the declared graph `access`, which is what sharing walks (authorization worksheet §13).
 
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
@@ -23,6 +24,7 @@ DEFINE INDEX IF NOT EXISTS by_id ON groups FIELDS group_id UNIQUE; \
 DEFINE INDEX IF NOT EXISTS by_company ON groups FIELDS company; \
 DEFINE INDEX IF NOT EXISTS by_kind ON groups FIELDS kind; \
 DEFINE FIELD IF NOT EXISTS key_epoch ON groups TYPE int DEFAULT 1; \
+DEFINE FIELD IF NOT EXISTS key_moving ON groups TYPE bool DEFAULT false; \
 DEFINE TABLE IF NOT EXISTS memberships (company string, account string, member_role string, state string, \
 joined datetime); \
 DEFINE INDEX IF NOT EXISTS by_company ON memberships FIELDS company; \

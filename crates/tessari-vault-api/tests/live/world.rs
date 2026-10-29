@@ -137,6 +137,44 @@ impl Node {
     }
 }
 
+/// The server's storage at `place`, its custody derived from a key file holding `ring`.
+fn storage_on(
+    database: &Database,
+    place: &Place,
+    ring: &str,
+) -> (Storage, std::sync::Arc<VaultKeys>) {
+    let turn = TURN.fetch_add(1, Ordering::Relaxed);
+    let key_file =
+        std::env::temp_dir().join(format!("vault-live-key-{}-{turn}", std::process::id()));
+    std::fs::write(&key_file, ring).expect("the key file");
+    std::fs::set_permissions(
+        &key_file,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .expect("its mode");
+    let ring = KeyRing::load(&key_file).expect("a service key ring");
+    let passwords = Passwords::new(
+        &ring,
+        PasswordCost::new(65_536, 3, 1).expect("the floor"),
+        4,
+    )
+    .expect("the verifier");
+    let seal = std::sync::Arc::new(TotpSeal::new(&ring).expect("the seal"));
+    let signin_keys = SigninKeys::new(ring.current()).expect("the sign-in keys");
+    let vault_keys = std::sync::Arc::new(VaultKeys::new(&ring).expect("the vault keys"));
+    let storage = Storage::new(
+        database,
+        place,
+        Custody {
+            passwords,
+            seal,
+            signin_keys,
+            vault_keys: std::sync::Arc::clone(&vault_keys),
+        },
+    );
+    (storage, vault_keys)
+}
+
 /// The live ring's epoch 1, the one before the current: what a server that held only it would have derived from.
 pub(crate) fn older_epoch_key() -> String {
     "ab".repeat(32)
@@ -149,6 +187,8 @@ pub struct World {
     /// The store and the place the server keeps everything in, for the rows that act behind the server's back.
     pub database: Database,
     pub place: Place,
+    /// The server's own account on the store, for a second server over the same namespace.
+    pub server_database: Database,
     /// The company vault keys the server derives, for the rows that open a vault behind its back.
     pub vault_keys: std::sync::Arc<VaultKeys>,
     pub node: Node,
@@ -177,9 +217,24 @@ impl World {
         Self::build(Some(std::sync::Arc::new(provider)), None).await
     }
 
+    /// A world whose server holds the ring `ring` (the key file's text).
+    pub async fn on_ring(ring: &str) -> Self {
+        Self::build_on(None, None, ring).await
+    }
+
     async fn build(
         oidc: Option<std::sync::Arc<OidcProvider>>,
         data: Option<&std::path::Path>,
+    ) -> Self {
+        // Two epochs, so every live test runs on a current epoch with an older one beside it.
+        let ring = format!("1 {}\n2 {}\n", older_epoch_key(), "cd".repeat(32));
+        Self::build_on(oidc, data, &ring).await
+    }
+
+    async fn build_on(
+        oidc: Option<std::sync::Arc<OidcProvider>>,
+        data: Option<&std::path::Path>,
+        ring: &str,
     ) -> Self {
         let node = Node::start_in(data).await;
         let database = Database::new(
@@ -208,27 +263,6 @@ impl World {
             8,
         )
         .expect("a loopback pool");
-        let key_file =
-            std::env::temp_dir().join(format!("vault-live-key-{}-{turn}", std::process::id()));
-        // Two epochs, so every live test runs on a current epoch with an older one beside it.
-        std::fs::write(
-            &key_file,
-            format!("1 {}\n2 {}\n", older_epoch_key(), "cd".repeat(32)),
-        )
-        .expect("the key file");
-        std::fs::set_permissions(
-            &key_file,
-            std::os::unix::fs::PermissionsExt::from_mode(0o600),
-        )
-        .expect("its mode");
-        let ring = KeyRing::load(&key_file).expect("a service key ring");
-        let passwords = Passwords::new(
-            &ring,
-            PasswordCost::new(65_536, 3, 1).expect("the floor"),
-            4,
-        )
-        .expect("the verifier");
-        let seal = std::sync::Arc::new(TotpSeal::new(&ring).expect("the seal"));
         let place = Place::new(namespace, "main").expect("plain names");
         migrate(&server_database, &place)
             .await
@@ -236,18 +270,7 @@ impl World {
         migrate(&server_database, &place)
             .await
             .expect("the schema applies a second time unchanged");
-        let signin_keys = SigninKeys::new(ring.current()).expect("the sign-in keys");
-        let vault_keys = std::sync::Arc::new(VaultKeys::new(&ring).expect("the vault keys"));
-        let storage = Storage::new(
-            &server_database,
-            &place,
-            Custody {
-                passwords,
-                seal,
-                signin_keys,
-                vault_keys: std::sync::Arc::clone(&vault_keys),
-            },
-        );
+        let (storage, vault_keys) = storage_on(&server_database, &place, ring);
         Self {
             app: router(AppState {
                 storage: storage.clone(),
@@ -259,10 +282,16 @@ impl World {
             }),
             storage,
             database,
+            server_database,
             place,
             vault_keys,
             node,
         }
+    }
+
+    /// The server's storage over this world's namespace as a server holding the ring `ring` would build it.
+    pub fn storage_on(&self, ring: &str) -> (Storage, std::sync::Arc<VaultKeys>) {
+        storage_on(&self.server_database, &self.place, ring)
     }
 
     /// A session for `account`, as sign-in will issue one.

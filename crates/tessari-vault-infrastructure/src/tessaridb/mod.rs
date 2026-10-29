@@ -2,6 +2,7 @@
 
 mod config;
 mod connection;
+mod keyed;
 mod place;
 mod pool;
 mod transact;

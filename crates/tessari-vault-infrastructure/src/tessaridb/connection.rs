@@ -1,5 +1,5 @@
 //! One session to the store, over TLS or in the clear to a loopback address, and the two things sent on it: a
-//! request, and the vault frame's act that declares a vault in key custody.
+//! request, and the vault frame's acts on a vault in key custody.
 
 use tessaridb_client::{Answer, Client, Error, Request, Result, Secured, Value, Vault, VaultKey};
 
@@ -18,24 +18,44 @@ impl Connection {
         }
     }
 
-    /// Declare `vault` in `within` with its key wrapped under `key`; refused by the node when the name is taken.
-    pub(super) async fn declare_keyed(
+    /// Send `act` to `vault` in `within`.
+    pub(super) async fn keyed(
         &mut self,
         within: (&str, &str),
         vault: &str,
-        key: &VaultKey,
+        act: KeyAct<'_>,
     ) -> Result<()> {
         match self {
-            Self::Plain(client) => Vault::new(client, within, vault)
-                .map_err(Error::Build)?
-                .declare_keyed(key)
-                .await
-                .map(drop),
-            Self::Secured(client) => Vault::new(client.as_mut(), within, vault)
-                .map_err(Error::Build)?
-                .declare_keyed(key)
-                .await
-                .map(drop),
+            Self::Plain(client) => {
+                act.send(Vault::new(client, within, vault).map_err(Error::Build)?)
+                    .await
+            }
+            Self::Secured(client) => {
+                act.send(Vault::new(client.as_mut(), within, vault).map_err(Error::Build)?)
+                    .await
+            }
+        }
+    }
+}
+
+/// An act on a vault in key custody: declaring it under a key, or re-wrapping its key from one key to another.
+#[derive(Clone, Copy)]
+pub(super) enum KeyAct<'a> {
+    Declare(&'a VaultKey),
+    Change {
+        current: &'a VaultKey,
+        new: &'a VaultKey,
+    },
+}
+
+impl KeyAct<'_> {
+    async fn send<S>(self, mut vault: Vault<'_, S>) -> Result<()>
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    {
+        match self {
+            Self::Declare(key) => vault.declare_keyed(key).await.map(drop),
+            Self::Change { current, new } => vault.change_key(current, new).await.map(drop),
         }
     }
 }

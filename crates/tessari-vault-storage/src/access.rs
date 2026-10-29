@@ -123,11 +123,12 @@ pub(crate) async fn standing(
 }
 
 /// The statement every write that rests on a decision starts with: it refuses the whole transaction when the
-/// caller's membership or the company is no longer what the decision saw. Binds `$guard_m`, `$guard_c`,
-/// `$guard_role`.
+/// caller's membership or the company is no longer what the decision saw, its vault's key epoch included. Binds
+/// `$guard_m`, `$guard_c`, `$guard_role`, `$guard_epoch`.
 pub(crate) const GUARD: &str = "\
 THROW 'standing changed' IF (GET memberships:$guard_m).member_role != $guard_role \
-OR (GET memberships:$guard_m).state != 'active' OR (GET groups:$guard_c).state != 'active';";
+OR (GET memberships:$guard_m).state != 'active' OR (GET groups:$guard_c).state != 'active' \
+OR (GET groups:$guard_c).key_epoch != $guard_epoch OR (GET groups:$guard_c).key_moving = true;";
 
 /// The values [`GUARD`] binds and the audit event's: every guarded change is recorded on the company's trail in the
 /// same transaction, as `action` done to `target`.
@@ -160,6 +161,7 @@ pub(crate) fn guard_values(
         bind("guard_m", membership_id(company, actor.account()).as_str()),
         bind("guard_c", company.as_str()),
         bind("guard_role", standing.role.word()),
+        bind("guard_epoch", i64::from(standing.key_epoch)),
     ]
 }
 
@@ -197,6 +199,11 @@ fn standing_from(found: &BTreeMap<String, Value>) -> Result<Option<Standing>> {
     };
     if word(group, "kind")? != "company" {
         return Ok(None);
+    }
+    // A company whose vault a rotation is moving presents no key until it is done: a wrong key would spend the
+    // node's throttle for every company.
+    if group.get("key_moving") == Some(&Value::Bool(true)) {
+        return Err(Error::Conflict(Conflict::KeysMoving));
     }
     Ok(Some(Standing {
         role: parsed::<Role>(membership, "member_role")?,

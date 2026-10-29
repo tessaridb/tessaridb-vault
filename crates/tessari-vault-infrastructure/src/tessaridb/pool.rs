@@ -106,37 +106,6 @@ impl Database {
         self.exchange(&request, 2).await
     }
 
-    /// Declare the vault `vault` at `place` in key custody, its key wrapped under `key`, which is never stored.
-    ///
-    /// # Errors
-    ///
-    /// [`Error::InvalidName`] when `vault` is not a plain name; [`Error::Refused`] when the node refuses, a name
-    /// already taken included; [`Error::Unavailable`] when the store cannot be reached.
-    pub async fn declare_keyed_vault(
-        &self,
-        place: &Place,
-        vault: &str,
-        key: &VaultKey,
-    ) -> Result<()> {
-        let (_slot, mut client, _) = self.converse(&Request::new(place.preamble())).await?;
-        match client
-            .declare_keyed((place.namespace(), place.database()), vault, key)
-            .await
-        {
-            Ok(()) => {
-                self.release(client);
-                Ok(())
-            }
-            Err(tessaridb_client::Error::Build(_)) => {
-                self.release(client);
-                Err(Error::InvalidName {
-                    name: vault.to_owned(),
-                })
-            }
-            Err(failure) => Err(self.failed(client, false, failure)),
-        }
-    }
-
     /// Run `script` with no place selected, for provisioning, whose statements name their own places.
     ///
     /// # Errors
@@ -172,7 +141,7 @@ impl Database {
 
     /// Send `request` on a connection, signing a new one in with it, and hand the connection back with the
     /// answers so the caller can send more on the same session before releasing it.
-    async fn converse(
+    pub(super) async fn converse(
         &self,
         request: &Request,
     ) -> Result<(SemaphorePermit<'_>, Connection, Vec<Answer>)> {
@@ -242,7 +211,7 @@ impl Database {
     }
 
     /// The error a failed exchange on `client` reports, keeping the connection only when its session is intact.
-    fn failed(
+    pub(super) fn failed(
         &self,
         client: Connection,
         signing_in: bool,
@@ -282,7 +251,7 @@ impl Database {
         Ok(client)
     }
 
-    fn release(&self, client: Connection) {
+    pub(super) fn release(&self, client: Connection) {
         self.inner
             .idle
             .lock()

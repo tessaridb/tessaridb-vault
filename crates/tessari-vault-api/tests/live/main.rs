@@ -28,6 +28,7 @@ mod record_types;
 mod records;
 mod recovery;
 mod revocation;
+mod rotation;
 mod rules;
 mod share_list;
 mod shares;

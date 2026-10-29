@@ -163,3 +163,38 @@ async fn a_company_is_keyed_under_the_service_key_epoch_current_when_it_was_made
         .await
         .expect("the current epoch's key opens the vault");
 }
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_keyed_vault_rewrapped_opens_with_the_new_key_and_refuses_the_old() {
+    let node = Node::start().await;
+    let old = VaultKey::new([0x5a; 32]);
+    let new = VaultKey::new([0x7c; 32]);
+    let (database, place) = keyed_store(&node, &old).await;
+    database
+        .change_keyed_vault(&place, VAULT, &old, &new)
+        .await
+        .expect("the vault is re-wrapped under the new key");
+    let opened = database
+        .run_presenting(&place, &reveal(), id(), VAULT, new.clone())
+        .await
+        .expect("the new key opens the vault");
+    assert!(
+        matches!(opened.last(), Some(Answer::Value { value: Value::Object(fields), .. })
+            if fields.get("body") == Some(&Value::from(PLANTED))),
+        "{opened:?}"
+    );
+    let refused = database
+        .run_presenting(&place, &reveal(), id(), VAULT, old.clone())
+        .await
+        .expect_err("the old key still opens the vault");
+    assert!(
+        refused.to_string().contains("the key is wrong"),
+        "{refused:?}"
+    );
+    let again = database
+        .change_keyed_vault(&place, VAULT, &old, &new)
+        .await
+        .expect_err("a second re-wrap from the old key was accepted");
+    assert!(!again.to_string().contains(PLANTED), "{again:?}");
+}

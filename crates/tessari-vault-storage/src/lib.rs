@@ -19,6 +19,7 @@ pub mod record_types;
 pub mod records;
 pub mod recovery;
 pub mod recovery_requests;
+pub mod rotation;
 mod schema;
 pub mod sessions;
 pub mod shares;

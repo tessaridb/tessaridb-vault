@@ -20,6 +20,7 @@ use crate::record_types::{RecordTypeService, TessaridbRecordTypeRepository};
 use crate::records::{RecordService, RecordVaults, TessaridbRecordRepository};
 use crate::recovery::{RecoveryService, TessaridbRecoveryRepository};
 use crate::recovery_requests::{RecoveryRequestService, TessaridbRecoveryRequestRepository};
+use crate::rotation::RotationService;
 use crate::sessions::SessionService;
 use crate::shares::{Reach, ShareService, TessaridbShareRepository};
 use crate::signin::{SignInParts, SignInService};
@@ -64,6 +65,8 @@ pub struct Storage {
     pub recovery: Arc<RecoveryService>,
     /// Recovery requests and their handoffs.
     pub recovery_requests: Arc<RecoveryRequestService>,
+    /// Moving every company vault to the current service-key epoch, run by the operator.
+    pub rotation: Arc<RotationService>,
     /// Passkeys and their ceremonies.
     pub passkeys: Arc<PasskeyService>,
     /// Record types the company defined.
@@ -90,6 +93,11 @@ impl Storage {
             signin_keys,
             vault_keys,
         } = custody;
+        let rotation = Arc::new(RotationService::new(
+            database.clone(),
+            place.clone(),
+            Arc::clone(&vault_keys),
+        ));
         let vaults = Arc::new(RecordVaults::new(database.clone(), vault_keys));
         let accounts = Arc::new(AccountService::new(
             Arc::new(TessaridbAccountRepository::new(database.clone())),
@@ -219,6 +227,7 @@ impl Storage {
             passkeys,
             recovery,
             recovery_requests,
+            rotation,
             record_types,
             records,
             shares,

@@ -54,6 +54,9 @@ pub enum Conflict {
     /// The account already has a sign-in credential; a new one is recovery, which an enrolment link never is.
     #[error("the account is already enrolled")]
     Enrolled,
+    /// The company's keys are being moved to a new service-key epoch; nothing was read or written.
+    #[error("the company's keys are being rotated; try again")]
+    KeysMoving,
     /// The caller's standing changed between the decision and the write; nothing was written.
     #[error("the caller's standing changed; try again")]
     StandingChanged,
