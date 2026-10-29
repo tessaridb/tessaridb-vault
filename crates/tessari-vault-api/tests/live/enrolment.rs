@@ -209,3 +209,83 @@ async fn only_someone_who_manages_the_member_issues_their_link() {
         "nor the other way round: {body}"
     );
 }
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_new_companys_owner_link_is_answered_once_to_the_platform_admin_who_made_it() {
+    let world = World::new().await;
+    let platform = world.platform_admin().await;
+    let me = world
+        .call(Method::GET, "/api/me", Some(&platform), None)
+        .await
+        .1;
+    let platform_id = me["account"]["id"].as_str().expect("an id").to_owned();
+    let made = |name: &str| json!({ "name": name, "owner_email": "owner@gamma.test", "owner_name": "Owner" });
+    let (status, body) = world
+        .call(
+            Method::POST,
+            "/api/companies",
+            Some(&platform),
+            Some(made("Gamma")),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let company = body["id"].as_str().expect("an id").to_owned();
+    let owner = body["owner_account_id"]
+        .as_str()
+        .expect("the owner")
+        .to_owned();
+    let token = body["owner_enrolment"]
+        .as_str()
+        .expect("the owner's link")
+        .to_owned();
+    let (status, body) = begin(&world, &token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (right, _) = codes(body["secret"].as_str().expect("a secret"));
+    let (status, body) = complete(&world, &token, "a passphrase of my own", &right).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let session = body["session"].as_str().expect("a session").to_owned();
+    let (status, body) = world
+        .call(Method::GET, "/api/companies", Some(&session), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["companies"][0]["id"], company.as_str(), "{body}");
+    assert_eq!(body["companies"][0]["role"], "owner", "{body}");
+    let (status, body) = world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{company}/audit"),
+            Some(&session),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let issued: Vec<_> = body["events"]
+        .as_array()
+        .expect("events")
+        .iter()
+        .filter(|event| event["action"] == "enrolment.issue")
+        .map(|event| (event["target"].clone(), event["actor"].clone()))
+        .collect();
+    assert_eq!(issued, vec![(json!(owner), json!(platform_id))], "{body}");
+    let (status, body) = issue(&world, &platform, &company, &owner).await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "after the company exists its links are its owners' to issue: {body}"
+    );
+    let (status, body) = world
+        .call(
+            Method::POST,
+            "/api/companies",
+            Some(&platform),
+            Some(made("Delta")),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(
+        body["owner_enrolment"],
+        Value::Null,
+        "an enrolled owner needs no link: {body}"
+    );
+}

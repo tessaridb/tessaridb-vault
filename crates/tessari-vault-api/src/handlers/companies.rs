@@ -42,6 +42,8 @@ pub(crate) struct Created {
     #[serde(flatten)]
     company: CompanyItem,
     owner_account_id: String,
+    /// The owner's enrolment link token, answered once; `None` when they already have a credential.
+    owner_enrolment: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -83,7 +85,7 @@ pub(crate) async fn create(
     let name = Name::parse(&body.name).map_err(|_| ApiError::INVALID)?;
     let email = Email::parse(&body.owner_email).map_err(|_| ApiError::INVALID)?;
     let owner = Name::parse(&body.owner_name).map_err(|_| ApiError::INVALID)?;
-    let (company, owner) = state
+    let (company, owner, link) = state
         .storage
         .companies
         .create(&actor, &name, &email, &owner)
@@ -98,6 +100,7 @@ pub(crate) async fn create(
                 role: None,
             },
             owner_account_id: owner.to_string(),
+            owner_enrolment: link.map(|token| token.expose().to_owned()),
         }),
     ))
 }

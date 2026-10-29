@@ -49,8 +49,9 @@ impl CompanyService {
         }
     }
 
-    /// Create a company with its first owner (R1), answering the company and the owner's account. Platform admins
-    /// only.
+    /// Create a company with its first owner (R1), answering the company, the owner's account and, when the owner has
+    /// no credential yet, their enrolment link (Q-VA-34): nobody else may issue an owner's link, so the company's
+    /// bootstrap hands it once to the platform admin who made it, on the new company's trail. Platform admins only.
     ///
     /// # Errors
     ///
@@ -61,7 +62,7 @@ impl CompanyService {
         name: &Name,
         owner_email: &Email,
         owner_name: &Name,
-    ) -> Result<(Company, AccountId)> {
+    ) -> Result<(Company, AccountId, Option<EnrolmentToken>)> {
         actor.platform()?;
         let joining = self.joining(owner_email, owner_name).await?;
         let id = CompanyId::from_random(random::bytes()?);
@@ -81,6 +82,20 @@ impl CompanyService {
             )
             .await?;
         let owner = joining.id().clone();
+        let issued = audit::Event {
+            company: id.as_str(),
+            action: "enrolment.issue",
+            target: owner.as_str(),
+        };
+        let link = match self
+            .enrolments
+            .issue_recorded(&owner, audit::binds(actor, &issued))
+            .await
+        {
+            Ok(token) => Some(token),
+            Err(Error::Conflict(crate::Conflict::Enrolled)) => None,
+            Err(error) => return Err(error),
+        };
         Ok((
             Company {
                 id,
@@ -88,6 +103,7 @@ impl CompanyService {
                 state: CompanyState::Active,
             },
             owner,
+            link,
         ))
     }
 
