@@ -3,6 +3,8 @@
 //! before the operator's command drops its vault.
 
 use tessari_vault_constants::COMPANY_DROP_WAIT_SECONDS;
+mod execute;
+
 use tessari_vault_core::access::Action;
 use tessari_vault_core::company_drop::{Act, statement, verify};
 use tessari_vault_infrastructure::tessaridb::{Answer, Database, Place, Value};

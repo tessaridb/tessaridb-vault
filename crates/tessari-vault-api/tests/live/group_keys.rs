@@ -20,7 +20,7 @@ fn key_path(cast: &Cast, group: &str) -> String {
 }
 
 /// Put member A into team A, as an admin does.
-async fn member_in_team(world: &World, cast: &Cast, account: &str) {
+pub(crate) async fn member_in_team(world: &World, cast: &Cast, account: &str) {
     let (status, body) = world
         .call(
             Method::POST,

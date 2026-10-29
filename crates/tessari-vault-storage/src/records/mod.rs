@@ -4,6 +4,7 @@ mod entity;
 mod opened;
 mod page;
 mod removal;
+pub(crate) use removal::parts;
 mod repository;
 mod service;
 mod tessaridb;

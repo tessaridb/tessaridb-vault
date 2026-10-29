@@ -31,7 +31,7 @@ fn noise(length: usize, seed: u8) -> Vec<u8> {
         .collect()
 }
 
-async fn new_file(world: &World, cast: &Cast, size: usize) -> (String, Value) {
+pub(crate) async fn new_file(world: &World, cast: &Cast, size: usize) -> (String, Value) {
     let (status, created) = world
         .call(
             Method::POST,

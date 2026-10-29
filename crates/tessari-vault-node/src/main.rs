@@ -7,6 +7,9 @@
 //! `tessaridb-vault rotate` moves every company vault and TOTP seed to the key file's current epoch, prints what it
 //! moved and what still rests on each epoch, and serves nothing; an epoch may leave the file when nothing rests on it.
 //!
+//! `tessaridb-vault drop-due` carries out every confirmed company deletion whose waiting period has passed, prints
+//! the companies deleted, and serves nothing.
+//!
 //! `tessaridb-vault health` asks the server already running at `TESSARIDB_VAULT_LISTEN` whether it answers, and exits
 //! 0 when it does: the image's health check, in an image with no shell.
 
@@ -29,7 +32,7 @@ use tessari_vault_infrastructure::oidc::OidcProvider;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_observability::init_tracing;
 use tessari_vault_storage::{Custody, Storage, migrate};
-use tessari_vault_types::{Email, Name};
+use tessari_vault_types::{CompanyId, Email, Name};
 use tokio::signal::unix::{SignalKind, signal};
 
 #[tokio::main(flavor = "multi_thread")]
@@ -90,7 +93,9 @@ enum StartError {
     PlatformAdmin(&'static str),
     #[error("cannot listen: {0}")]
     Listen(#[source] std::io::Error),
-    #[error("unknown command {0:?}; the commands are `enrolment-link`, `rotate` and `health`")]
+    #[error(
+        "unknown command {0:?}; the commands are `enrolment-link`, `rotate`, `drop-due` and `health`"
+    )]
     Command(String),
     #[error(
         "{0} company vaults opened under no epoch the key file holds; they refuse requests until restored"
@@ -104,7 +109,7 @@ async fn run() -> Result<&'static str, StartError> {
     let command = std::env::args().nth(1);
     if let Some(other) = command
         .as_deref()
-        .filter(|name| !["enrolment-link", "rotate"].contains(name))
+        .filter(|name| !["enrolment-link", "rotate", "drop-due"].contains(name))
     {
         return Err(StartError::Command(other.to_owned()));
     }
@@ -140,6 +145,10 @@ async fn run() -> Result<&'static str, StartError> {
     }
     if command.as_deref() == Some("rotate") {
         return rotate(&storage).await;
+    }
+    if command.as_deref() == Some("drop-due") {
+        println!("{}", drop_report(&storage.company_drops.drop_due().await?));
+        return Ok("drop-due");
     }
     if command.is_some() {
         let (email, account) = platform_admin.ok_or(StartError::NoPlatformAdmin)?;
@@ -224,4 +233,21 @@ fn per_epoch(counts: &[(u32, usize)]) -> String {
         .map(|(epoch, count)| format!("{epoch}:{count}"))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// What `drop-due` deleted, and the rotation that bounds how long an older backup still opens the deleted vaults.
+fn drop_report(dropped: &[CompanyId]) -> String {
+    if dropped.is_empty() {
+        return "no company deletion was due".to_owned();
+    }
+    let names = dropped
+        .iter()
+        .map(CompanyId::as_str)
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "deleted {} companies: {names}\nrotate the service key now (add an epoch, run `tessaridb-vault rotate`, then \
+         remove the old epoch): until it leaves the key file a backup taken before the deletion still opens these vaults",
+        dropped.len()
+    )
 }

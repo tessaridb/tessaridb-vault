@@ -32,7 +32,7 @@ impl FromRecord for Held {
 }
 
 /// How many bucket parts a file of `size` bytes is written in.
-fn parts(size: i64) -> Result<i64> {
+pub(crate) fn parts(size: i64) -> Result<i64> {
     let part = part_size()?;
     part.checked_sub(1)
         .and_then(|spare| size.checked_add(spare))

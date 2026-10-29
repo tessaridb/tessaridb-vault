@@ -143,6 +143,15 @@ async fn the_binary_lets_the_first_person_in_and_stops_on_sigterm() {
             && report.contains("still on each epoch: companies none, verifiers none, seeds none"),
         "{report}"
     );
+    // The deletion command carries out the deletions whose wait has passed and serves nothing.
+    let deletion = setup
+        .command(&binary())
+        .arg("drop-due")
+        .output()
+        .expect("the deletion command runs");
+    let report = String::from_utf8_lossy(&deletion.stdout);
+    assert!(deletion.status.success(), "{report}");
+    assert!(report.contains("no company deletion was due"), "{report}");
     // The health check reads the listen address alone: with nothing serving it fails and says why.
     let health = |setup: &Setup| {
         Command::new(binary())

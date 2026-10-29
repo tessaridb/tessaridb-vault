@@ -262,3 +262,216 @@ async fn the_platform_admin_confirms_and_the_company_waits_read_only_until_an_ow
         assert!(trail.to_string().contains(action), "{action} on the trail");
     }
 }
+
+/// What the bucket answers for the first part of `company`'s file `file`.
+async fn part_zero(world: &World, company: &str, file: &str) -> String {
+    let answers = world
+        .database
+        .run_at(
+            &world.place,
+            "READ record_files:$p;",
+            vec![(
+                "p".to_owned(),
+                tessari_vault_infrastructure::tessaridb::Value::from(
+                    format!("/{company}/{file}/0").as_str(),
+                ),
+            )],
+        )
+        .await;
+    format!("{answers:?}")
+}
+
+/// The tables that hold a company's rows by its `company` field, which a deletion must leave empty of it.
+const COMPANY_TABLES: [&str; 14] = [
+    "groups",
+    "memberships",
+    "company_drops",
+    "records",
+    "record_types",
+    "files",
+    "member_keys",
+    "chains",
+    "statements",
+    "group_keys",
+    "shares",
+    "recovery_keys",
+    "escrows",
+    "recovery_notices",
+];
+
+async fn count(world: &World, statement: &str, company: &str) -> usize {
+    use tessari_vault_infrastructure::tessaridb::{Answer, Value as StoreValue};
+    let answers = world
+        .database
+        .run_at(
+            &world.place,
+            statement,
+            vec![("c".to_owned(), StoreValue::from(company))],
+        )
+        .await
+        .expect("the store answers");
+    match answers.last() {
+        Some(Answer::Records { records, .. }) => records.len(),
+        other => panic!("{statement}: {other:?}"),
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_deletion_past_its_wait_is_carried_out_and_leaves_only_the_trail() {
+    use crate::files::new_file;
+
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let signer = Signer::new();
+    let owner = signing_owner(&world, &cast, &signer).await;
+    let a = cast.company_a.as_str();
+    let (part, created) = new_file(&world, &cast, 100_000).await;
+    assert_eq!(created["kept"], "bucket");
+    let (status, body) = world
+        .put_octets(
+            &format!("{part}?offset=0"),
+            &cast.member_a,
+            vec![7; 100_000],
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let file = created["id"].as_str().expect("an id").to_owned();
+    let before = part_zero(&world, a, &file).await;
+    assert!(
+        before.contains(&"7, ".repeat(8)),
+        "the control: the part is in the bucket before the drop: {before}"
+    );
+    crate::group_keys::member_in_team(&world, &cast, &cast.member_a_id).await;
+    let revisions = format!(
+        "SELECT * FROM revisions WHERE record = '{}';",
+        cast.record_a
+    );
+    let joined = format!("SELECT * FROM accounts:'{}'->in_group;", cast.member_a_id);
+    let placed = format!("SELECT * FROM groups:'{}'->part_of;", cast.team_a);
+    for (statement, what) in [
+        (&revisions, "revisions"),
+        (&joined, "a member's group edges"),
+        (&placed, "the team's place"),
+    ] {
+        assert!(
+            count(&world, statement, a).await > 0,
+            "the control: {what} exist before the drop"
+        );
+    }
+    let base = format!("/api/companies/{a}/drop");
+    let (status, _) = world
+        .call(
+            Method::POST,
+            &base,
+            Some(&owner),
+            Some(asked(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let (status, _) = world
+        .call(
+            Method::POST,
+            &format!("{base}/confirm"),
+            Some(&cast.platform),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        world
+            .storage
+            .company_drops
+            .drop_due()
+            .await
+            .expect("the run")
+            .is_empty(),
+        "nothing is due before its wait passes"
+    );
+    world
+        .database
+        .run_at(
+            &world.place,
+            "UPDATE company_drops:$c SET drop_after = 0;",
+            vec![(
+                "c".to_owned(),
+                tessari_vault_infrastructure::tessaridb::Value::from(a),
+            )],
+        )
+        .await
+        .expect("the wait is over");
+    let dropped = world
+        .storage
+        .company_drops
+        .drop_due()
+        .await
+        .expect("the run");
+    assert_eq!(dropped.len(), 1, "{dropped:?}");
+    assert_eq!(dropped[0].as_str(), a);
+
+    for table in COMPANY_TABLES {
+        assert_eq!(
+            count(
+                &world,
+                &format!("SELECT * FROM {table} WHERE company = $c;"),
+                a
+            )
+            .await,
+            0,
+            "{table} still holds the company"
+        );
+    }
+    for (statement, what) in [
+        (&revisions, "revisions"),
+        (&joined, "a member's group edges"),
+        (&placed, "the team's place"),
+    ] {
+        assert_eq!(
+            count(&world, statement, a).await,
+            0,
+            "{what} outlive the drop"
+        );
+    }
+    assert!(
+        count(
+            &world,
+            "SELECT * FROM audit_events WHERE company = $c AND action = 'company.drop';",
+            a
+        )
+        .await
+            == 1,
+        "the drop is the trail's last word"
+    );
+    assert!(
+        count(&world, "SELECT * FROM audit_events WHERE company = $c;", a).await > 1,
+        "the trail outlives the rows"
+    );
+    let info = world
+        .database
+        .run_at(&world.place, "INFO FOR DATABASE;", Vec::new())
+        .await
+        .expect("the database describes itself");
+    let described = format!("{info:?}");
+    assert!(
+        !described.contains(&format!("records_{a}")),
+        "the vault is dropped"
+    );
+    assert!(
+        described.contains(&format!("records_{}", cast.company_b)),
+        "B's vault stays"
+    );
+    let after = part_zero(&world, a, &file).await;
+    assert!(
+        !after.contains(&"7, ".repeat(8)),
+        "no part of A's file is left: {after}"
+    );
+    let (status, body) = world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{}/members", cast.company_b),
+            Some(&cast.admin_b),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "B is untouched: {body}");
+}
