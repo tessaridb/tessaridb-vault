@@ -217,8 +217,8 @@ export class UnlockKey {
     }
   }
 
-  /** Unwrap into a non-extractable key: X25519 for agreement, Ed25519 for signing. */
-  async unwrap(context: MemberKeyContext, wrapped: Bytes): Promise<CryptoKey> {
+  /** Unwrap into a key, non-extractable unless asked (escrow only): X25519 for agreement, Ed25519 for signing. */
+  async unwrap(context: MemberKeyContext, wrapped: Bytes, extractable = false): Promise<CryptoKey> {
     const reader = new Reader(wrapped);
     if (reader.integer(1) !== FORMAT_VERSION) {
       throw new VaultCryptoError("unknown-version");
@@ -240,7 +240,7 @@ export class UnlockKey {
         this.#key,
         { name: "AES-GCM", iv: nonce, additionalData: associatedData(context) },
         { name: agreement ? "X25519" : "Ed25519" },
-        false,
+        extractable,
         agreement ? ["deriveBits"] : ["sign"],
       );
     } catch {

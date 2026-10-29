@@ -11,6 +11,7 @@ const SECTIONS: ReadonlyMap<string, string> = new Map([
   ["members", "members"],
   ["member", "members"],
   ["trail", "trail"],
+  ["recovery", "recovery"],
   ["account", "account"],
 ]);
 

@@ -6,9 +6,11 @@ import { call, ignored, type Failure } from "./api.ts";
 import { genesisBody, needsGenesis, ownerPinFor, readChain } from "./chain-model.ts";
 import type { Bytes } from "./crypto/bytes.ts";
 import { VaultCryptoError } from "./crypto/errors.ts";
-import { createKeySet, openKeySet, type OpenKeySet, type StoredKeySet } from "./crypto/key-set.ts";
+import { createKeySet, type OpenKeySet, type StoredKeySet } from "./crypto/key-set.ts";
 import { appendStatement } from "./crypto/statements.ts";
 import { el, field, fill } from "./dom.ts";
+import { askForRecovery } from "./recovery/ask-view.ts";
+import { escrowOwed, keepEscrow, openAndEscrow } from "./recovery/escrow-sync.ts";
 import { heading, refusal } from "./screen.ts";
 import {
   firstSave,
@@ -124,20 +126,26 @@ function unlockForm(main: HTMLElement, me: Me, company: Company, stored: StoredK
   const password = field("unlock-password", "Unlock password", { type: "password", autocomplete: "current-password", required: "" });
   const submit = el("button", { type: "submit", class: "primary" }, "Unlock");
   const said = el("div", { "aria-live": "polite" });
-  const view = card("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, unlockAccount(me, company), password.row, submit, said);
+  const forgot = el("button", { type: "button", class: "quiet" }, "Forgot your unlock password?");
+  const opened = (keys: OpenKeySet): void => {
+    hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, name: me.name, email: me.email, keys });
+    done();
+  };
+  const back = (): void => unlockForm(main, me, company, stored, choice, done);
+  forgot.addEventListener("click", () => askForRecovery(main, { me, company, stored, card, module: cryptoModule, back, opened }));
+  const view = card("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, unlockAccount(me, company), password.row, submit, said, forgot);
   view.querySelector("form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     submit.disabled = true;
     fill(said, el("p", { class: "muted", role: "status" }, "Opening your keys. This takes a second."));
     try {
-      const keys = await openKeySet(await cryptoModule(), password.input.value, me.account, company.id, stored);
+      const keys = await openAndEscrow(await cryptoModule(), password.input.value, me.account, company.id, stored);
       password.input.value = "";
       if (!(await chainOwed(company, me, keys))) {
         fill(said, refusal(CHAIN_FAILURE));
         return;
       }
-      hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, name: me.name, email: me.email, keys });
-      done();
+      opened(keys);
     } catch (problem) {
       password.input.value = "";
       password.input.setAttribute("aria-invalid", "true");
@@ -183,12 +191,14 @@ function firstUnlockForm(main: HTMLElement, me: Me, company: Company, owner: Byt
     submit.disabled = true;
     fill(said, el("p", { class: "muted", role: "status" }, "Making your keys. This takes a few seconds."));
     try {
-      const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id, owner);
+      const owed = owner === "self" ? null : await escrowOwed(company.id);
+      const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id, owner, owed !== null);
       const answer = await call("PUT", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readKept(made.stored.keyId), {
         body: keySetBody(made.stored),
       });
       const chained = answer.ok && (owner !== "self" || (await beginChain(company, me, made.open)));
       const outcome = firstSave(answer.ok ? null : answer.code, chained);
+      await keepEscrow(company.id, made.open, outcome.kind === "done" ? owed : null, made.escrow);
       if (outcome.kind === "failed") {
         if (!answer.ok) {
           fill(said, refusal(loadFailure(answer)));

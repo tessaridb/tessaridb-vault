@@ -6,9 +6,10 @@
 // could change unseen; lowering it lets one unlock key make more wraps than its bound, which stays far inside the nonce
 // limit because each unlock password makes a new unlock key from a new salt, and that key makes three wraps.
 
-import { Reader, concat, field, integer, random, type Bytes } from "./bytes.ts";
+import { Reader, concat, field, integer, random, sameBytes, wipe, type Bytes } from "./bytes.ts";
+import { escrowBytes, readEscrow } from "./escrow.ts";
 import { VaultCryptoError } from "./errors.ts";
-import { ed25519PublicFromBytes, generatePair, publicBytes } from "./keys.ts";
+import { ed25519PublicFromBytes, generatePair, publicBytes, x25519, x25519PublicFromBytes } from "./keys.ts";
 import { UnlockKey, deriveMasterKey, type KdfParams, type MemberKeyContext } from "./unlock.ts";
 
 /** Argon2id for a new unlock password: the floor the module enforces (RFC 9106 second option). */
@@ -88,6 +89,17 @@ async function openWith(key: UnlockKey, account: string, company: string, stored
   };
 }
 
+/** The escrow of two extractable private keys and the pinned owner key; the PKCS #8 copies are wiped once packed. */
+async function escrowOf(agreement: CryptoKey, signing: CryptoKey, ownerSigningPublic: Bytes): Promise<Bytes> {
+  const agreementBytes = new Uint8Array(await crypto.subtle.exportKey("pkcs8", agreement));
+  const signingBytes = new Uint8Array(await crypto.subtle.exportKey("pkcs8", signing));
+  try {
+    return escrowBytes({ agreement: agreementBytes, signing: signingBytes, ownerSigningPublic });
+  } finally {
+    wipe(agreementBytes, signingBytes);
+  }
+}
+
 /** Opens `stored` with the unlock password; a wrong password is `unauthentic`, a damaged set `malformed`. */
 export async function openKeySet(
   module: WebAssembly.Module,
@@ -101,8 +113,62 @@ export async function openKeySet(
 }
 
 /**
+ * Opens `stored` as `openKeySet` does and also answers its escrow, from a second, extractable unwrap that lives only
+ * inside this call. The caller wraps the escrow to the recovery key and wipes it.
+ */
+export async function openKeySetWithEscrow(
+  module: WebAssembly.Module,
+  password: string,
+  account: string,
+  company: string,
+  stored: StoredKeySet,
+): Promise<{ readonly open: OpenKeySet; readonly escrow: Bytes }> {
+  const parsed = parse(stored);
+  const key = await unlockKey(module, password, stored.salt, stored.kdf, parsed.wrapsMade);
+  const open = await openWith(key, account, company, stored);
+  const agreement = await key.unwrap(context(account, company, "agreement", stored.keyId), parsed.agreementWrap, true);
+  const signing = await key.unwrap(context(account, company, "signing", stored.keyId), parsed.signingWrap, true);
+  return { open, escrow: await escrowOf(agreement, signing, open.ownerSigningPublic) };
+}
+
+interface Halves {
+  readonly agreementPrivate: CryptoKey;
+  readonly signingPrivate: CryptoKey;
+  readonly agreementPublic: Bytes;
+  readonly signingPublic: Bytes;
+}
+
+/** `halves` wrapped under a new unlock key from `password` and a new salt, the owner key pinned, packed and opened. */
+async function sealed(
+  module: WebAssembly.Module,
+  password: string,
+  account: string,
+  company: string,
+  keyId: Bytes,
+  halves: Halves,
+  ownerSigningPublic: Bytes,
+): Promise<{ readonly stored: StoredKeySet; readonly open: OpenKeySet }> {
+  const salt = random(SALT_BYTES);
+  const key = await unlockKey(module, password, salt, NEW_KDF, 0);
+  const agreementWrap = await key.wrap(halves.agreementPrivate, context(account, company, "agreement", keyId));
+  const signingWrap = await key.wrap(halves.signingPrivate, context(account, company, "signing", keyId));
+  const pin = await key.sealPin(await ed25519PublicFromBytes(ownerSigningPublic), { account, company, keyId });
+  const stored: StoredKeySet = {
+    keyId,
+    agreementPublic: halves.agreementPublic,
+    signingPublic: halves.signingPublic,
+    wrapped: concat(Uint8Array.of(KEY_SET_VERSION), integer(key.wrapsMade, 4), field(agreementWrap), field(signingWrap), pin.nonce, field(pin.sealed)),
+    salt,
+    kdf: NEW_KDF,
+  };
+  // The keys kept open are the non-extractable ones the wraps yield, which also proves the stored set opens.
+  return { stored, open: await openWith(key, account, company, stored) };
+}
+
+/**
  * A new key set for `account` in `company` under a new unlock password, ready to send, and opened. `ownerSigningPublic`
- * is the company owner's key to pin: the person's own new signing key when they are the first owner (`"self"`).
+ * is the company owner's key to pin: the person's own new signing key when they are the first owner (`"self"`). With
+ * `forEscrow` it also answers the new keys' escrow, which the caller wraps to the recovery key and wipes.
  */
 export async function createKeySet(
   module: WebAssembly.Module,
@@ -110,33 +176,50 @@ export async function createKeySet(
   account: string,
   company: string,
   ownerSigningPublic: Bytes | "self",
-): Promise<{ readonly stored: StoredKeySet; readonly open: OpenKeySet }> {
-  const salt = random(SALT_BYTES);
-  const keyId = random(KEY_ID_BYTES);
-  const key = await unlockKey(module, password, salt, NEW_KDF, 0);
+  forEscrow = false,
+): Promise<{ readonly stored: StoredKeySet; readonly open: OpenKeySet; readonly escrow: Bytes | null }> {
   const agreement = await generatePair("X25519");
   const signing = await generatePair("Ed25519");
-  const agreementWrap = await key.wrap(agreement.privateKey, context(account, company, "agreement", keyId));
-  const signingWrap = await key.wrap(signing.privateKey, context(account, company, "signing", keyId));
   const signingPublic = await publicBytes(signing.publicKey);
-  const owner = await ed25519PublicFromBytes(ownerSigningPublic === "self" ? signingPublic : ownerSigningPublic);
-  const pin = await key.sealPin(owner, { account, company, keyId });
-  const stored: StoredKeySet = {
-    keyId,
-    agreementPublic: await publicBytes(agreement.publicKey),
-    signingPublic,
-    wrapped: concat(
-      Uint8Array.of(KEY_SET_VERSION),
-      integer(key.wrapsMade, 4),
-      field(agreementWrap),
-      field(signingWrap),
-      pin.nonce,
-      field(pin.sealed),
-    ),
-    salt,
-    kdf: NEW_KDF,
-  };
-  // The generated private halves are extractable; the keys kept open are the non-extractable ones the wraps yield,
-  // which also proves the stored set opens before it is sent.
-  return { stored, open: await openWith(key, account, company, stored) };
+  const owner = ownerSigningPublic === "self" ? signingPublic : ownerSigningPublic;
+  const halves = { agreementPrivate: agreement.privateKey, signingPrivate: signing.privateKey, agreementPublic: await publicBytes(agreement.publicKey), signingPublic };
+  const made = await sealed(module, password, account, company, random(KEY_ID_BYTES), halves, owner);
+  return { ...made, escrow: forEscrow ? await escrowOf(agreement.privateKey, signing.privateKey, owner) : null };
+}
+
+/** Whether `agreement` and `signing` are the private halves of `stored`'s public keys. */
+async function sameKeys(agreement: CryptoKey, signing: CryptoKey, stored: StoredKeySet): Promise<boolean> {
+  const peer = await generatePair("X25519", false);
+  const mine = await x25519(agreement, peer.publicKey);
+  const theirs = await x25519(peer.privateKey, await x25519PublicFromBytes(stored.agreementPublic));
+  const probe = random(32);
+  const signature = new Uint8Array(await crypto.subtle.sign("Ed25519", signing, probe));
+  const signed = await crypto.subtle.verify("Ed25519", await ed25519PublicFromBytes(stored.signingPublic), signature, probe);
+  return sameBytes(mine, theirs) && signed;
+}
+
+/**
+ * The member's key set `stored` restored from `escrow` (handed back by an owner) under a new unlock password: the same
+ * key id and keys, the same owner key pinned. Keys that are not `stored`'s are `key-mismatch`; the escrow is wiped.
+ */
+export async function restoreKeySet(
+  module: WebAssembly.Module,
+  password: string,
+  account: string,
+  company: string,
+  stored: StoredKeySet,
+  escrow: Bytes,
+): Promise<{ readonly stored: StoredKeySet; readonly open: OpenKeySet }> {
+  const opened = readEscrow(escrow);
+  try {
+    const agreementPrivate = await crypto.subtle.importKey("pkcs8", opened.agreement, { name: "X25519" }, true, ["deriveBits"]);
+    const signingPrivate = await crypto.subtle.importKey("pkcs8", opened.signing, { name: "Ed25519" }, true, ["sign"]);
+    if (!(await sameKeys(agreementPrivate, signingPrivate, stored))) {
+      throw new VaultCryptoError("key-mismatch");
+    }
+    const halves = { agreementPrivate, signingPrivate, agreementPublic: stored.agreementPublic, signingPublic: stored.signingPublic };
+    return await sealed(module, password, account, company, stored.keyId, halves, opened.ownerSigningPublic);
+  } finally {
+    wipe(opened.agreement, opened.signing, escrow);
+  }
 }

@@ -176,8 +176,8 @@
   }
 
   // src/router/pattern.ts
-  function segments(path) {
-    return path.split("/").filter((segment, index) => index > 0 || segment !== "");
+  function segments(path2) {
+    return path2.split("/").filter((segment, index) => index > 0 || segment !== "");
   }
   function build(pattern, params) {
     const filled = segments(pattern).map(
@@ -185,9 +185,9 @@
     );
     return `/${filled.join("/")}`;
   }
-  function match(pattern, path) {
+  function match(pattern, path2) {
     const wanted = segments(pattern);
-    const given = segments(path);
+    const given = segments(path2);
     if (wanted.length !== given.length) {
       return null;
     }
@@ -242,9 +242,9 @@
   var REDIRECT_CEILING = 8;
   function split(href) {
     const bare = href.startsWith("#") ? href.slice(1) : href;
-    const at2 = bare.indexOf("?");
-    const path = at2 === -1 ? bare : bare.slice(0, at2);
-    return { path: path === "" ? "/" : path, query: at2 === -1 ? "" : bare.slice(at2 + 1) };
+    const at3 = bare.indexOf("?");
+    const path2 = at3 === -1 ? bare : bare.slice(0, at3);
+    return { path: path2 === "" ? "/" : path2, query: at3 === -1 ? "" : bare.slice(at3 + 1) };
   }
   var Router = class {
     #routes;
@@ -264,9 +264,9 @@
     }
     /** The route `href` names, or `null` when it names none. */
     resolve(href) {
-      const { path, query } = split(href);
+      const { path: path2, query } = split(href);
       for (const [name, spec] of Object.entries(this.#routes)) {
-        const params = match(spec.path, path);
+        const params = match(spec.path, path2);
         if (params !== null) {
           const resolved = { name, params, query: readQuery(spec.query, query) };
           if (this.#isMatch(resolved)) {
@@ -504,11 +504,11 @@
     return null;
   }
   var readKept = (sent) => (v) => isRecord2(v) && v["key_id"] === hex(sent) ? hex(sent) : null;
-  function firstSave(refused, chained) {
-    if (refused === "keys_exist") {
+  function firstSave(refused2, chained) {
+    if (refused2 === "keys_exist") {
       return { kind: "kept", words: "You already set an unlock password for this company. Unlock with it." };
     }
-    if (refused !== null) {
+    if (refused2 !== null) {
       return { kind: "failed" };
     }
     return chained ? { kind: "done" } : {
@@ -673,6 +673,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
     groups: [box(9, 3, 6, 5, 1.5), box(3, 16, 6, 5, 1.5), box(15, 16, 6, 5, 1.5), "M12 8v4", "M6 16v-4h12v4"],
     trail: [ring(12, 12, 8.5), "M12 7.5V12l3 2"],
+    recovery: [ring(12, 12, 8.5), ring(12, 12, 3.5), "M6 6l3.5 3.5", "M14.5 14.5L18 18", "M18 6l-3.5 3.5", "M9.5 14.5L6 18"],
     account: [ring(12, 8, 4), "M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"],
     sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
     moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
@@ -709,9 +710,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
     svg.setAttribute("stroke-linecap", "round");
     svg.setAttribute("stroke-linejoin", "round");
     for (const d of SHAPES[name]) {
-      const path = document.createElementNS(SVG, "path");
-      path.setAttribute("d", d);
-      svg.append(path);
+      const path2 = document.createElementNS(SVG, "path");
+      path2.setAttribute("d", d);
+      svg.append(path2);
     }
     return svg;
   }
@@ -797,9 +798,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
       v: 1,
       type: template.id,
       title,
-      sections: template.sections.map((section) => ({
-        name: section.name,
-        fields: section.fields.map((field3) => emptyField(field3))
+      sections: template.sections.map((section2) => ({
+        name: section2.name,
+        fields: section2.fields.map((field3) => emptyField(field3))
       }))
     };
   }
@@ -949,7 +950,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
     /** Ed25519 domain prefix of a revision signature. */
     revision: `${PREFIX}revision`,
     /** SHA-256 prefix of the key fingerprint two people compare before one vouches for the other's key. */
-    fingerprint: `${PREFIX}fingerprint`
+    fingerprint: `${PREFIX}fingerprint`,
+    /** SHA-256 prefix of the code a member and an owner compare before a recovery hand-over. */
+    handoffCode: `${PREFIX}handoff-code`
   };
   var FORMAT_VERSION = 1;
   var ALGORITHM = {
@@ -1245,12 +1248,12 @@ ${target.detail}`.toLowerCase().includes(wanted));
     const salt = random(SALT_BYTES);
     const nonce2 = random(NONCE_BYTES);
     const key = await contentKey(recordKey, salt, "encrypt");
-    const sealed2 = await crypto.subtle.encrypt(
+    const sealed3 = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv: nonce2, additionalData: associatedData(context2, salt) },
       key,
       plaintext
     );
-    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.recordBody), context2.keyId, salt, nonce2, new Uint8Array(sealed2));
+    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.recordBody), context2.keyId, salt, nonce2, new Uint8Array(sealed3));
   }
   async function openRevision(keys, context2, body) {
     const reader = new Reader(body);
@@ -1421,8 +1424,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
     );
   }
   async function wrapSecret(recipientPublic, context2, secret) {
-    const sealed2 = await seal(recipientPublic, infoOf(context2), new Uint8Array(0), secret);
-    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.keyWrap), sealed2.enc, sealed2.ciphertext);
+    const sealed3 = await seal(recipientPublic, infoOf(context2), new Uint8Array(0), secret);
+    return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.keyWrap), sealed3.enc, sealed3.ciphertext);
   }
   async function unwrapSecret(recipientPrivate, recipientPublic, context2, wrap) {
     const reader = new Reader(wrap);
@@ -1503,16 +1506,16 @@ ${target.detail}`.toLowerCase().includes(wanted));
     const key = await chunkKey(fileKey, salt, "encrypt");
     const additionalData = associatedData2(context2, salt, prefix);
     const count = Math.max(1, Math.ceil(data.length / FILE_CHUNK_BYTES));
-    const sealed2 = [Uint8Array.of(FORMAT_VERSION, ALGORITHM.file), context2.keyId, salt, prefix];
+    const sealed3 = [Uint8Array.of(FORMAT_VERSION, ALGORITHM.file), context2.keyId, salt, prefix];
     for (let chunk = 0; chunk < count; chunk += 1) {
       const plaintext = data.subarray(chunk * FILE_CHUNK_BYTES, (chunk + 1) * FILE_CHUNK_BYTES);
       const iv = nonce(prefix, chunk, chunk === count - 1);
-      sealed2.push(new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData }, key, plaintext)));
+      sealed3.push(new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData }, key, plaintext)));
     }
-    return concat(...sealed2);
+    return concat(...sealed3);
   }
-  async function openFile(keys, context2, sealed2) {
-    const reader = new Reader(sealed2);
+  async function openFile(keys, context2, sealed3) {
+    const reader = new Reader(sealed3);
     if (reader.integer(1) !== FORMAT_VERSION) {
       throw new VaultCryptoError("unknown-version");
     }
@@ -1768,8 +1771,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
     let fieldCount = 0;
     const read = sections.map((rawSection) => {
-      const section = object(rawSection, ["name", "fields"]);
-      const fields = section["fields"];
+      const section2 = object(rawSection, ["name", "fields"]);
+      const fields = section2["fields"];
       if (!Array.isArray(fields)) {
         return fail2();
       }
@@ -1777,7 +1780,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       if (fieldCount > MAX_FIELDS) {
         throw new VaultCryptoError("too-large");
       }
-      return { name: readText(section["name"]), fields: fields.map(readField) };
+      return { name: readText(section2["name"]), fields: fields.map(readField) };
     });
     return { v: 1, type, title: readText(document2["title"]), sections: read };
   }
@@ -2181,12 +2184,12 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/records/sharing.ts
   var failed = (answer) => ({ ok: false, words: loadFailure(answer) });
   async function loadSharing(held2, id) {
-    const path = companyPath(held2);
+    const path2 = companyPath(held2);
     const [listed, members, groups, directory] = await Promise.all([
-      call("GET", `${path}/records/${encodeURIComponent(id)}/shares`, readShares),
-      call("GET", `${path}/members`, readMemberList),
-      call("GET", `${path}/groups`, readGroupList),
-      call("GET", `${path}/keys`, readDirectory)
+      call("GET", `${path2}/records/${encodeURIComponent(id)}/shares`, readShares),
+      call("GET", `${path2}/members`, readMemberList),
+      call("GET", `${path2}/groups`, readGroupList),
+      call("GET", `${path2}/keys`, readDirectory)
     ]);
     if (!listed.ok) {
       return listed.status === 403 ? null : failed(listed);
@@ -2213,9 +2216,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
     };
   }
   async function loadGroupKeys(held2, groups) {
-    const path = companyPath(held2);
+    const path2 = companyPath(held2);
     const answers = await Promise.all(
-      groups.map((group) => call("GET", `${path}/groups/${encodeURIComponent(group.id)}/key`, readGroupKey).then((key) => [group.id, key]))
+      groups.map((group) => call("GET", `${path2}/groups/${encodeURIComponent(group.id)}/key`, readGroupKey).then((key) => [group.id, key]))
     );
     const keys = /* @__PURE__ */ new Map();
     for (const [group, key] of answers) {
@@ -2259,12 +2262,12 @@ ${target.detail}`.toLowerCase().includes(wanted));
         )
       )
     ];
-    const section = el("fieldset", { class: "record-section" }, el("legend", {}, "Who can open it"), el("div", { class: "targets" }, ...rows));
-    return { section, chosen: () => chosen };
+    const section2 = el("fieldset", { class: "record-section" }, el("legend", {}, "Who can open it"), el("div", { class: "targets" }, ...rows));
+    return { section: section2, chosen: () => chosen };
   }
   async function shareCreated(held2, id, to) {
-    const path = companyPath(held2);
-    const [chain, answer] = await Promise.all([vouchedChain(held2), call("GET", `${path}/records/${encodeURIComponent(id)}`, readOpened)]);
+    const path2 = companyPath(held2);
+    const [chain, answer] = await Promise.all([vouchedChain(held2), call("GET", `${path2}/records/${encodeURIComponent(id)}`, readOpened)]);
     if (!chain.ok) {
       return "problem" in chain ? CHAIN_REFUSED : loadFailure(chain);
     }
@@ -2278,7 +2281,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     } catch (problem2) {
       return sealFailure(problem2 instanceof VaultCryptoError ? problem2.reason : "malformed");
     }
-    const shared = await call("POST", `${path}/records/${encodeURIComponent(id)}/shares`, ignored, { body });
+    const shared = await call("POST", `${path2}/records/${encodeURIComponent(id)}/shares`, ignored, { body });
     return shared.ok ? null : shareFailure(shared.status, shared.code, loadFailure(shared));
   }
 
@@ -2420,7 +2423,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(type === kind) }, words);
       chip.addEventListener("click", () => {
         kind = type;
-        chips.forEach((other, at2) => other.setAttribute("aria-pressed", String(KINDS2[at2]?.type === kind)));
+        chips.forEach((other, at3) => other.setAttribute("aria-pressed", String(KINDS2[at3]?.type === kind)));
       });
       return chip;
     });
@@ -2477,8 +2480,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
         opener.focus();
       }
     });
-    const section = el("fieldset", { class: "record-section" }, el("legend", {}, CUSTOM_SECTION), list, opener, panel);
-    return { section, current: () => entries.map(({ field: field3, control: control2 }) => ({ field: field3, control: control2 })) };
+    const section2 = el("fieldset", { class: "record-section" }, el("legend", {}, CUSTOM_SECTION), list, opener, panel);
+    return { section: section2, current: () => entries.map(({ field: field3, control: control2 }) => ({ field: field3, control: control2 })) };
   }
 
   // src/records/crumbs.ts
@@ -2499,7 +2502,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
 
   // src/records/editing.ts
-  var fieldAt = (section, field3) => `${section}.${field3}`;
+  var fieldAt = (section2, field3) => `${section2}.${field3}`;
   var FORMAT = {
     url: "Use a full address starting with https://.",
     email: "Use an address like name@example.com.",
@@ -2509,8 +2512,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
     "month-year": "Use a month like 2028-11.",
     otp: "Paste the setup key or the otpauth:// link exactly as the issuer showed it."
   };
-  function problem(type, refused) {
-    if (refused instanceof VaultCryptoError && refused.reason === "too-large") {
+  function problem(type, refused2) {
+    if (refused2 instanceof VaultCryptoError && refused2.reason === "too-large") {
       return "This value is too long to keep.";
     }
     return FORMAT[type] ?? "This value isn't in a form the record can keep.";
@@ -2521,15 +2524,15 @@ ${target.detail}`.toLowerCase().includes(wanted));
     if (named2 === "") {
       problems.set("title", "Give the record a title, so you can find it again.");
     }
-    const sections = document2.sections.map((section, sectionIndex) => ({
-      name: section.name,
-      fields: section.fields.map((field3, fieldIndex) => {
-        const at2 = fieldAt(sectionIndex, fieldIndex);
-        const typed = values.has(at2) ? values.get(at2) : field3.value;
+    const sections = document2.sections.map((section2, sectionIndex) => ({
+      name: section2.name,
+      fields: section2.fields.map((field3, fieldIndex) => {
+        const at3 = fieldAt(sectionIndex, fieldIndex);
+        const typed = values.has(at3) ? values.get(at3) : field3.value;
         try {
           return readField({ label: field3.label, type: field3.type, value: typed === "" ? null : typed });
-        } catch (refused) {
-          problems.set(at2, problem(field3.type, refused));
+        } catch (refused2) {
+          problems.set(at3, problem(field3.type, refused2));
           return field3;
         }
       })
@@ -2576,18 +2579,18 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/records/share-recipients.ts
   var MOVED = "This record's sharing changed while it was open. Open it again, then make your change.";
   async function sharedWith(held2, id) {
-    const path = companyPath(held2);
-    const listed = await call("GET", `${path}/records/${encodeURIComponent(id)}/shares`, readShares);
+    const path2 = companyPath(held2);
+    const listed = await call("GET", `${path2}/records/${encodeURIComponent(id)}/shares`, readShares);
     if (!listed.ok) {
       return { ok: false, words: listed.status === 403 ? "You can read this record but not change it." : loadFailure(listed) };
     }
-    const directory = await call("GET", `${path}/keys`, readDirectory);
+    const directory = await call("GET", `${path2}/keys`, readDirectory);
     if (!directory.ok) {
       return { ok: false, words: loadFailure(directory) };
     }
     const groups = /* @__PURE__ */ new Map();
     for (const share2 of listed.value.shares.filter((each) => each.kind === "group")) {
-      const key = await call("GET", `${path}/groups/${encodeURIComponent(share2.target)}/key`, readGroupKey);
+      const key = await call("GET", `${path2}/groups/${encodeURIComponent(share2.target)}/key`, readGroupKey);
       if (!key.ok) {
         return { ok: false, words: key.status === 404 ? MOVED : loadFailure(key) };
       }
@@ -2657,7 +2660,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
   function privateFile(seed, publicKey, comment) {
     const check = random(4);
-    let section = concat(
+    let section2 = concat(
       check,
       check,
       sshString(utf8(KEY_TYPE)),
@@ -2665,8 +2668,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
       sshString(concat(seed, publicKey)),
       sshString(utf8(comment))
     );
-    const padding = Uint8Array.from({ length: (BLOCK - section.length % BLOCK) % BLOCK }, (_, index) => index + 1);
-    section = concat(section, padding);
+    const padding = Uint8Array.from({ length: (BLOCK - section2.length % BLOCK) % BLOCK }, (_, index) => index + 1);
+    section2 = concat(section2, padding);
     const body = concat(
       MAGIC,
       sshString(utf8(NONE)),
@@ -2674,10 +2677,10 @@ ${target.detail}`.toLowerCase().includes(wanted));
       sshString(new Uint8Array(0)),
       integer(1, 4),
       sshString(concat(sshString(utf8(KEY_TYPE)), sshString(publicKey))),
-      sshString(section)
+      sshString(section2)
     );
     const encoded = base64(body);
-    wipe(section, body);
+    wipe(section2, body);
     const lines = encoded.match(new RegExp(`.{1,${LINE}}`, "g")) ?? [];
     return `${BEGIN}
 ${lines.join("\n")}
@@ -2712,20 +2715,20 @@ ${END}
       throw new VaultCryptoError("malformed");
     }
     const blob = new Reader(reader.field());
-    const section = new Reader(reader.field());
+    const section2 = new Reader(reader.field());
     reader.end();
     if (text2(blob) !== KEY_TYPE) {
       throw new VaultCryptoError("unknown-algorithm");
     }
     const publicKey = blob.field();
     blob.end();
-    if (section.integer(4) !== section.integer(4) || text2(section) !== KEY_TYPE) {
+    if (section2.integer(4) !== section2.integer(4) || text2(section2) !== KEY_TYPE) {
       throw new VaultCryptoError("malformed");
     }
-    const repeated = section.field();
-    const pair = section.field();
-    const comment = text2(section);
-    const padding = section.rest();
+    const repeated = section2.field();
+    const pair = section2.field();
+    const comment = text2(section2);
+    const padding = section2.rest();
     if (publicKey.length !== KEY_BYTES4 || pair.length !== 2 * KEY_BYTES4 || !padding.every((byte, index) => byte === index + 1)) {
       throw new VaultCryptoError("malformed");
     }
@@ -2836,9 +2839,9 @@ ${END}
       return { ok: false, words: loadFailure(created) };
     }
     const context2 = { company: held2.company, record, file: created.value, keyId: fileKeyId(own.keyId) };
-    const sealed2 = await sealFile(await importFileKey(own.key), context2, data);
-    for (const part of partsOf(sealed2.length)) {
-      const sent = await callBytes("PUT", `${filesPath(held2, record)}/${created.value}?offset=${part.offset}`, sealed2.slice(part.offset, part.offset + part.length));
+    const sealed3 = await sealFile(await importFileKey(own.key), context2, data);
+    for (const part of partsOf(sealed3.length)) {
+      const sent = await callBytes("PUT", `${filesPath(held2, record)}/${created.value}?offset=${part.offset}`, sealed3.slice(part.offset, part.offset + part.length));
       if (!sent.ok) {
         return { ok: false, words: loadFailure(sent) };
       }
@@ -3038,16 +3041,16 @@ ${END}
     name.setAttribute("aria-describedby", nameHint.id);
     const controls = /* @__PURE__ */ new Map();
     const { base, custom } = splitCustom(document2);
-    const own = customEditor(custom, (field3, id) => control(field3, id, attach), base.sections.flatMap((section) => section.fields.map((field3) => field3.label)));
+    const own = customEditor(custom, (field3, id) => control(field3, id, attach), base.sections.flatMap((section2) => section2.fields.map((field3) => field3.label)));
     const sections = base.sections.map(
-      (section, sectionIndex) => el(
+      (section2, sectionIndex) => el(
         "fieldset",
         { class: "record-section" },
-        section.name === "" ? null : el("legend", {}, section.name),
-        ...section.fields.map((field3, fieldIndex) => {
-          const at2 = fieldAt(sectionIndex, fieldIndex);
+        section2.name === "" ? null : el("legend", {}, section2.name),
+        ...section2.fields.map((field3, fieldIndex) => {
+          const at3 = fieldAt(sectionIndex, fieldIndex);
           const made = control(field3, `field-${sectionIndex}-${fieldIndex}`, attach);
-          controls.set(at2, made);
+          controls.set(at3, made);
           return made.row;
         })
       )
@@ -3060,12 +3063,12 @@ ${END}
       const added = own.current();
       const all = new Map(controls);
       added.forEach((entry, index) => all.set(fieldAt(base.sections.length, index), entry.control));
-      const values = new Map([...all].map(([at2, made]) => [at2, made.read()]));
+      const values = new Map([...all].map(([at3, made]) => [at3, made.read()]));
       const result = edited(joinCustom(base, added.map((entry) => entry.field)), name.value, values);
       nameHint.hidden = result.ok || !result.problems.has("title");
       nameHint.textContent = result.ok ? "" : result.problems.get("title") ?? "";
-      for (const [at2, made] of all) {
-        made.mark(result.ok ? null : result.problems.get(at2) ?? null);
+      for (const [at3, made] of all) {
+        made.mark(result.ok ? null : result.problems.get(at3) ?? null);
       }
       if (!result.ok) {
         fill(said, refusal("Some values can't be kept. Each one says why below its label."));
@@ -3079,9 +3082,9 @@ ${END}
       name.removeAttribute("aria-invalid");
       submit.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Sealing and saving the record."));
-      void save(result.document).then((refused) => {
+      void save(result.document).then((refused2) => {
         submit.disabled = false;
-        fill(said, refused === null ? null : refusal(refused));
+        fill(said, refused2 === null ? null : refusal(refused2));
       });
     });
     const head = el("div", { class: "page-head" }, el("div", {}, heading(title), el("p", { class: "lede" }, typeName(document2.type))));
@@ -3313,11 +3316,11 @@ ${END}
       }
       fill(list, ...shown.map((target) => targetRow(target, target.id === chosen, () => chosen = target.id)));
     };
-    const press = (at2) => {
-      right = RIGHTS[at2]?.right ?? "read";
-      rights.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at2)));
+    const press = (at3) => {
+      right = RIGHTS[at3]?.right ?? "read";
+      rights.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at3)));
     };
-    rights.forEach((button, at2) => button.addEventListener("click", () => press(at2)));
+    rights.forEach((button, at3) => button.addEventListener("click", () => press(at3)));
     filter.addEventListener("input", draw2);
     const dialog = el(
       "dialog",
@@ -3437,13 +3440,13 @@ ${END}
         remove
       );
     });
-    const section = el(
+    const section2 = el(
       "section",
       { class: "record-section", "aria-labelledby": "shared-with" },
       el("h2", { id: "shared-with" }, "Shared with"),
       items.length === 0 ? el("p", { class: "muted" }, "It isn't shared with anyone; only its author can open it.") : el("ul", { class: "shares" }, ...items)
     );
-    return [section, dialog];
+    return [section2, dialog];
   }
 
   // src/records/record-view.ts
@@ -3472,11 +3475,11 @@ ${END}
     const { document: document2 } = item;
     const title = heading(document2.title === "" ? "Untitled" : document2.title);
     const sections = document2.sections.map(
-      (section) => el(
+      (section2) => el(
         "section",
         { class: "record-section" },
-        section.name === "" ? null : el("h2", {}, section.name),
-        el("dl", { class: "fields" }, ...section.fields.flatMap((field3) => fieldView(field3, copy2, stops2, (value) => void saveToDevice(held2, id, value))))
+        section2.name === "" ? null : el("h2", {}, section2.name),
+        el("dl", { class: "fields" }, ...section2.fields.flatMap((field3) => fieldView(field3, copy2, stops2, (value) => void saveToDevice(held2, id, value))))
       )
     );
     const head = el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type)));
@@ -3493,7 +3496,7 @@ ${END}
   }
 
   // src/members/member-admin.ts
-  var joinLink = (origin, path, token2) => `${origin}${path}#/join?token=${encodeURIComponent(token2)}`;
+  var joinLink = (origin, path2, token2) => `${origin}${path2}#/join?token=${encodeURIComponent(token2)}`;
   function roleChoices(mine) {
     switch (mine) {
       case "owner":
@@ -3566,9 +3569,9 @@ ${END}
     const choices = roleChoices(mine);
     const roles = choices.map((each) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === role) }, ROLE_WORDS[each]));
     roles.forEach(
-      (button, at2) => button.addEventListener("click", () => {
-        role = choices[at2] ?? "member";
-        roles.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at2)));
+      (button, at3) => button.addEventListener("click", () => {
+        role = choices[at3] ?? "member";
+        roles.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at3)));
       })
     );
     const submit = el("button", { type: "submit", class: "primary" }, "Add member");
@@ -3592,10 +3595,10 @@ ${END}
       }
       submit.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Adding them."));
-      const path = `${companyPath(held2)}/members`;
+      const path2 = `${companyPath(held2)}/members`;
       void (async () => {
-        const made = await call("POST", path, readAdded, { body: { name: name.value.trim(), email: email.value.trim(), role } });
-        const link = made.ok ? await call("POST", `${path}/${made.value}/enrolment`, readToken) : made;
+        const made = await call("POST", path2, readAdded, { body: { name: name.value.trim(), email: email.value.trim(), role } });
+        const link = made.ok ? await call("POST", `${path2}/${made.value}/enrolment`, readToken) : made;
         submit.disabled = false;
         if (!link.ok) {
           fill(said, refusal(memberFailure(link)));
@@ -3641,9 +3644,9 @@ ${END}
     const choices = roleChoices(me.role);
     const chips = choices.map((each) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === role) }, ROLE_WORDS2[each]));
     chips.forEach(
-      (chip, at2) => chip.addEventListener("click", () => {
-        role = choices[at2] ?? role;
-        chips.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at2)));
+      (chip, at3) => chip.addEventListener("click", () => {
+        role = choices[at3] ?? role;
+        chips.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at3)));
       })
     );
     const save = el("button", { type: "button" }, "Change role");
@@ -3695,6 +3698,12 @@ ${END}
   async function keyFingerprint(agreementPublic, signingPublic) {
     const digest2 = new Uint8Array(await crypto.subtle.digest("SHA-256", concat(utf8(LABEL.fingerprint), field2(agreementPublic), field2(signingPublic))));
     const digits = [...digest2.subarray(0, SHOWN_BYTES)].map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join("");
+    return digits.match(/.{4}/g)?.join(" ") ?? digits;
+  }
+  var CODE_BYTES = 8;
+  async function handoffCode(handoffPublic) {
+    const digest2 = new Uint8Array(await crypto.subtle.digest("SHA-256", concat(utf8(LABEL.handoffCode), field2(handoffPublic))));
+    const digits = [...digest2.subarray(0, CODE_BYTES)].map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join("");
     return digits.match(/.{4}/g)?.join(" ") ?? digits;
   }
 
@@ -3755,11 +3764,11 @@ ${END}
     const title = heading("Members");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the members."));
     fill(main2, el("div", { class: "page-head" }, title), said);
-    const path = companyPath(held2);
+    const path2 = companyPath(held2);
     const [members, directory, chain] = await Promise.all([
-      call("GET", `${path}/members`, readMemberList),
-      call("GET", `${path}/keys`, readDirectory),
-      call("GET", `${path}/statements`, readChain)
+      call("GET", `${path2}/members`, readMemberList),
+      call("GET", `${path2}/keys`, readDirectory),
+      call("GET", `${path2}/statements`, readChain)
     ]);
     if (!members.ok || !directory.ok || !chain.ok) {
       const failed2 = !members.ok ? members : !directory.ok ? directory : chain;
@@ -3804,7 +3813,7 @@ ${END}
       fill(dialogSaid, el("p", { class: "muted", role: "status" }, "Vouching for the key."));
       const signer = { privateKey: held2.keys.signingPrivate, publicBytes: held2.keys.signingPublic };
       void vouchStatement(held2.company, owner, chain.value.statements, signer, row2.account, key).then(async (statement) => {
-        const answer = await call("POST", `${path}/statements`, ignored, { body: statementBody(chain.value.statements.length + 1, statement) });
+        const answer = await call("POST", `${path2}/statements`, ignored, { body: statementBody(chain.value.statements.length + 1, statement) });
         confirm.disabled = false;
         if (answer.ok) {
           dialog.close();
@@ -3878,8 +3887,8 @@ ${END}
   function keyButton(group, rotate) {
     return rotate ? { text: "Make a new key", label: `Make a new key for ${group}` } : { text: "Key this group", label: `Key this group, ${group}` };
   }
-  function giveButton(group, waiting) {
-    return { text: `Give access (${waiting} waiting)`, label: `Give access (${waiting} waiting), ${group}` };
+  function giveButton(group, waiting2) {
+    return { text: `Give access (${waiting2} waiting)`, label: `Give access (${waiting2} waiting), ${group}` };
   }
   function takeOutButton(person, group) {
     return { text: "Take out", label: `Take out ${person} from ${group}` };
@@ -4095,8 +4104,8 @@ ${END}
     const title = heading("Departments and teams");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the groups."));
     fill(main2, el("div", { class: "page-head" }, title), said);
-    const path = companyPath(held2);
-    const [groups, chain] = await Promise.all([call("GET", `${path}/groups`, readGroupRows), call("GET", `${path}/statements`, readChain)]);
+    const path2 = companyPath(held2);
+    const [groups, chain] = await Promise.all([call("GET", `${path2}/groups`, readGroupRows), call("GET", `${path2}/statements`, readChain)]);
     if (!groups.ok || !chain.ok) {
       const failed2 = !groups.ok ? groups : chain;
       if (!failed2.ok) {
@@ -4111,17 +4120,17 @@ ${END}
     }
     const again = (words = null) => void drawGroups(main2, held2, pageOf, words);
     const tree = groupTree({ id: held2.company, name: held2.companyName }, groups.value);
-    const waiting = new Map(
+    const waiting2 = new Map(
       await Promise.all(
-        tree.filter((row2) => vouched.groupKeyOf(row2.id) !== void 0).map((row2) => call("GET", `${path}/groups/${encodeURIComponent(row2.id)}/key/pending`, readPending).then((answer) => [row2.id, answer.ok ? answer.value.length : 0]))
+        tree.filter((row2) => vouched.groupKeyOf(row2.id) !== void 0).map((row2) => call("GET", `${path2}/groups/${encodeURIComponent(row2.id)}/key/pending`, readPending).then((answer) => [row2.id, answer.ok ? answer.value.length : 0]))
       )
     );
     const due = new Set(
       (await Promise.all(
-        tree.filter((row2) => vouched.groupKeyOf(row2.id) !== void 0).map((row2) => call("GET", `${path}/groups/${encodeURIComponent(row2.id)}/key`, readRotationDue).then((answer) => answer.ok && answer.value === true ? row2.id : null))
+        tree.filter((row2) => vouched.groupKeyOf(row2.id) !== void 0).map((row2) => call("GET", `${path2}/groups/${encodeURIComponent(row2.id)}/key`, readRotationDue).then((answer) => answer.ok && answer.value === true ? row2.id : null))
       )).filter((id) => id !== null)
     );
-    const items = tree.map((row2) => groupItem(held2, row2, vouched, due.has(row2.id) ? null : waiting.get(row2.id) ?? null, due.has(row2.id), chain.value.statements, again, pageOf));
+    const items = tree.map((row2) => groupItem(held2, row2, vouched, due.has(row2.id) ? null : waiting2.get(row2.id) ?? null, due.has(row2.id), chain.value.statements, again, pageOf));
     fill(
       main2,
       el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "A record shared with a group opens for everyone in it. A group needs a key before anything can be shared with it."))),
@@ -4131,10 +4140,10 @@ ${END}
     );
     title.focus();
   }
-  function groupItem(held2, row2, vouched, waiting, rotate, chain, again, pageOf) {
+  function groupItem(held2, row2, vouched, waiting2, rotate, chain, again, pageOf) {
     const said = el("div", { "aria-live": "polite" });
     const keyed = vouched.groupKeyOf(row2.id) !== void 0;
-    const give = waiting === null || waiting === 0 ? null : labelled(giveButton(row2.name, waiting));
+    const give = waiting2 === null || waiting2 === 0 ? null : labelled(giveButton(row2.name, waiting2));
     give?.addEventListener("click", () => {
       give.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Giving the group's key to the members waiting."));
@@ -4170,8 +4179,8 @@ ${END}
     );
   }
   async function keyGroup(held2, id, chain) {
-    const path = `${companyPath(held2)}/groups/${encodeURIComponent(id)}/key`;
-    const pending = await call("GET", `${path}/pending`, readPending);
+    const path2 = `${companyPath(held2)}/groups/${encodeURIComponent(id)}/key`;
+    const pending = await call("GET", `${path2}/pending`, readPending);
     if (!pending.ok) {
       return pending.status === 403 ? "Only an owner or an admin can key a group." : loadFailure(pending);
     }
@@ -4187,12 +4196,12 @@ ${END}
     if (!stated.ok) {
       return vouchFailure(stated.status, stated.code, loadFailure(stated));
     }
-    const kept = await call("PUT", path, ignored, { body: groupKeyBody(made) });
+    const kept = await call("PUT", path2, ignored, { body: groupKeyBody(made) });
     return kept.ok ? null : loadFailure(kept);
   }
   async function giveAccess(held2, id, vouched) {
-    const path = `${companyPath(held2)}/groups/${encodeURIComponent(id)}/key`;
-    const [listed, pending] = await Promise.all([call("GET", path, readGroupKey), call("GET", `${path}/pending`, readPending)]);
+    const path2 = `${companyPath(held2)}/groups/${encodeURIComponent(id)}/key`;
+    const [listed, pending] = await Promise.all([call("GET", path2, readGroupKey), call("GET", `${path2}/pending`, readPending)]);
     if (!listed.ok || !pending.ok) {
       const failed2 = !listed.ok ? listed : pending;
       return failed2.ok ? null : loadFailure(failed2);
@@ -4209,7 +4218,7 @@ ${END}
     if (given.wraps.length === 0) {
       return "Nobody has vouched for the waiting members' keys yet. Vouch for them on the Members page first.";
     }
-    const kept = await call("POST", `${path}/wraps`, ignored, { body: wrapsBody(given) });
+    const kept = await call("POST", `${path2}/wraps`, ignored, { body: wrapsBody(given) });
     return kept.ok ? null : loadFailure(kept);
   }
   function createForm(held2, tree, again) {
@@ -4221,9 +4230,9 @@ ${END}
     const parents = el("fieldset", { class: "choices" }, el("legend", {}, "Sits in"), el("div", { class: "targets" }, ...places.map((row2) => placeRow(row2, row2.id === parent, () => parent = row2.id))));
     parents.hidden = true;
     kinds.forEach(
-      (button, at2) => button.addEventListener("click", () => {
-        kind = at2 === 0 ? "department" : "team";
-        kinds.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at2)));
+      (button, at3) => button.addEventListener("click", () => {
+        kind = at3 === 0 ? "department" : "team";
+        kinds.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at3)));
         parents.hidden = kind === "department";
       })
     );
@@ -4277,8 +4286,8 @@ ${END}
       if (!isRecord11(each)) {
         return null;
       }
-      const { seq, at: at2, actor, action, target, reason } = each;
-      return typeof seq === "number" && typeof at2 === "number" && typeof actor === "string" && typeof action === "string" && typeof target === "string" && typeof reason === "string" ? { seq, at: at2, actor, action, target, reason } : null;
+      const { seq, at: at3, actor, action, target, reason } = each;
+      return typeof seq === "number" && typeof at3 === "number" && typeof actor === "string" && typeof action === "string" && typeof target === "string" && typeof reason === "string" ? { seq, at: at3, actor, action, target, reason } : null;
     });
     return events.every((each) => each !== null) ? events : null;
   }
@@ -4379,8 +4388,8 @@ ${END}
     const title = heading("Trail");
     const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, `Everything done in ${held2.companyName}, newest first. Each event is written before the change it records.`)));
     fill(main2, head, el("p", { class: "muted", role: "status" }, "Loading the trail."));
-    const path = companyPath(held2);
-    const [first, members, groups] = await Promise.all([call("GET", `${path}/audit`, readEvents), call("GET", `${path}/members`, readMemberList), call("GET", `${path}/groups`, readGroupRows)]);
+    const path2 = companyPath(held2);
+    const [first, members, groups] = await Promise.all([call("GET", `${path2}/audit`, readEvents), call("GET", `${path2}/members`, readMemberList), call("GET", `${path2}/groups`, readGroupRows)]);
     if (!first.ok) {
       fill(main2, head, refusal(first.status === 403 ? "Only the company's owners and admins can read the trail." : loadFailure(first)));
       return;
@@ -4420,7 +4429,7 @@ ${END}
     older.hidden = !pageFull(first.value.length);
     older.addEventListener("click", () => {
       older.disabled = true;
-      void call("GET", `${path}/audit?before=${events.at(-1)?.seq ?? 0}`, readEvents).then((next) => {
+      void call("GET", `${path2}/audit?before=${events.at(-1)?.seq ?? 0}`, readEvents).then((next) => {
         older.disabled = false;
         if (!next.ok) {
           fill(said, refusal(loadFailure(next)));
@@ -4433,9 +4442,9 @@ ${END}
     });
     const chips = AREAS.map(([each, words]) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === area) }, words));
     chips.forEach(
-      (chip, at2) => chip.addEventListener("click", () => {
-        area = AREAS[at2]?.[0] ?? "all";
-        chips.forEach((other, index) => other.setAttribute("aria-pressed", String(index === at2)));
+      (chip, at3) => chip.addEventListener("click", () => {
+        area = AREAS[at3]?.[0] ?? "all";
+        chips.forEach((other, index) => other.setAttribute("aria-pressed", String(index === at3)));
         draw2();
       })
     );
@@ -4443,7 +4452,7 @@ ${END}
     check.addEventListener("click", () => {
       check.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Checking every event."));
-      void call("GET", `${path}/audit/verify`, readVerified).then((verified) => {
+      void call("GET", `${path2}/audit/verify`, readVerified).then((verified) => {
         check.disabled = false;
         fill(said, verified.ok ? verified.value.intact ? el("p", { class: "muted", role: "status" }, verifyWords(verified.value)) : refusal(verifyWords(verified.value)) : refusal(loadFailure(verified)));
       });
@@ -4595,10 +4604,439 @@ ${END}
     fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, "A passkey signs you in with this device's lock instead of your password and a code."), add);
   }
 
-  // src/join-model.ts
+  // src/recovery/recovery-model.ts
+  var KEY_BYTES7 = 32;
   var isRecord14 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isKeyId = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isText7 = (v) => typeof v === "string" && v !== "";
+  function bytesOf(v, length) {
+    const bytes = isText7(v) ? decode(v) : null;
+    return bytes === null || bytes.length === 0 || length !== void 0 && bytes.length !== length ? null : bytes;
+  }
+  var readOwnEscrow = (v) => isRecord14(v) && isKeyId(v["recovery_key_id"]) ? v["recovery_key_id"] : null;
+  function readRecoveryKey(v) {
+    const key = isRecord14(v) && isKeyId(v["key_id"]) ? v["key_id"] : null;
+    const listed = isRecord14(v) ? bytesOf(v["public"], KEY_BYTES7) : null;
+    return key === null || listed === null ? null : { keyId: key, public: listed };
+  }
+  function readWrap(idField) {
+    return (v) => {
+      const key = isRecord14(v) && isKeyId(v[idField]) ? v[idField] : null;
+      const wrap = isRecord14(v) ? bytesOf(v["wrap"]) : null;
+      return key === null || wrap === null ? null : { keyId: key, wrap };
+    };
+  }
+  function readRequests(v) {
+    if (!isRecord14(v) || !Array.isArray(v["requests"])) {
+      return null;
+    }
+    const requests = [];
+    for (const item of v["requests"]) {
+      const handoffPublic = isRecord14(item) ? bytesOf(item["handoff_public"], KEY_BYTES7) : null;
+      if (!isRecord14(item) || !isKeyId(item["id"]) || !isText7(item["account"]) || handoffPublic === null || !Number.isSafeInteger(item["created"])) {
+        return null;
+      }
+      requests.push({ id: item["id"], account: item["account"], handoffPublic, created: Number(item["created"]) });
+    }
+    return requests;
+  }
+  var readAsked = (v) => isRecord14(v) && isKeyId(v["id"]) ? v["id"] : null;
+  var readHandoff = (v) => isRecord14(v) ? bytesOf(v["wrap"]) : null;
+  function readNotices(v) {
+    if (!isRecord14(v) || !Array.isArray(v["notices"])) {
+      return null;
+    }
+    const notices = [];
+    for (const item of v["notices"]) {
+      if (!isRecord14(item) || !isText7(item["by"]) || !isText7(item["kind"]) || !Number.isSafeInteger(item["at"])) {
+        return null;
+      }
+      notices.push({ by: item["by"], kind: item["kind"], at: Number(item["at"]) });
+    }
+    return notices;
+  }
+  var escrowWanted = (escrowedTo, vouched) => vouched !== void 0 && vouched.keyId !== escrowedTo;
+  var newNotices = (notices, seenAt2) => seenAt2 === null ? notices : notices.filter((notice2) => notice2.at > seenAt2);
+  function noticeWords(kind, by) {
+    switch (kind) {
+      case "escrow.read":
+        return `${by} read your keys kept for recovery`;
+      case "recovery":
+        return `${by} handed your keys back to you`;
+      default:
+        return `${by}: ${kind}`;
+    }
+  }
+  var escrowBody = (recoveryKeyId, wrap) => ({ recovery_key_id: recoveryKeyId, wrap: encode(wrap) });
+  var askBody = (handoffPublic) => ({ handoff_public: encode(handoffPublic) });
+  var handoffBody = (wrap) => ({ wrap: encode(wrap) });
+  var rewrapBody = (request, stored) => ({
+    request,
+    kdf: { salt: encode(stored.salt), memory_kib: stored.kdf.memoryKib, passes: stored.kdf.passes, lanes: stored.kdf.lanes },
+    wrapped: encode(stored.wrapped)
+  });
+  function recoveryFailure(failure) {
+    switch (failure.code) {
+      case "no_escrow":
+        return "Your keys aren't kept for recovery in this company yet, so an owner can't restore them. Ask your admin.";
+      case "not_handed_over":
+        return "An owner hasn't handed your keys back yet. Check again later; the request stays open for 3 days.";
+      case "recovery_closed":
+        return "This recovery was used already or has expired. Ask again.";
+      case "recovery_keyed":
+        return "The company already has a recovery key. Reload the page to see it.";
+      case "forbidden":
+        return "Only the company's owners can do this.";
+      case "no_owner_wrap":
+        return "You have no copy of the recovery key: it was made before you were an owner. Ask the owner who made it to recover this member.";
+      case "recovery_moved":
+        return "The recovery key changed while this page was open. Reload the page and try again.";
+      case "unopenable":
+        return "These keys didn't open with the recovery key. Nothing was handed over; tell the member to ask again.";
+      case "unvouched-signer":
+        return "Only the company owner key can vouch for the recovery key, and this browser doesn't hold it.";
+      case "network":
+        return "The vault didn't answer. Check your connection, then try again.";
+      default:
+        return "The vault couldn't do that. Try again; if it keeps failing, tell your admin.";
+    }
+  }
+
+  // src/recovery/notice-banner.ts
+  var banner = null;
+  var seenKey = (held2) => `vault-notices-seen:${held2.account}:${held2.company}`;
+  function seenAt(held2) {
+    try {
+      const kept = Number(localStorage.getItem(seenKey(held2)));
+      return Number.isSafeInteger(kept) && kept > 0 ? kept : null;
+    } catch {
+      return null;
+    }
+  }
+  function markSeen(held2, at3) {
+    try {
+      localStorage.setItem(seenKey(held2), String(at3));
+    } catch {
+    }
+  }
+  function placeBanner(view2) {
+    if (banner !== null) {
+      view2.prepend(banner);
+    }
+  }
+  function dropBanner() {
+    banner?.remove();
+    banner = null;
+  }
+  async function checkNotices(held2, view2, recoveryHref) {
+    const path2 = companyPath(held2);
+    const [notices, members] = await Promise.all([call("GET", `${path2}/notices/me`, readNotices), call("GET", `${path2}/members`, readMemberList)]);
+    if (!notices.ok) {
+      return;
+    }
+    const fresh = newNotices(notices.value, seenAt(held2));
+    const last = fresh.at(-1);
+    if (last === void 0) {
+      return;
+    }
+    const names = new Map((members.ok ? members.value : []).map((member) => [member.account, member.name]));
+    const when4 = new Intl.DateTimeFormat(void 0, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const gotIt = el("button", { type: "button" }, "Got it");
+    banner = el(
+      "section",
+      { class: "notice-banner", "aria-labelledby": "notices-title" },
+      el("h2", { id: "notices-title" }, "Since you last looked"),
+      el("ul", {}, ...fresh.map((notice2) => el("li", {}, `${noticeWords(notice2.kind, names.get(notice2.by) ?? "An owner")}, ${when4.format(new Date(notice2.at * 1e3))}.`))),
+      el("p", {}, el("a", { href: recoveryHref }, "See recovery"), " ", gotIt)
+    );
+    gotIt.addEventListener("click", () => {
+      markSeen(held2, last.at);
+      dropBanner();
+    });
+    placeBanner(view2());
+  }
+
+  // src/crypto/recovery.ts
+  async function handOver(recovery) {
+    const { company } = recovery;
+    const rescue = await unwrapSecret(
+      recovery.ownerPrivate,
+      recovery.ownerPublic,
+      {
+        company,
+        wrappedKind: "recovery-to-owner",
+        wrappedKeyId: recovery.recoveryKeyId,
+        recipientKind: "member",
+        recipientKeyId: recovery.ownerKeyId
+      },
+      recovery.recoveryWrap
+    );
+    let memberKeys;
+    try {
+      const rescuePrivate = await x25519PrivateFromBytes(rescue, false);
+      memberKeys = await unwrapSecret(
+        rescuePrivate,
+        recovery.recoveryPublic,
+        {
+          company,
+          wrappedKind: "member-recovery",
+          wrappedKeyId: recovery.memberKeyId,
+          recipientKind: "recovery",
+          recipientKeyId: recovery.recoveryKeyId
+        },
+        recovery.escrow
+      );
+      return await wrapSecret(
+        recovery.handoffPublic,
+        {
+          company,
+          wrappedKind: "member-recovery",
+          wrappedKeyId: recovery.memberKeyId,
+          recipientKind: "member",
+          recipientKeyId: recovery.requestId
+        },
+        memberKeys
+      );
+    } finally {
+      wipe(rescue);
+      if (memberKeys !== void 0) {
+        wipe(memberKeys);
+      }
+    }
+  }
+
+  // src/recovery/recovery-key.ts
+  var KEY_ID_BYTES5 = 16;
+  var KEY_BYTES8 = 32;
+  async function newRecoveryKey(company, signer, ownerSigning, chain, vouched, owners) {
+    const pair = await generatePair("X25519");
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    const raw = pkcs8.slice(pkcs8.length - KEY_BYTES8);
+    wipe(pkcs8);
+    try {
+      const keyId = random(KEY_ID_BYTES5);
+      const recoveryPublic = await publicBytes(pair.publicKey);
+      const statement = await appendStatement(company, chain.at(-1), { kind: "recovery", subject: hex(keyId), agreementPublic: recoveryPublic, signingPublic: new Uint8Array(0) }, signer);
+      await verifyChain(company, ownerSigning, [...chain, statement]);
+      const wraps = [];
+      const unvouched = [];
+      for (const owner of owners) {
+        const context2 = { company, wrappedKind: "recovery-to-owner", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: owner.keyId };
+        try {
+          wraps.push({ keyId: owner.keyId, wrap: await wrapToVouched(vouched, { kind: "member", account: owner.account }, owner.agreementPublic, context2, raw) });
+        } catch (problem2) {
+          if (!(problem2 instanceof VaultCryptoError && problem2.reason === "unvouched-recipient")) {
+            throw problem2;
+          }
+          unvouched.push(owner.account);
+        }
+      }
+      return { statement, keyId, public: recoveryPublic, wraps, unvouched };
+    } finally {
+      wipe(raw);
+    }
+  }
+
+  // src/recovery/hand-over.ts
+  var refused = (code) => ({ ok: false, status: 0, code, message: "" });
+  async function makeRecoveryKey(held2, chain, vouched, owners) {
+    const signer = { privateKey: held2.keys.signingPrivate, publicBytes: held2.keys.signingPublic };
+    let made;
+    try {
+      made = await newRecoveryKey(held2.company, signer, held2.keys.ownerSigningPublic, chain.statements, vouched, owners);
+    } catch {
+      return refused("unvouched-signer");
+    }
+    const path2 = companyPath(held2);
+    const vouching = await call("POST", `${path2}/statements`, ignored, { body: statementBody(chain.statements.length + 1, made.statement) });
+    if (!vouching.ok) {
+      return vouching;
+    }
+    const kept = await call("POST", `${path2}/recovery-key`, ignored, { body: groupKeyBody(made) });
+    return kept.ok ? null : kept;
+  }
+  async function handOverRequest(held2, vouched, request, memberKey2) {
+    const recovery = vouched.recoveryKey();
+    const recoveryKeyId = recovery === void 0 ? null : keyIdBytes(recovery.keyId);
+    const memberKeyId = keyIdBytes(memberKey2.keyId);
+    const requestId = keyIdBytes(request.id);
+    if (recovery === void 0 || recoveryKeyId === null || memberKeyId === null || requestId === null) {
+      return refused("recovery_moved");
+    }
+    const path2 = companyPath(held2);
+    const mine = await call("GET", `${path2}/recovery-key/mine`, readWrap("key_id"));
+    if (!mine.ok) {
+      return mine.status === 404 ? refused("no_owner_wrap") : mine;
+    }
+    const escrow = await call("GET", `${path2}/keys/${encodeURIComponent(request.account)}/escrow`, readWrap("recovery_key_id"));
+    if (!escrow.ok) {
+      return escrow.status === 404 ? refused("no_escrow") : escrow;
+    }
+    if (mine.value.keyId !== recovery.keyId || escrow.value.keyId !== recovery.keyId) {
+      return refused("recovery_moved");
+    }
+    let wrap;
+    try {
+      wrap = await handOver({
+        company: held2.company,
+        ownerPrivate: held2.keys.agreementPrivate,
+        ownerPublic: held2.keys.agreementPublic,
+        ownerKeyId: held2.keys.keyId,
+        recoveryKeyId,
+        recoveryPublic: recovery.agreementPublic,
+        recoveryWrap: mine.value.wrap,
+        memberKeyId,
+        escrow: escrow.value.wrap,
+        requestId,
+        handoffPublic: request.handoffPublic
+      });
+    } catch {
+      return refused("unopenable");
+    }
+    const handed = await call("POST", `${path2}/recovery-requests/${encodeURIComponent(request.id)}/handoff`, ignored, { body: handoffBody(wrap) });
+    return handed.ok ? null : handed;
+  }
+
+  // src/recovery/recovery-view.ts
+  var when3 = new Intl.DateTimeFormat(void 0, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  var at2 = (seconds) => when3.format(new Date(seconds * 1e3));
+  var section = (id, title, ...body) => el("section", { class: "record-section", "aria-labelledby": id }, el("h2", { id }, title), ...body);
+  function yourKeys(escrowed, recoveryKeyed, notices, names) {
+    const status = escrowed ? "Your keys are kept for recovery. If you forget your unlock password, an owner can hand them back to you." : recoveryKeyed ? "Your keys aren't kept for recovery yet. They will be the next time you unlock." : "Your keys aren't kept for recovery: the company has no recovery key yet.";
+    const reached = notices.length === 0 ? el("p", { class: "muted" }, "No owner has reached your keys.") : el("ul", { class: "shares" }, ...[...notices].reverse().map((notice2) => el("li", { class: "share" }, el("span", {}, noticeWords(notice2.kind, names.get(notice2.by) ?? "An owner"), el("span", { class: "detail" }, at2(notice2.at))))));
+    return section("your-keys", "Your keys", el("p", { class: "muted" }, status), el("h3", {}, "Who reached them"), reached);
+  }
+  function handOverDialog(held2, vouched, request, name, key, done) {
+    const code = el("p", { class: "fingerprint" });
+    const said = el("div", { "aria-live": "polite" });
+    const notNow = el("button", { type: "button", autofocus: "" }, "Not now");
+    const confirm = el("button", { type: "button", class: "primary" }, "The codes match: hand over");
+    const dialog = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": "hand-over-title" },
+      el("h2", { id: "hand-over-title" }, `Hand ${name}'s keys back?`),
+      el("p", {}, `Ask ${name} to read you the code on their screen. Hand over only when it is this one:`),
+      code,
+      el("p", { class: "muted" }, `${name} then sets a new unlock password, and sees that you did this. It is on the company's trail too.`),
+      said,
+      el("div", { class: "actions" }, notNow, confirm)
+    );
+    notNow.addEventListener("click", () => dialog.close());
+    confirm.addEventListener("click", () => {
+      confirm.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Handing the keys over."));
+      void handOverRequest(held2, vouched, request, key).then((failed2) => {
+        confirm.disabled = false;
+        if (failed2 === null) {
+          dialog.close();
+          done();
+          return;
+        }
+        fill(said, refusal(recoveryFailure(failed2)));
+      });
+    });
+    const open3 = () => {
+      fill(said, null);
+      void handoffCode(request.handoffPublic).then((words) => {
+        code.textContent = words;
+        dialog.showModal();
+      });
+    };
+    return { dialog, open: open3 };
+  }
+  function requestsList(held2, vouched, requests, members, directory, again) {
+    if (requests.length === 0) {
+      return el("p", { class: "muted" }, "Nobody has asked for recovery.");
+    }
+    const rows = requests.map((request) => {
+      const name = members.get(request.account)?.name ?? "A former member";
+      const key = directory.get(request.account);
+      const who = el("span", { class: "share-name" }, name, el("span", { class: "detail" }, `Asked ${at2(request.created)}`));
+      if (key === void 0) {
+        return el("li", { class: "share" }, who, el("span", { class: "muted" }, "No key set"));
+      }
+      const { dialog, open: open3 } = handOverDialog(held2, vouched, request, name, key, () => again(`${name}'s keys are handed over. They can now set a new unlock password.`));
+      const button = el("button", { type: "button" }, "Hand over");
+      button.setAttribute("aria-label", `Hand over ${name}'s keys`);
+      button.addEventListener("click", open3);
+      return el("li", { class: "share" }, who, button, dialog);
+    });
+    return el("ul", { class: "shares" }, ...rows);
+  }
+  async function ownersPart(held2, chain, vouched, members, directory, again) {
+    const byAccount = new Map(members.map((member) => [member.account, member]));
+    if (vouched.recoveryKey() === void 0) {
+      if (!sameBytes(held2.keys.signingPublic, held2.keys.ownerSigningPublic)) {
+        return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, "The company has no recovery key yet. Only the owner who opened the company's vault first can make it, because the company owner key vouches for it."));
+      }
+      const said = el("div", { "aria-live": "polite" });
+      const make = el("button", { type: "button", class: "primary" }, "Make the recovery key");
+      make.addEventListener("click", () => {
+        make.disabled = true;
+        fill(said, el("p", { class: "muted", role: "status" }, "Making the recovery key."));
+        const owners = members.flatMap((member) => {
+          const key = member.role === "owner" && member.active ? directory.get(member.account) : void 0;
+          const keyId = key === void 0 ? null : keyIdBytes(key.keyId);
+          return key === void 0 || keyId === null ? [] : [{ account: member.account, keyId, agreementPublic: key.agreementPublic }];
+        });
+        void makeRecoveryKey(held2, chain, vouched, owners).then((failed2) => {
+          make.disabled = false;
+          if (failed2 === null) {
+            again("The recovery key is made. Each member's keys are kept for recovery the next time they unlock, yours included.");
+            return;
+          }
+          fill(said, refusal(recoveryFailure(failed2)));
+        });
+      });
+      const lead = "With it, the company's owners can hand a member their keys back when the member forgets their unlock password. Every member's keys are wrapped to it, so owners can reach them, and each member sees every time that happens.";
+      return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), make, said);
+    }
+    const requests = await call("GET", `${companyPath(held2)}/recovery-requests`, readRequests);
+    const listed = requests.ok ? requestsList(held2, vouched, requests.value, byAccount, directory, again) : refusal(loadFailure(requests));
+    return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), listed);
+  }
+  async function drawRecovery(main2, held2, notice2 = null) {
+    const title = heading("Recovery");
+    const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "When someone forgets their unlock password, an owner can hand their keys back. Nobody else can, the vault's operator included.")));
+    const said = el("div", { "aria-live": "polite" }, notice2 === null ? el("p", { class: "muted", role: "status" }, "Loading.") : el("p", { class: "muted", role: "status" }, notice2));
+    fill(main2, head, said);
+    title.focus();
+    const path2 = companyPath(held2);
+    const [chain, own, notices, members, directory] = await Promise.all([
+      call("GET", `${path2}/statements`, readChain),
+      call("GET", `${path2}/keys/me/escrow`, readOwnEscrow),
+      call("GET", `${path2}/notices/me`, readNotices),
+      call("GET", `${path2}/members`, readMemberList),
+      call("GET", `${path2}/keys`, readDirectory)
+    ]);
+    const failed2 = [chain, notices, members, directory].find((answer) => !answer.ok);
+    if (failed2 !== void 0 && !failed2.ok) {
+      fill(said, refusal(loadFailure(failed2)));
+      return;
+    }
+    if (!chain.ok || !notices.ok || !members.ok || !directory.ok || !own.ok && own.status !== 404) {
+      fill(said, refusal("The vault couldn't load recovery. Try again in a minute."));
+      return;
+    }
+    const vouched = await verifyChain(held2.company, held2.keys.ownerSigningPublic, chain.value.statements).catch(() => null);
+    if (vouched === null) {
+      fill(said, refusal(CHAIN_REFUSED));
+      return;
+    }
+    const names = new Map(members.value.map((member) => [member.account, member.name]));
+    const standing = vouched.recoveryKey();
+    const parts = [yourKeys(own.ok && own.value === standing?.keyId, standing !== void 0, notices.value, names)];
+    const again = (words) => void drawRecovery(main2, held2, words);
+    if (members.value.find((member) => member.account === held2.account)?.role === "owner") {
+      parts.unshift(await ownersPart(held2, chain.value, vouched, members.value, directory.value, again));
+    }
+    fill(main2, head, notice2 === null ? null : said, ...parts);
+  }
+
+  // src/join-model.ts
+  var isRecord15 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readAuthenticator(v) {
-    if (!isRecord14(v)) {
+    if (!isRecord15(v)) {
       return null;
     }
     const { secret, uri } = v;
@@ -4607,11 +5045,11 @@ ${END}
   var groupedKey = (secret) => (secret.match(/.{1,4}/g) ?? []).join(" ");
   function tokenFrom(typed) {
     const text3 = typed.trim();
-    const at2 = text3.indexOf("token=");
-    if (at2 < 0) {
+    const at3 = text3.indexOf("token=");
+    if (at3 < 0) {
       return text3;
     }
-    const carried = text3.slice(at2 + "token=".length).split("&")[0] ?? "";
+    const carried = text3.slice(at3 + "token=".length).split("&")[0] ?? "";
     try {
       return decodeURIComponent(carried);
     } catch {
@@ -4875,11 +5313,27 @@ ${END}
     token2.input.focus();
   }
 
+  // src/crypto/escrow.ts
+  var ESCROW_VERSION = 1;
+  var OWNER_KEY_BYTES2 = 32;
+  var escrowBytes = (escrow) => concat(Uint8Array.of(ESCROW_VERSION), field2(escrow.agreement), field2(escrow.signing), escrow.ownerSigningPublic);
+  function readEscrow(bytes) {
+    const reader = new Reader(bytes);
+    if (reader.integer(1) !== ESCROW_VERSION) {
+      throw new VaultCryptoError("unknown-version");
+    }
+    const agreement = reader.field();
+    const signing = reader.field();
+    const ownerSigningPublic = reader.take(OWNER_KEY_BYTES2);
+    reader.end();
+    return { agreement, signing, ownerSigningPublic };
+  }
+
   // src/crypto/unlock.ts
   var MAX_WRAPS = 2 ** 20;
   var SALT_BYTES3 = 16;
   var MASTER_KEY_BYTES = 32;
-  var KEY_ID_BYTES5 = 16;
+  var KEY_ID_BYTES6 = 16;
   var NONCE_BYTES3 = 12;
   var DERIVED = 0;
   function exportsOf(instance) {
@@ -4931,7 +5385,7 @@ ${END}
     }
   }
   function associatedData3(context2) {
-    if (context2.keyId.length !== KEY_ID_BYTES5) {
+    if (context2.keyId.length !== KEY_ID_BYTES6) {
       throw new VaultCryptoError("malformed");
     }
     return concat(
@@ -4943,7 +5397,7 @@ ${END}
     );
   }
   function pinData(pin) {
-    if (pin.keyId.length !== KEY_ID_BYTES5) {
+    if (pin.keyId.length !== KEY_ID_BYTES6) {
       throw new VaultCryptoError("malformed");
     }
     return concat(utf8(LABEL.ownerPin), field2(utf8(pin.account)), field2(utf8(pin.company)), field2(pin.keyId));
@@ -4986,12 +5440,12 @@ ${END}
       }
       this.#wrapsMade += 1;
       const nonce2 = random(NONCE_BYTES3);
-      const sealed2 = await crypto.subtle.wrapKey("pkcs8", privateKey, this.#key, {
+      const sealed3 = await crypto.subtle.wrapKey("pkcs8", privateKey, this.#key, {
         name: "AES-GCM",
         iv: nonce2,
         additionalData: associatedData3(context2)
       });
-      return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context2.keyId, nonce2, new Uint8Array(sealed2));
+      return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context2.keyId, nonce2, new Uint8Array(sealed3));
     }
     /** Seal the company owner's Ed25519 public key under UK, to be pinned in this member's key set; one more wrap. */
     async sealPin(ownerPublic, pin) {
@@ -5000,22 +5454,22 @@ ${END}
       }
       this.#wrapsMade += 1;
       const nonce2 = random(NONCE_BYTES3);
-      const sealed2 = await crypto.subtle.wrapKey("raw", ownerPublic, this.#key, {
+      const sealed3 = await crypto.subtle.wrapKey("raw", ownerPublic, this.#key, {
         name: "AES-GCM",
         iv: nonce2,
         additionalData: pinData(pin)
       });
-      return { nonce: nonce2, sealed: new Uint8Array(sealed2) };
+      return { nonce: nonce2, sealed: new Uint8Array(sealed3) };
     }
     /** Open the pinned owner key; a pin sealed for another member, company or key set is `unauthentic`. */
-    async openPin(pin, nonce2, sealed2) {
+    async openPin(pin, nonce2, sealed3) {
       if (nonce2.length !== NONCE_BYTES3) {
         throw new VaultCryptoError("malformed");
       }
       try {
         return await crypto.subtle.unwrapKey(
           "raw",
-          sealed2,
+          sealed3,
           this.#key,
           { name: "AES-GCM", iv: nonce2, additionalData: pinData(pin) },
           { name: "Ed25519" },
@@ -5026,8 +5480,8 @@ ${END}
         throw new VaultCryptoError("unauthentic");
       }
     }
-    /** Unwrap into a non-extractable key: X25519 for agreement, Ed25519 for signing. */
-    async unwrap(context2, wrapped) {
+    /** Unwrap into a key, non-extractable unless asked (escrow only): X25519 for agreement, Ed25519 for signing. */
+    async unwrap(context2, wrapped, extractable = false) {
       const reader = new Reader(wrapped);
       if (reader.integer(1) !== FORMAT_VERSION) {
         throw new VaultCryptoError("unknown-version");
@@ -5035,9 +5489,9 @@ ${END}
       if (reader.integer(1) !== ALGORITHM.memberKey) {
         throw new VaultCryptoError("unknown-algorithm");
       }
-      const keyId = reader.take(KEY_ID_BYTES5);
+      const keyId = reader.take(KEY_ID_BYTES6);
       const nonce2 = reader.take(NONCE_BYTES3);
-      const sealed2 = reader.rest();
+      const sealed3 = reader.rest();
       if (!sameBytes(keyId, context2.keyId)) {
         throw new VaultCryptoError("key-mismatch");
       }
@@ -5045,11 +5499,11 @@ ${END}
       try {
         return await crypto.subtle.unwrapKey(
           "pkcs8",
-          sealed2,
+          sealed3,
           this.#key,
           { name: "AES-GCM", iv: nonce2, additionalData: associatedData3(context2) },
           { name: agreement ? "X25519" : "Ed25519" },
-          false,
+          extractable,
           agreement ? ["deriveBits"] : ["sign"]
         );
       } catch {
@@ -5061,7 +5515,7 @@ ${END}
   // src/crypto/key-set.ts
   var NEW_KDF = { memoryKib: 65536, passes: 3, lanes: 4 };
   var SALT_BYTES4 = 16;
-  var KEY_ID_BYTES6 = 16;
+  var KEY_ID_BYTES7 = 16;
   var PIN_NONCE_BYTES = 12;
   var KEY_SET_VERSION = 2;
   var context = (account, company, kind, keyId) => ({
@@ -5098,37 +5552,223 @@ ${END}
       ownerSigningPublic: await publicBytes(owner)
     };
   }
+  async function escrowOf(agreement, signing, ownerSigningPublic) {
+    const agreementBytes = new Uint8Array(await crypto.subtle.exportKey("pkcs8", agreement));
+    const signingBytes = new Uint8Array(await crypto.subtle.exportKey("pkcs8", signing));
+    try {
+      return escrowBytes({ agreement: agreementBytes, signing: signingBytes, ownerSigningPublic });
+    } finally {
+      wipe(agreementBytes, signingBytes);
+    }
+  }
   async function openKeySet(module2, password, account, company, stored) {
     const { wrapsMade } = parse(stored);
     return openWith(await unlockKey(module2, password, stored.salt, stored.kdf, wrapsMade), account, company, stored);
   }
-  async function createKeySet(module2, password, account, company, ownerSigningPublic) {
+  async function openKeySetWithEscrow(module2, password, account, company, stored) {
+    const parsed = parse(stored);
+    const key = await unlockKey(module2, password, stored.salt, stored.kdf, parsed.wrapsMade);
+    const open3 = await openWith(key, account, company, stored);
+    const agreement = await key.unwrap(context(account, company, "agreement", stored.keyId), parsed.agreementWrap, true);
+    const signing = await key.unwrap(context(account, company, "signing", stored.keyId), parsed.signingWrap, true);
+    return { open: open3, escrow: await escrowOf(agreement, signing, open3.ownerSigningPublic) };
+  }
+  async function sealed2(module2, password, account, company, keyId, halves, ownerSigningPublic) {
     const salt = random(SALT_BYTES4);
-    const keyId = random(KEY_ID_BYTES6);
     const key = await unlockKey(module2, password, salt, NEW_KDF, 0);
-    const agreement = await generatePair("X25519");
-    const signing = await generatePair("Ed25519");
-    const agreementWrap = await key.wrap(agreement.privateKey, context(account, company, "agreement", keyId));
-    const signingWrap = await key.wrap(signing.privateKey, context(account, company, "signing", keyId));
-    const signingPublic = await publicBytes(signing.publicKey);
-    const owner = await ed25519PublicFromBytes(ownerSigningPublic === "self" ? signingPublic : ownerSigningPublic);
-    const pin = await key.sealPin(owner, { account, company, keyId });
+    const agreementWrap = await key.wrap(halves.agreementPrivate, context(account, company, "agreement", keyId));
+    const signingWrap = await key.wrap(halves.signingPrivate, context(account, company, "signing", keyId));
+    const pin = await key.sealPin(await ed25519PublicFromBytes(ownerSigningPublic), { account, company, keyId });
     const stored = {
       keyId,
-      agreementPublic: await publicBytes(agreement.publicKey),
-      signingPublic,
-      wrapped: concat(
-        Uint8Array.of(KEY_SET_VERSION),
-        integer(key.wrapsMade, 4),
-        field2(agreementWrap),
-        field2(signingWrap),
-        pin.nonce,
-        field2(pin.sealed)
-      ),
+      agreementPublic: halves.agreementPublic,
+      signingPublic: halves.signingPublic,
+      wrapped: concat(Uint8Array.of(KEY_SET_VERSION), integer(key.wrapsMade, 4), field2(agreementWrap), field2(signingWrap), pin.nonce, field2(pin.sealed)),
       salt,
       kdf: NEW_KDF
     };
     return { stored, open: await openWith(key, account, company, stored) };
+  }
+  async function createKeySet(module2, password, account, company, ownerSigningPublic, forEscrow = false) {
+    const agreement = await generatePair("X25519");
+    const signing = await generatePair("Ed25519");
+    const signingPublic = await publicBytes(signing.publicKey);
+    const owner = ownerSigningPublic === "self" ? signingPublic : ownerSigningPublic;
+    const halves = { agreementPrivate: agreement.privateKey, signingPrivate: signing.privateKey, agreementPublic: await publicBytes(agreement.publicKey), signingPublic };
+    const made = await sealed2(module2, password, account, company, random(KEY_ID_BYTES7), halves, owner);
+    return { ...made, escrow: forEscrow ? await escrowOf(agreement.privateKey, signing.privateKey, owner) : null };
+  }
+  async function sameKeys(agreement, signing, stored) {
+    const peer = await generatePair("X25519", false);
+    const mine = await x25519(agreement, peer.publicKey);
+    const theirs = await x25519(peer.privateKey, await x25519PublicFromBytes(stored.agreementPublic));
+    const probe = random(32);
+    const signature = new Uint8Array(await crypto.subtle.sign("Ed25519", signing, probe));
+    const signed = await crypto.subtle.verify("Ed25519", await ed25519PublicFromBytes(stored.signingPublic), signature, probe);
+    return sameBytes(mine, theirs) && signed;
+  }
+  async function restoreKeySet(module2, password, account, company, stored, escrow) {
+    const opened = readEscrow(escrow);
+    try {
+      const agreementPrivate = await crypto.subtle.importKey("pkcs8", opened.agreement, { name: "X25519" }, true, ["deriveBits"]);
+      const signingPrivate = await crypto.subtle.importKey("pkcs8", opened.signing, { name: "Ed25519" }, true, ["sign"]);
+      if (!await sameKeys(agreementPrivate, signingPrivate, stored)) {
+        throw new VaultCryptoError("key-mismatch");
+      }
+      const halves = { agreementPrivate, signingPrivate, agreementPublic: stored.agreementPublic, signingPublic: stored.signingPublic };
+      return await sealed2(module2, password, account, company, stored.keyId, halves, opened.ownerSigningPublic);
+    } finally {
+      wipe(opened.agreement, opened.signing, escrow);
+    }
+  }
+
+  // src/recovery/ask-view.ts
+  var path = (context2) => `/api/companies/${encodeURIComponent(context2.company.id)}`;
+  function askForRecovery(main2, context2) {
+    const ask = el("button", { type: "button", class: "primary" }, "Ask an owner");
+    const back = el("button", { type: "button", class: "quiet" }, "Back to unlock");
+    const said = el("div", { "aria-live": "polite" });
+    const lead = `An owner of ${context2.company.name} can hand your keys back to you. They see that you asked, and you see that they did.`;
+    fill(main2, context2.card("Forgot your unlock password?", lead, said, ask, back));
+    back.addEventListener("click", context2.back);
+    ask.addEventListener("click", () => {
+      ask.disabled = true;
+      void (async () => {
+        const handoff = await generatePair("X25519", false);
+        const handoffPublic = await publicBytes(handoff.publicKey);
+        const answer = await call("POST", `${path(context2)}/recovery-requests`, readAsked, { body: askBody(handoffPublic) });
+        ask.disabled = false;
+        if (!answer.ok) {
+          fill(said, refusal(recoveryFailure(answer)));
+          return;
+        }
+        await waiting(main2, context2, { id: answer.value, handoff, handoffPublic });
+      })();
+    });
+    ask.focus();
+  }
+  async function waiting(main2, context2, asked) {
+    const check = el("button", { type: "button", class: "primary" }, "Check");
+    const said = el("div", { "aria-live": "polite" });
+    const lead = `Tell an owner of ${context2.company.name} that you asked. When they hand your keys over, read them this code:`;
+    const view2 = context2.card(
+      "Waiting for an owner",
+      lead,
+      el("p", { class: "fingerprint" }, await handoffCode(asked.handoffPublic)),
+      el("p", { class: "muted" }, "Keep this tab open until they have. If you close it, ask again."),
+      said,
+      check
+    );
+    fill(main2, view2);
+    check.addEventListener("click", () => {
+      check.disabled = true;
+      void call("POST", `${path(context2)}/recovery-requests/${encodeURIComponent(asked.id)}/redeem`, readHandoff).then(async (answer) => {
+        check.disabled = false;
+        if (!answer.ok) {
+          fill(said, refusal(recoveryFailure(answer)));
+          return;
+        }
+        const requestId = keyIdBytes(asked.id);
+        try {
+          if (requestId === null) {
+            throw new RangeError("request id");
+          }
+          const wrapContext = { company: context2.company.id, wrappedKind: "member-recovery", wrappedKeyId: context2.stored.keyId, recipientKind: "member", recipientKeyId: requestId };
+          const escrow = await unwrapSecret(asked.handoff.privateKey, asked.handoffPublic, wrapContext, answer.value);
+          newPassword(main2, context2, asked.id, escrow);
+        } catch {
+          fill(said, refusal("These keys didn't open on this page. Ask again."));
+        }
+      });
+    });
+    check.focus();
+  }
+  function newPassword(main2, context2, request, escrow) {
+    const password = field("new-unlock-password", "New unlock password", { type: "password", autocomplete: "new-password", required: "" }, "At least 12 characters. Not your sign-in password.");
+    const repeated = field("repeat-unlock-password", "Type it again", { type: "password", autocomplete: "new-password", required: "" });
+    const submit = el("button", { type: "submit", class: "primary" }, "Set unlock password");
+    const said = el("div", { "aria-live": "polite" });
+    const view2 = context2.card("Set a new unlock password", "An owner handed your keys back. Set a new unlock password to keep them.", password.row, repeated.row, submit, said);
+    let restored = null;
+    view2.querySelector("form")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const problem2 = newPasswordProblem(password.input.value, repeated.input.value, context2.me.email);
+      if (restored === null && problem2 !== null) {
+        fill(said, refusal(problem2));
+        password.input.focus();
+        return;
+      }
+      submit.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Wrapping your keys. This takes a second."));
+      void (async () => {
+        try {
+          restored ??= await restoreKeySet(await context2.module(), password.input.value, context2.me.account, context2.company.id, context2.stored, escrow);
+        } catch {
+          fill(said, refusal("These keys aren't the ones your account holds, so nothing was changed. Ask again."));
+          return;
+        } finally {
+          password.input.value = "";
+          repeated.input.value = "";
+          submit.disabled = false;
+        }
+        const kept = await call("POST", `${path(context2)}/keys/me/rewrap`, ignored, { body: rewrapBody(request, restored.stored) });
+        if (kept.ok) {
+          context2.opened(restored.open);
+          return;
+        }
+        fill(said, refusal(`${recoveryFailure(kept)} Your keys are still open on this page: select Set unlock password to try again.`));
+      })();
+    });
+    fill(main2, view2);
+    password.input.focus();
+  }
+
+  // src/recovery/escrow-sync.ts
+  var companyPath2 = (company) => `/api/companies/${encodeURIComponent(company)}`;
+  async function escrowOwed(company) {
+    const [chain, own] = await Promise.all([call("GET", `${companyPath2(company)}/statements`, readChain), call("GET", `${companyPath2(company)}/keys/me/escrow`, readOwnEscrow)]);
+    if (!chain.ok || chain.value.ownerSigning === null || !own.ok && own.status !== 404) {
+      return null;
+    }
+    try {
+      const vouched = (await verifyChain(company, chain.value.ownerSigning, chain.value.statements)).recoveryKey();
+      return vouched !== void 0 && escrowWanted(own.ok ? own.value : null, vouched) ? { chain: chain.value, vouched } : null;
+    } catch {
+      return null;
+    }
+  }
+  async function keepEscrow(company, keys, owed, escrow) {
+    if (escrow === null) {
+      return false;
+    }
+    try {
+      if (owed === null) {
+        return false;
+      }
+      const chain = await verifyChain(company, keys.ownerSigningPublic, owed.chain.statements);
+      const vouched = chain.recoveryKey();
+      const recoveryKeyId = vouched === void 0 ? null : keyIdBytes(vouched.keyId);
+      const listed = await call("GET", `${companyPath2(company)}/recovery-key`, readRecoveryKey);
+      if (!listed.ok || vouched === void 0 || recoveryKeyId === null || listed.value.keyId !== vouched.keyId) {
+        return false;
+      }
+      const context2 = { company, wrappedKind: "member-recovery", wrappedKeyId: keys.keyId, recipientKind: "recovery", recipientKeyId: recoveryKeyId };
+      const wrap = await wrapToVouched(chain, { kind: "recovery" }, listed.value.public, context2, escrow);
+      return (await call("PUT", `${companyPath2(company)}/keys/me/escrow`, ignored, { body: escrowBody(vouched.keyId, wrap) })).ok;
+    } catch {
+      return false;
+    } finally {
+      wipe(escrow);
+    }
+  }
+  async function openAndEscrow(module2, password, account, company, stored) {
+    const owed = await escrowOwed(company);
+    if (owed === null) {
+      return openKeySet(module2, password, account, company, stored);
+    }
+    const { open: open3, escrow } = await openKeySetWithEscrow(module2, password, account, company, stored);
+    await keepEscrow(company, open3, owed, escrow);
+    return open3;
   }
 
   // src/vault.ts
@@ -5236,16 +5876,16 @@ ${END}
     if (companies.length === 1) {
       return { row: null, chosen: () => first };
     }
-    const inputs = companies.map((company, at2) => {
-      const input = el("input", { type: "radio", name: "company", id: `company-${at2}`, value: company.id });
-      input.checked = at2 === 0;
+    const inputs = companies.map((company, at3) => {
+      const input = el("input", { type: "radio", name: "company", id: `company-${at3}`, value: company.id });
+      input.checked = at3 === 0;
       return input;
     });
     const row2 = el(
       "fieldset",
       { class: "field choices" },
       el("legend", {}, "Company"),
-      ...inputs.flatMap((input, at2) => [el("div", { class: "choice" }, input, el("label", { for: input.id }, companies[at2]?.name ?? ""))])
+      ...inputs.flatMap((input, at3) => [el("div", { class: "choice" }, input, el("label", { for: input.id }, companies[at3]?.name ?? ""))])
     );
     return { row: row2, chosen: () => companies.find((company) => company.id === inputs.find((input) => input.checked)?.value) ?? first };
   }
@@ -5256,20 +5896,26 @@ ${END}
     const password = field("unlock-password", "Unlock password", { type: "password", autocomplete: "current-password", required: "" });
     const submit = el("button", { type: "submit", class: "primary" }, "Unlock");
     const said = el("div", { "aria-live": "polite" });
-    const view2 = card2("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, unlockAccount(me, company), password.row, submit, said);
+    const forgot = el("button", { type: "button", class: "quiet" }, "Forgot your unlock password?");
+    const opened = (keys) => {
+      hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, name: me.name, email: me.email, keys });
+      done();
+    };
+    const back = () => unlockForm(main2, me, company, stored, choice, done);
+    forgot.addEventListener("click", () => askForRecovery(main2, { me, company, stored, card: card2, module: cryptoModule, back, opened }));
+    const view2 = card2("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, unlockAccount(me, company), password.row, submit, said, forgot);
     view2.querySelector("form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       submit.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Opening your keys. This takes a second."));
       try {
-        const keys = await openKeySet(await cryptoModule(), password.input.value, me.account, company.id, stored);
+        const keys = await openAndEscrow(await cryptoModule(), password.input.value, me.account, company.id, stored);
         password.input.value = "";
         if (!await chainOwed(company, me, keys)) {
           fill(said, refusal(CHAIN_FAILURE));
           return;
         }
-        hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, name: me.name, email: me.email, keys });
-        done();
+        opened(keys);
       } catch (problem2) {
         password.input.value = "";
         password.input.setAttribute("aria-invalid", "true");
@@ -5313,12 +5959,14 @@ ${END}
       submit.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Making your keys. This takes a few seconds."));
       try {
-        const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id, owner);
+        const owed = owner === "self" ? null : await escrowOwed(company.id);
+        const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id, owner, owed !== null);
         const answer = await call("PUT", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readKept(made.stored.keyId), {
           body: keySetBody(made.stored)
         });
         const chained = answer.ok && (owner !== "self" || await beginChain(company, me, made.open));
         const outcome = firstSave(answer.ok ? null : answer.code, chained);
+        await keepEscrow(company.id, made.open, outcome.kind === "done" ? owed : null, made.escrow);
         if (outcome.kind === "failed") {
           if (!answer.ok) {
             fill(said, refusal(loadFailure2(answer)));
@@ -5413,6 +6061,30 @@ ${END}
     }
   }
 
+  // src/theme.ts
+  function themed() {
+    const button = document.getElementById("theme");
+    const root = document.documentElement;
+    const label = () => {
+      const words = button?.querySelector("span");
+      if (button !== null && words !== null && words !== void 0) {
+        const dark = root.dataset.theme === "dark";
+        words.textContent = dark ? "Light theme" : "Dark theme";
+        setIcon(button, dark ? "sun" : "moon");
+      }
+    };
+    const stored = localStorage.getItem("vault-theme");
+    if (stored === "dark" || stored === "light") {
+      root.dataset.theme = stored;
+    }
+    label();
+    button?.addEventListener("click", () => {
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+      localStorage.setItem("vault-theme", root.dataset.theme);
+      label();
+    });
+  }
+
   // src/menu.ts
   var nextMenu = (open3, event) => event === "toggle" ? !open3 : false;
   function installMenu(window2) {
@@ -5461,6 +6133,7 @@ ${END}
     ["members", "members"],
     ["member", "members"],
     ["trail", "trail"],
+    ["recovery", "recovery"],
     ["account", "account"]
   ]);
   var sectionOf = (name) => SECTIONS.get(name) ?? "";
@@ -5482,6 +6155,7 @@ ${END}
     groups: { path: "/groups", guard: open2 },
     group: { path: "/groups/:group", guard: open2 },
     trail: { path: "/trail", guard: open2 },
+    recovery: { path: "/recovery", guard: open2 },
     account: { path: "/account", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
     join: { path: "/join", query: { token: text } },
@@ -5515,6 +6189,7 @@ ${END}
     const view2 = freshPane(main2, () => document.createElement("div"));
     document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
     showCompany();
+    placeBanner(main2);
     if (outcome.kind !== "matched") {
       heading2(view2, "Not found", "This address names no page of the vault.");
       return;
@@ -5576,6 +6251,9 @@ ${END}
       case "trail":
         withHeld((held2) => drawTrail(view2, held2));
         break;
+      case "recovery":
+        withHeld((held2) => drawRecovery(view2, held2));
+        break;
       case "account":
         withHeld((held2) => drawAccount(view2, held2));
         break;
@@ -5604,17 +6282,24 @@ ${END}
           go(afterUnlock(next));
           return;
         }
-        void unlock(view2, () => go(afterUnlock(next)), () => void signOut());
+        const afterOpening = () => {
+          const held2 = unlocked();
+          if (held2 !== null) {
+            void checkNotices(held2, () => main2, router.href("recovery", {}));
+          }
+          go(afterUnlock(next));
+        };
+        void unlock(view2, afterOpening, () => void signOut());
         break;
       }
     }
   }
   function mark(outcome) {
     const name = outcome.kind === "matched" ? outcome.match.name : "";
-    const section = sectionOf(name);
+    const section2 = sectionOf(name);
     for (const link of document.querySelectorAll("nav a[data-section]")) {
-      if (link.dataset.section === section) {
-        link.setAttribute("aria-current", name === section ? "page" : "true");
+      if (link.dataset.section === section2) {
+        link.setAttribute("aria-current", name === section2 ? "page" : "true");
       } else {
         link.removeAttribute("aria-current");
       }
@@ -5647,28 +6332,6 @@ ${END}
       go(`#/unlock?next=${encodeURIComponent("/")}`);
     });
   }
-  function themed() {
-    const button = document.getElementById("theme");
-    const root = document.documentElement;
-    const label = () => {
-      const words = button?.querySelector("span");
-      if (button !== null && words !== null && words !== void 0) {
-        const dark = root.dataset.theme === "dark";
-        words.textContent = dark ? "Light theme" : "Dark theme";
-        setIcon(button, dark ? "sun" : "moon");
-      }
-    };
-    const stored = localStorage.getItem("vault-theme");
-    if (stored === "dark" || stored === "light") {
-      root.dataset.theme = stored;
-    }
-    label();
-    button?.addEventListener("click", () => {
-      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
-      localStorage.setItem("vault-theme", root.dataset.theme);
-      label();
-    });
-  }
   async function signOut() {
     lock();
     await call("DELETE", "/api/session", ignored);
@@ -5683,6 +6346,7 @@ ${END}
     lockWhenIdle(window, IDLE_MINUTES, { set: (run, ms) => window.setTimeout(run, ms), clear: (handle) => window.clearTimeout(Number(handle)) });
     onLock(() => {
       stopView();
+      dropBanner();
       void copy.clearNow();
       if (signedIn()) {
         go(`#/unlock?next=${encodeURIComponent(history.current().replace(/^#/, ""))}`);
@@ -5698,8 +6362,8 @@ ${END}
     signOutButton();
     switchButton();
     locking();
-    void providerReturned().then((refused) => {
-      notice = refused;
+    void providerReturned().then((refused2) => {
+      notice = refused2;
       const router = new Router(routes, history);
       router.start((outcome) => {
         draw(outcome, view, router);

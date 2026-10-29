@@ -19,13 +19,16 @@ import { drawGroup } from "./groups/group-page.ts";
 import { drawGroups } from "./groups/groups-view.ts";
 import { drawTrail } from "./trail/trail-view.ts";
 import { drawAccount } from "./account/account-view.ts";
+import { checkNotices, dropBanner, placeBanner } from "./recovery/notice-banner.ts";
+import { drawRecovery } from "./recovery/recovery-view.ts";
 import { bearer, forget } from "./session.ts";
 import { join } from "./join.ts";
 import { providerReturned, signIn } from "./sign-in.ts";
 import { unlock } from "./unlock.ts";
 import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked, type Unlocked } from "./vault.ts";
 import { installTips } from "./icon-action.ts";
-import { decorateShell, setIcon } from "./shell-icons.ts";
+import { decorateShell } from "./shell-icons.ts";
+import { themed } from "./theme.ts";
 import { installMenu } from "./menu.ts";
 import { freshPane } from "./pane.ts";
 import { sectionOf } from "./nav-section.ts";
@@ -48,6 +51,7 @@ const routes = defineRoutes({
   groups: { path: "/groups", guard: open },
   group: { path: "/groups/:group", guard: open },
   trail: { path: "/trail", guard: open },
+  recovery: { path: "/recovery", guard: open },
   account: { path: "/account", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
   join: { path: "/join", query: { token: text } },
@@ -93,6 +97,7 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
   // Before signing in and while locked there is nothing to navigate: the card is the page.
   document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
   showCompany();
+  placeBanner(main);
   if (outcome.kind !== "matched") {
     heading(view, "Not found", "This address names no page of the vault.");
     return;
@@ -154,6 +159,9 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
     case "trail":
       withHeld((held) => drawTrail(view, held));
       break;
+    case "recovery":
+      withHeld((held) => drawRecovery(view, held));
+      break;
     case "account":
       withHeld((held) => drawAccount(view, held));
       break;
@@ -183,7 +191,14 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
         go(afterUnlock(next));
         return;
       }
-      void unlock(view, () => go(afterUnlock(next)), () => void signOut());
+      const afterOpening = (): void => {
+        const held = unlocked();
+        if (held !== null) {
+          void checkNotices(held, () => main, router.href("recovery", {}));
+        }
+        go(afterUnlock(next));
+      };
+      void unlock(view, afterOpening, () => void signOut());
       break;
     }
   }
@@ -233,30 +248,6 @@ function switchButton(): void {
   });
 }
 
-/** The person's choice of theme, kept on <html> and in this browser only. */
-function themed(): void {
-  const button = document.getElementById("theme");
-  const root = document.documentElement;
-  const label = (): void => {
-    const words = button?.querySelector("span");
-    if (button !== null && words !== null && words !== undefined) {
-      const dark = root.dataset.theme === "dark";
-      words.textContent = dark ? "Light theme" : "Dark theme";
-      setIcon(button, dark ? "sun" : "moon");
-    }
-  };
-  const stored = localStorage.getItem("vault-theme");
-  if (stored === "dark" || stored === "light") {
-    root.dataset.theme = stored;
-  }
-  label();
-  button?.addEventListener("click", () => {
-    root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
-    localStorage.setItem("vault-theme", root.dataset.theme);
-    label();
-  });
-}
-
 /** Signing out locks the vault and ends the session on the server, then here, whatever the server answered. */
 async function signOut(): Promise<void> {
   lock();
@@ -275,6 +266,7 @@ function locking(): void {
   lockWhenIdle(window, IDLE_MINUTES, { set: (run, ms) => window.setTimeout(run, ms), clear: (handle) => window.clearTimeout(Number(handle)) });
   onLock(() => {
     stopView();
+    dropBanner();
     void copy.clearNow();
     if (signedIn()) {
       go(`#/unlock?next=${encodeURIComponent(history.current().replace(/^#/, ""))}`);

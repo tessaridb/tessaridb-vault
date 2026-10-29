@@ -26,6 +26,8 @@ export const LABEL = {
   revision: `${PREFIX}revision`,
   /** SHA-256 prefix of the key fingerprint two people compare before one vouches for the other's key. */
   fingerprint: `${PREFIX}fingerprint`,
+  /** SHA-256 prefix of the code a member and an owner compare before a recovery hand-over. */
+  handoffCode: `${PREFIX}handoff-code`,
 } as const;
 
 /** The format version every sealed value starts with. */
