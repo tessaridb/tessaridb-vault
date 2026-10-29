@@ -1,10 +1,11 @@
 //! A company's records (C5). The server bounds what it is sent and keeps it sealed; it reads none of it.
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
-use tessari_vault_constants::MAX_RECORD_WRAP_BYTES;
+use tessari_vault_constants::{MAX_RECORD_WRAP_BYTES, RECORD_PAGE_MAX};
 use tessari_vault_storage::records::{OpenedRecord, Record, Revision, Sealed};
 use tessari_vault_types::{KeyId, RecordId, RecordType, base64url};
 
@@ -144,16 +145,79 @@ fn sealed(
     Ok((key_id, parts))
 }
 
+/// How a listing is asked for: plain, or as a page of opened records (`opened=true`, a cursor and a size).
+#[derive(Default)]
+struct Listing {
+    opened: bool,
+    after: Option<RecordId>,
+    limit: Option<usize>,
+}
+
+/// The listing a query string asks for: only `opened=true`, `after` and `limit`, each at most once.
+fn listing(query: Option<&str>) -> Result<Listing, ApiError> {
+    let mut listing = Listing::default();
+    let mut seen = [false; 3];
+    for (key, value) in url::form_urlencoded::parse(query.unwrap_or_default().as_bytes()) {
+        let at = match key.as_ref() {
+            "opened" if value == "true" => 0,
+            "after" => 1,
+            "limit" => 2,
+            _ => return Err(ApiError::INVALID),
+        };
+        if seen.get(at).copied().unwrap_or(true) {
+            return Err(ApiError::INVALID);
+        }
+        if let Some(slot) = seen.get_mut(at) {
+            *slot = true;
+        }
+        match at {
+            0 => listing.opened = true,
+            1 => listing.after = Some(RecordId::parse(&value).map_err(|_| ApiError::INVALID)?),
+            _ => listing.limit = Some(value.parse().map_err(|_| ApiError::INVALID)?),
+        }
+    }
+    Ok(listing)
+}
+
+/// A page of opened records and the cursor to the next.
+#[derive(Serialize)]
+pub(crate) struct OpenedRecords {
+    records: Vec<Opened>,
+    next: Option<String>,
+}
+
 pub(crate) async fn list(
     State(state): State<AppState>,
     Caller(actor): Caller,
     Path(company): Path<String>,
-) -> Result<Json<Records>, ApiError> {
+    RawQuery(query): RawQuery,
+) -> Result<Response, ApiError> {
     let company = company_id(&company)?;
-    let records = state.storage.records.list(&actor, &company).await?;
-    Ok(Json(Records {
-        records: records.iter().map(RecordItem::from).collect(),
-    }))
+    let listing = listing(query.as_deref())?;
+    if !listing.opened {
+        if listing.after.is_some() || listing.limit.is_some() {
+            return Err(ApiError::INVALID);
+        }
+        let records = state.storage.records.list(&actor, &company).await?;
+        return Ok(Json(Records {
+            records: records.iter().map(RecordItem::from).collect(),
+        })
+        .into_response());
+    }
+    let limit = listing.limit.unwrap_or(RECORD_PAGE_MAX);
+    if limit == 0 || limit > RECORD_PAGE_MAX {
+        return Err(ApiError::INVALID);
+    }
+    let page = state
+        .storage
+        .records
+        .open_page(&actor, &company, listing.after.as_ref(), limit)
+        .await?;
+    Ok(Json(OpenedRecords {
+        records: page.records.iter().map(Opened::from).collect(),
+        next: page.next.map(|id| id.to_string()),
+    })
+    .into_response())
 }
 
 pub(crate) async fn create(

@@ -22,3 +22,6 @@ pub const MAX_FILE_BYTES: u64 = 268_501_049;
 
 /// The most bytes one upload or download of a file part carries.
 pub const FILE_PART_MAX_BYTES: u64 = 4_194_304;
+
+/// The most opened records one page answers; each one is a decryption bundle and its own read on the trail.
+pub const RECORD_PAGE_MAX: usize = 50;

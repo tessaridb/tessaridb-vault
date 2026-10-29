@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::files::get_part;
 use crate::shares::{into_team, keyed, record_path, shares, to_group};
-use crate::world::{Cast, World};
+use crate::world::{Cast, World, sealed_record};
 
 const TEAM_KEY: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
 
@@ -138,4 +138,105 @@ async fn a_bundle_whose_read_cannot_be_recorded_is_not_served() {
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     let refused: Value = serde_json::from_slice(&bytes).expect("a refusal, not the file's bytes");
     assert_eq!(refused["error_code"], "unavailable");
+}
+
+/// The ids a page of opened records answers, and the cursor to the next page.
+fn page_of(body: &Value) -> (Vec<String>, Option<String>) {
+    let ids = body["records"]
+        .as_array()
+        .expect("records")
+        .iter()
+        .map(|opened| {
+            assert!(
+                opened["wrap"].is_string(),
+                "a bundle, not a listing: {opened}"
+            );
+            opened["record"]["id"].as_str().expect("an id").to_owned()
+        })
+        .collect();
+    (ids, body["next"].as_str().map(str::to_owned))
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_page_of_opened_records_puts_every_bundle_on_the_trail() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let records = format!("/api/companies/{}/records", cast.company_a);
+    for _ in 0..2 {
+        let (status, body) = world
+            .call(
+                Method::POST,
+                &records,
+                Some(&cast.member_a),
+                Some(sealed_record()),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    let reads_before = trail(&world, &cast)
+        .await
+        .iter()
+        .filter(|event| event["action"] == "record.read")
+        .count();
+    let (status, first) = world
+        .call(
+            Method::GET,
+            &format!("{records}?opened=true&limit=2"),
+            Some(&cast.member_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    let (mut seen, next) = page_of(&first);
+    assert_eq!(seen.len(), 2);
+    let next = next.expect("a third record waits on the next page");
+    let (status, second) = world
+        .call(
+            Method::GET,
+            &format!("{records}?opened=true&limit=2&after={next}"),
+            Some(&cast.member_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    let (rest, last) = page_of(&second);
+    assert_eq!(last, None);
+    seen.extend(rest);
+    // Every record the member reaches, once each, and every one of them on the trail as its own read.
+    let (_, listed) = world
+        .call(Method::GET, &records, Some(&cast.member_a), None)
+        .await;
+    let mut expected: Vec<String> = listed["records"]
+        .as_array()
+        .expect("records")
+        .iter()
+        .map(|item| item["id"].as_str().expect("an id").to_owned())
+        .collect();
+    expected.sort();
+    let mut got = seen.clone();
+    got.sort();
+    assert_eq!(got, expected);
+    assert_eq!(expected.len(), 3);
+    let reads_after = trail(&world, &cast)
+        .await
+        .iter()
+        .filter(|event| event["action"] == "record.read")
+        .count();
+    assert_eq!(
+        reads_after,
+        reads_before + 3,
+        "one trail row per bundle served"
+    );
+    // The owner reaches none of the member's records, so their page is empty.
+    let (status, owners) = world
+        .call(
+            Method::GET,
+            &format!("{records}?opened=true"),
+            Some(&cast.owner_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{owners}");
+    assert_eq!(page_of(&owners), (Vec::new(), None));
 }
