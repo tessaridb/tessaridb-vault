@@ -13,8 +13,8 @@ pub const KEY_LIST_MAX: i64 = 10_000;
 /// The largest vouching statement accepted (a member statement is under 200 bytes).
 pub const MAX_STATEMENT_BYTES: usize = 1_024;
 
-/// An Ed25519 signature over a statement.
-pub const STATEMENT_SIGNATURE_BYTES: usize = 64;
+/// A signature over a statement as the browser stores it: `[version][0x04][Ed25519 64]`.
+pub const STATEMENT_SIGNATURE_BYTES: usize = 66;
 
 /// The longest chain a company keeps. A chain is read whole or not at all, because a client offered a prefix cannot
 /// tell it from a chain whose revocations were left off.

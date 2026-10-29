@@ -4,8 +4,8 @@
 /// fields, 65 536 characters per text) sealed, with room to spare.
 pub const MAX_RECORD_BODY_BYTES: usize = 1_048_576;
 
-/// An Ed25519 signature over a revision.
-pub const RECORD_SIGNATURE_BYTES: usize = 64;
+/// A signature over a revision as the browser stores it: `[version][0x04][Ed25519 64]`.
+pub const RECORD_SIGNATURE_BYTES: usize = 66;
 
 /// The largest wrapped record key accepted (format 0x02 is 82 bytes).
 pub const MAX_RECORD_WRAP_BYTES: usize = 256;

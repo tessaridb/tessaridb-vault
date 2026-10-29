@@ -94,7 +94,7 @@ impl RecordEntity {
 
 /// Why sealed parts are refused before anything is written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("a sealed body, a 64-byte signature and a wrapped record key within their ceilings")]
+#[error("a sealed body, a 66-byte signature and a wrapped record key within their ceilings")]
 pub struct SealedError;
 
 /// One revision's sealed parts, as the browser made them: the body sealed under the record key, the author's
@@ -112,7 +112,7 @@ impl Sealed {
     ///
     /// # Errors
     ///
-    /// [`SealedError`] for an empty or oversized body, a signature that is not 64 bytes, or an empty or oversized
+    /// [`SealedError`] for an empty or oversized body, a signature that is not 66 bytes, or an empty or oversized
     /// wrap.
     pub fn new(
         body: Vec<u8>,

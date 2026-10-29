@@ -347,7 +347,7 @@ pub fn sealed_record_by(author_key: &str) -> Value {
         "record_type": "login",
         "key_id": "11".repeat(16),
         "body": encode(b"sealed"),
-        "signature": encode(&[7; 64]),
+        "signature": crate::records::signature(7),
         "author_key": author_key,
         "wrap": encode(&[9; 82]),
     })

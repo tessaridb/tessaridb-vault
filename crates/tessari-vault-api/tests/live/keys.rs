@@ -4,7 +4,7 @@
 use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::records::{count, encoded, files_under};
+use crate::records::{count, encoded, files_under, signature};
 use crate::world::{Cast, World};
 
 /// A member's key set as the browser registers one; `seed` makes each set's bytes its own.
@@ -19,7 +19,7 @@ pub(crate) fn key_set(key_id: &str, seed: u8) -> Value {
 }
 
 fn statement(seq: u64, seed: u8) -> Value {
-    json!({ "seq": seq, "bytes": encoded(&[seed; 140]), "signature": encoded(&[seed; 64]) })
+    json!({ "seq": seq, "bytes": encoded(&[seed; 140]), "signature": signature(seed) })
 }
 
 #[tokio::test]

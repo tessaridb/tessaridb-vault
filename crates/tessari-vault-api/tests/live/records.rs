@@ -71,13 +71,20 @@ pub(crate) fn encoded(bytes: &[u8]) -> String {
     tessari_vault_types::base64url::encode(bytes)
 }
 
+/// A signature in the shape the browser stores: `[version 1][0x04][64 bytes]`, the 64 filled with `seed`.
+pub(crate) fn signature(seed: u8) -> String {
+    let mut stored = vec![1, 0x04];
+    stored.extend([seed; 64]);
+    encoded(&stored)
+}
+
 /// A new record whose sealed body is `body`, as the browser sends one.
 fn new_record(body: &[u8]) -> serde_json::Value {
     serde_json::json!({
         "record_type": "login",
         "key_id": "11".repeat(16),
         "body": encoded(body),
-        "signature": encoded(&[7; 64]),
+        "signature": signature(7),
         "author_key": "22".repeat(16),
         "wrap": encoded(&[9; 82]),
     })
@@ -88,7 +95,7 @@ fn revision(expected: i64, body: &[u8]) -> serde_json::Value {
         "revision": expected,
         "key_id": "33".repeat(16),
         "body": encoded(body),
-        "signature": encoded(&[8; 64]),
+        "signature": signature(8),
         "author_key": "22".repeat(16),
         "wrap": encoded(&[10; 82]),
     })
@@ -146,7 +153,7 @@ async fn a_record_round_trips_by_bytes_and_lists_only_for_its_author() {
         .await;
     assert_eq!(status, StatusCode::OK, "{read}");
     assert_eq!(read["body"], encoded(b"sealed body bytes"));
-    assert_eq!(read["signature"], encoded(&[7; 64]));
+    assert_eq!(read["signature"], signature(7));
     assert_eq!(read["wrap"], encoded(&[9; 82]));
     assert_eq!(read["author_key"], "22".repeat(16));
     assert_eq!(read["record"]["key_id"], "11".repeat(16));

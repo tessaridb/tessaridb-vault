@@ -55,7 +55,7 @@ impl Statement {
     ///
     /// # Errors
     ///
-    /// When `seq` is outside the chain's length, the bytes are empty or too long, or the signature is not 64 bytes.
+    /// When `seq` is outside the chain's length, the bytes are empty or too long, or the signature is not 66 bytes.
     pub fn new(seq: u64, bytes: Vec<u8>, signature: Vec<u8>) -> Result<Self> {
         let shaped = (1..=CHAIN_MAX).contains(&seq)
             && !bytes.is_empty()

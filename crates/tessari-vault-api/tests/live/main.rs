@@ -9,6 +9,7 @@
 mod audit;
 mod authenticator;
 mod binary;
+mod canaries;
 mod enrolment;
 mod files;
 mod group_keys;
@@ -212,7 +213,7 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ("GET", "/api/companies/{company}/statements") => row(None, None, hidden),
         ("POST", "/api/companies/{company}/statements") => row(
             Some(
-                json!({ "seq": 1, "bytes": "AA", "signature": crate::records::encoded(&[0; 64]),
+                json!({ "seq": 1, "bytes": "AA", "signature": crate::records::signature(0),
                          "owner_signing": crate::records::encoded(&[0; 32]) }),
             ),
             Some((Who::Member, StatusCode::FORBIDDEN)),
