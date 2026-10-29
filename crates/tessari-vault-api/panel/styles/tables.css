@@ -159,3 +159,16 @@ table.records .message {
     display: none;
   }
 }
+
+/* A team sits under its department, and both under the company. */
+.share.group[data-depth="1"] {
+  padding-inline-start: var(--s-5);
+}
+
+.share.group[data-depth="2"] {
+  padding-inline-start: var(--s-8);
+}
+
+.share.group > [aria-live] {
+  grid-column: 1 / -1;
+}

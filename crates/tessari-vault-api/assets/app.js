@@ -640,6 +640,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   var SHAPES = {
     records: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
     members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
+    groups: [box(9, 3, 6, 5, 1.5), box(3, 16, 6, 5, 1.5), box(15, 16, 6, 5, 1.5), "M12 8v4", "M6 16v-4h12v4"],
     sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
     moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
     lock: [box(5, 11, 14, 10, 2), "M8 11V7.5a4 4 0 0 1 8 0V11"],
@@ -3104,23 +3105,241 @@ ${target.detail}`.toLowerCase().includes(wanted));
     title.focus();
   }
 
-  // src/sign-in-model.ts
+  // src/groups/group-key.ts
+  var KEY_ID_BYTES3 = 16;
+  var KEY_BYTES4 = 32;
+  async function newGroupKey(company, group, signer, ownerSigning, chain, vouched, pending) {
+    const pair = await generatePair("X25519");
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    const raw = pkcs8.slice(pkcs8.length - KEY_BYTES4);
+    wipe(pkcs8);
+    try {
+      const groupPublic = await publicBytes(pair.publicKey);
+      const statement = await appendStatement(company, chain.at(-1), { kind: "group", subject: group, agreementPublic: groupPublic, signingPublic: new Uint8Array(0) }, signer);
+      await verifyChain(company, ownerSigning, [...chain, statement]);
+      const keyId = random(KEY_ID_BYTES3);
+      const wraps = [];
+      const unvouched = [];
+      for (const member of pending) {
+        const context2 = { company, wrappedKind: "group", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: member.keyId };
+        try {
+          wraps.push({ keyId: member.keyId, wrap: await wrapToVouched(vouched, { kind: "member", account: member.account }, member.agreementPublic, context2, raw) });
+        } catch (problem2) {
+          if (!(problem2 instanceof VaultCryptoError && problem2.reason === "unvouched-recipient")) {
+            throw problem2;
+          }
+          unvouched.push(member.account);
+        }
+      }
+      return { statement, keyId, public: groupPublic, wraps, unvouched };
+    } finally {
+      wipe(raw);
+    }
+  }
+  var groupKeyBody = (made) => ({
+    key_id: hex(made.keyId),
+    public: encode(made.public),
+    wraps: made.wraps.map((each) => ({ key_id: hex(each.keyId), wrap: encode(each.wrap) }))
+  });
+
+  // src/groups/groups-model.ts
+  var KEY_BYTES5 = 32;
   var isRecord7 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isId4 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isText5 = (v) => typeof v === "string" && v !== "";
+  function readGroupRows(v) {
+    if (!isRecord7(v) || !Array.isArray(v["groups"])) {
+      return null;
+    }
+    const rows = v["groups"].map((group) => {
+      if (!isRecord7(group) || !isId4(group["id"]) || !isText5(group["name"]) || !isId4(group["parent"])) {
+        return null;
+      }
+      const { kind } = group;
+      return kind === "department" || kind === "team" ? { id: group["id"], kind, name: group["name"], parent: group["parent"] } : null;
+    });
+    return rows.every((row2) => row2 !== null) ? rows : null;
+  }
+  function groupTree(company, rows) {
+    const byName = (one, other) => one.name.localeCompare(other.name);
+    const teamsOf = (parent, depth) => rows.filter((row2) => row2.kind === "team" && row2.parent === parent).sort(byName).map((row2) => ({ id: row2.id, kind: row2.kind, name: row2.name, depth }));
+    const departments = rows.filter((row2) => row2.kind === "department").sort(byName).flatMap((row2) => [{ id: row2.id, kind: row2.kind, name: row2.name, depth: 1 }, ...teamsOf(row2.id, 2)]);
+    return [{ id: company.id, kind: "company", name: company.name, depth: 0 }, ...departments, ...teamsOf(company.id, 1)];
+  }
+  function readPending(v) {
+    if (!isRecord7(v) || !Array.isArray(v["pending"])) {
+      return null;
+    }
+    const keys = v["pending"].map((item) => {
+      if (!isRecord7(item) || !isId4(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
+        return null;
+      }
+      const keyId = keyIdBytes(item["key_id"]);
+      const agreementPublic = decode(item["agreement_public"]);
+      return keyId === null || agreementPublic === null || agreementPublic.length !== KEY_BYTES5 ? null : { account: item["account"], keyId, agreementPublic };
+    });
+    return keys.every((key) => key !== null) ? keys : null;
+  }
+  function createFailure(code, fallback) {
+    switch (code) {
+      case "wrong_parent":
+        return "A department sits in the company; a team sits in a department or in the company.";
+      case "forbidden":
+        return "Only an owner or an admin can make departments and teams.";
+      default:
+        return fallback;
+    }
+  }
+
+  // src/groups/groups-view.ts
+  var KIND_WORDS = { company: "Company", department: "Department", team: "Team" };
+  async function drawGroups(main2, held2, notice2 = null) {
+    const title = heading("Departments and teams");
+    const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the groups."));
+    fill(main2, el("div", { class: "page-head" }, title), said);
+    const path = companyPath(held2);
+    const [groups, chain] = await Promise.all([call("GET", `${path}/groups`, readGroupRows), call("GET", `${path}/statements`, readChain)]);
+    if (!groups.ok || !chain.ok) {
+      const failed2 = !groups.ok ? groups : chain;
+      if (!failed2.ok) {
+        fill(said, refusal(loadFailure(failed2)));
+      }
+      return;
+    }
+    const vouched = await verifyChain(held2.company, held2.keys.ownerSigningPublic, chain.value.statements).catch(() => null);
+    if (vouched === null) {
+      fill(said, refusal(CHAIN_REFUSED));
+      return;
+    }
+    const again = (words = null) => void drawGroups(main2, held2, words);
+    const tree = groupTree({ id: held2.company, name: held2.companyName }, groups.value);
+    const items = tree.map((row2) => groupItem(held2, row2, vouched.groupKeyOf(row2.id) !== void 0, chain.value.statements, again));
+    fill(
+      main2,
+      el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "A record shared with a group opens for everyone in it. A group needs a key before anything can be shared with it."))),
+      notice2 === null ? null : refusal(notice2),
+      el("section", { class: "record-section", "aria-labelledby": "all-groups" }, el("h2", { id: "all-groups" }, "Groups"), el("ul", { class: "shares" }, ...items)),
+      createForm(held2, tree, again)
+    );
+    title.focus();
+  }
+  function groupItem(held2, row2, keyed, chain, again) {
+    const said = el("div", { "aria-live": "polite" });
+    const key = keyed ? null : el("button", { type: "button", "aria-label": `Key ${row2.name}` }, "Key this group");
+    key?.addEventListener("click", () => {
+      key.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Making the group's key."));
+      void keyGroup(held2, row2.id, chain).then((words) => {
+        key.disabled = false;
+        if (words === null) {
+          again();
+          return;
+        }
+        fill(said, refusal(words));
+      });
+    });
+    return el(
+      "li",
+      { class: "share group", "data-depth": String(row2.depth) },
+      el("div", {}, el("span", { class: "share-name" }, row2.name), el("span", { class: "detail" }, KIND_WORDS[row2.kind])),
+      el("span", { class: `state ${keyed ? "vouched" : "waiting"}` }, keyed ? "Has a key" : "No key yet"),
+      key ?? el("span", {}),
+      said
+    );
+  }
+  async function keyGroup(held2, id, chain) {
+    const path = `${companyPath(held2)}/groups/${encodeURIComponent(id)}/key`;
+    const pending = await call("GET", `${path}/pending`, readPending);
+    if (!pending.ok) {
+      return pending.status === 403 ? "Only an owner or an admin can key a group." : loadFailure(pending);
+    }
+    const owner = held2.keys.ownerSigningPublic;
+    const signer = { privateKey: held2.keys.signingPrivate, publicBytes: held2.keys.signingPublic };
+    let made;
+    try {
+      made = await newGroupKey(held2.company, id, signer, owner, chain, await verifyChain(held2.company, owner, chain), pending.value);
+    } catch (problem2) {
+      return vouchRefused(problem2 instanceof VaultCryptoError ? problem2.reason : "chain-broken");
+    }
+    const stated = await call("POST", `${companyPath(held2)}/statements`, ignored, { body: statementBody(chain.length + 1, made.statement) });
+    if (!stated.ok) {
+      return vouchFailure(stated.status, stated.code, loadFailure(stated));
+    }
+    const kept = await call("PUT", path, ignored, { body: groupKeyBody(made) });
+    return kept.ok ? null : loadFailure(kept);
+  }
+  function createForm(held2, tree, again) {
+    let kind = "department";
+    let parent = held2.company;
+    const name = el("input", { id: "group-name", type: "text", autocomplete: "off" });
+    const kinds = ["department", "team"].map((each) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === kind) }, KIND_WORDS[each]));
+    const places = tree.filter((row2) => row2.kind !== "team");
+    const parents = el("fieldset", { class: "choices" }, el("legend", {}, "Sits in"), el("div", { class: "targets" }, ...places.map((row2) => placeRow(row2, row2.id === parent, () => parent = row2.id))));
+    parents.hidden = true;
+    kinds.forEach(
+      (button, at2) => button.addEventListener("click", () => {
+        kind = at2 === 0 ? "department" : "team";
+        kinds.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at2)));
+        parents.hidden = kind === "department";
+      })
+    );
+    const submit = el("button", { type: "submit", class: "primary" }, "Make group");
+    const said = el("div", { "aria-live": "polite" });
+    const form2 = el(
+      "form",
+      { class: "record-section", novalidate: "" },
+      el("h2", {}, "New department or team"),
+      el("div", { class: "chips", role: "group", "aria-label": "Kind" }, ...kinds),
+      el("div", { class: "field" }, el("label", { for: name.id }, "Name"), name),
+      parents,
+      submit,
+      said
+    );
+    form2.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (name.value.trim() === "") {
+        fill(said, refusal("Give the group a name."));
+        name.focus();
+        return;
+      }
+      submit.disabled = true;
+      const inside = kind === "team" && parent !== held2.company ? { parent } : {};
+      const body = { kind, name: name.value.trim(), ...inside };
+      void call("POST", `${companyPath(held2)}/groups`, ignored, { body }).then((answer) => {
+        submit.disabled = false;
+        if (answer.ok) {
+          again();
+          return;
+        }
+        fill(said, refusal(createFailure(answer.code, loadFailure(answer))));
+      });
+    });
+    return form2;
+  }
+  function placeRow(row2, checked, choose) {
+    const id = `group-parent-${row2.id}`;
+    const radio = el("input", { id, type: "radio", name: "group-parent", ...checked ? { checked: "" } : {} });
+    radio.addEventListener("change", choose);
+    return el("div", { class: "choice" }, radio, el("label", { for: id }, row2.name, el("span", { class: "detail" }, KIND_WORDS[row2.kind])));
+  }
+
+  // src/sign-in-model.ts
+  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readMethods(v) {
-    if (!isRecord7(v)) {
+    if (!isRecord8(v)) {
       return null;
     }
     const { password, passkey: passkey2, provider } = v;
     return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
   }
   function readChallenge(v) {
-    return isRecord7(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+    return isRecord8(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
   }
   function readSession(v) {
-    return isRecord7(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+    return isRecord8(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
   function readPasskeyRequest(v) {
-    return isRecord7(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+    return isRecord8(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
   function signInFailure(failure) {
     switch (failure.code) {
@@ -3308,7 +3527,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   var MAX_WRAPS = 2 ** 20;
   var SALT_BYTES2 = 16;
   var MASTER_KEY_BYTES = 32;
-  var KEY_ID_BYTES3 = 16;
+  var KEY_ID_BYTES4 = 16;
   var NONCE_BYTES3 = 12;
   var DERIVED = 0;
   function exportsOf(instance) {
@@ -3360,7 +3579,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
   }
   function associatedData2(context2) {
-    if (context2.keyId.length !== KEY_ID_BYTES3) {
+    if (context2.keyId.length !== KEY_ID_BYTES4) {
       throw new VaultCryptoError("malformed");
     }
     return concat(
@@ -3372,7 +3591,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     );
   }
   function pinData(pin) {
-    if (pin.keyId.length !== KEY_ID_BYTES3) {
+    if (pin.keyId.length !== KEY_ID_BYTES4) {
       throw new VaultCryptoError("malformed");
     }
     return concat(utf8(LABEL.ownerPin), field2(utf8(pin.account)), field2(utf8(pin.company)), field2(pin.keyId));
@@ -3464,7 +3683,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       if (reader.integer(1) !== ALGORITHM.memberKey) {
         throw new VaultCryptoError("unknown-algorithm");
       }
-      const keyId = reader.take(KEY_ID_BYTES3);
+      const keyId = reader.take(KEY_ID_BYTES4);
       const nonce = reader.take(NONCE_BYTES3);
       const sealed2 = reader.rest();
       if (!sameBytes(keyId, context2.keyId)) {
@@ -3490,7 +3709,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/crypto/key-set.ts
   var NEW_KDF = { memoryKib: 65536, passes: 3, lanes: 4 };
   var SALT_BYTES3 = 16;
-  var KEY_ID_BYTES4 = 16;
+  var KEY_ID_BYTES5 = 16;
   var PIN_NONCE_BYTES = 12;
   var KEY_SET_VERSION = 2;
   var context = (account, company, kind, keyId) => ({
@@ -3533,7 +3752,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
   async function createKeySet(module2, password, account, company, ownerSigningPublic) {
     const salt = random(SALT_BYTES3);
-    const keyId = random(KEY_ID_BYTES4);
+    const keyId = random(KEY_ID_BYTES5);
     const key = await unlockKey(module2, password, salt, NEW_KDF, 0);
     const agreement = await generatePair("X25519");
     const signing = await generatePair("Ed25519");
@@ -3865,6 +4084,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     record: { path: "/records/:record", guard: open2 },
     editRecord: { path: "/records/:record/edit", guard: open2 },
     members: { path: "/members", guard: open2 },
+    groups: { path: "/groups", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
   });
@@ -3930,6 +4150,13 @@ ${target.detail}`.toLowerCase().includes(wanted));
         const held2 = unlocked();
         if (held2 !== null) {
           void drawMembers(view2, held2);
+        }
+        break;
+      }
+      case "groups": {
+        const held2 = unlocked();
+        if (held2 !== null) {
+          void drawGroups(view2, held2);
         }
         break;
       }
