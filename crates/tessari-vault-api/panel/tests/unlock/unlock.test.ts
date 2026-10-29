@@ -41,18 +41,20 @@ describe("what unlocking reads and sends", () => {
     assert.equal(readMe({ account: { id: "a1", email: "e@x.test" }, platform_admin: false }), null);
   });
 
-  it("reads companies and offers only active ones the person belongs to", () => {
+  it("reads companies and offers the open ones the person belongs to, a closing one included", () => {
     const companies = readCompanies({
       companies: [
         { id: "c1", name: "Alpha", state: "active", role: "member" },
         { id: "c2", name: "Beta", state: "suspended", role: "owner" },
         { id: "c3", name: "Gamma", state: "active", role: null },
+        { id: "c4", name: "Delta", state: "dropping", role: "member" },
       ],
     });
     assert.ok(companies !== null);
     assert.deepEqual(
       unlockable(companies).map((company) => company.id),
-      ["c1"],
+      ["c1", "c4"],
+      "a company waiting to be deleted is read-only, not closed: its members still read, its owner may cancel",
     );
     assert.equal(readCompanies({ companies: [{ id: "c1", name: "Alpha", state: "active", role: "boss" }] }), null);
   });

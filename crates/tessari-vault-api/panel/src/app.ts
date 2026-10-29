@@ -19,6 +19,7 @@ import { drawGroup } from "./groups/group-page.ts";
 import { drawGroups } from "./groups/groups-view.ts";
 import { drawTrail } from "./trail/trail-view.ts";
 import { drawAccount } from "./account/account-view.ts";
+import { drawCompany } from "./company/company-page.ts";
 import { checkNotices, dropBanner, placeBanner } from "./recovery/notice-banner.ts";
 import { drawRecovery } from "./recovery/recovery-view.ts";
 import { bearer, forget } from "./session.ts";
@@ -53,6 +54,7 @@ const routes = defineRoutes({
   trail: { path: "/trail", guard: open },
   recovery: { path: "/recovery", guard: open },
   account: { path: "/account", guard: open },
+  company: { path: "/company", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
   join: { path: "/join", query: { token: text } },
   unlock: { path: "/unlock", query: { next: text }, guard: session },
@@ -164,6 +166,9 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
       break;
     case "account":
       withHeld((held) => drawAccount(view, held));
+      break;
+    case "company":
+      withHeld((held) => drawCompany(view, held));
       break;
     case "signIn": {
       if (signedIn()) {

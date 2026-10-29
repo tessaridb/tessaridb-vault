@@ -32,6 +32,8 @@ export interface Company {
   readonly id: string;
   readonly name: string;
   readonly active: boolean;
+  /** Confirmed for deletion and waiting: read-only, and an owner may still cancel. */
+  readonly closing: boolean;
   readonly role: Role | null;
 }
 
@@ -50,14 +52,14 @@ export function readCompanies(v: unknown): readonly Company[] | null {
     if (role !== null && !isRole(role)) {
       return null;
     }
-    companies.push({ id: item["id"], name: item["name"], active: item["state"] === "active", role });
+    companies.push({ id: item["id"], name: item["name"], active: item["state"] === "active", closing: item["state"] === "dropping", role });
   }
   return companies;
 }
 
-/** The companies whose records this person can unlock: active, and a member of. */
+/** The companies whose records this person can unlock: open (active, or read-only while a deletion waits), and a member of. */
 export const unlockable = (companies: readonly Company[]): readonly Company[] =>
-  companies.filter((company) => company.active && company.role !== null);
+  companies.filter((company) => (company.active || company.closing) && company.role !== null);
 
 /** A key id: 32 lowercase hexadecimal characters as its 16 bytes. */
 export function keyIdBytes(text: string): Bytes | null {

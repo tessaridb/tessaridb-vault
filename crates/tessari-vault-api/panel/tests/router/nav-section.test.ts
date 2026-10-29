@@ -18,6 +18,7 @@ describe("the sidebar section a page belongs to", () => {
     assert.equal(sectionOf("trail"), "trail");
     assert.equal(sectionOf("recovery"), "recovery");
     assert.equal(sectionOf("account"), "account");
+    assert.equal(sectionOf("company"), "company");
   });
 
   it("is none for pages outside the sections", () => {

@@ -456,11 +456,11 @@
       if (role !== null && !isRole(role)) {
         return null;
       }
-      companies.push({ id: item["id"], name: item["name"], active: item["state"] === "active", role });
+      companies.push({ id: item["id"], name: item["name"], active: item["state"] === "active", closing: item["state"] === "dropping", role });
     }
     return companies;
   }
-  var unlockable = (companies) => companies.filter((company) => company.active && company.role !== null);
+  var unlockable = (companies) => companies.filter((company) => (company.active || company.closing) && company.role !== null);
   function keyIdBytes(text3) {
     if (!/^[0-9a-f]{32}$/.test(text3)) {
       return null;
@@ -675,6 +675,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     trail: [ring(12, 12, 8.5), "M12 7.5V12l3 2"],
     recovery: [ring(12, 12, 8.5), ring(12, 12, 3.5), "M6 6l3.5 3.5", "M14.5 14.5L18 18", "M18 6l-3.5 3.5", "M9.5 14.5L6 18"],
     account: [ring(12, 8, 4), "M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"],
+    company: [box(4, 3, 16, 18, 1.5), "M8.5 7.5h2", "M13.5 7.5h2", "M8.5 11.5h2", "M13.5 11.5h2", "M10 21v-4.5h4V21"],
     sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
     moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
     menu: ["M4 7h16", "M4 12h16", "M4 17h16"],
@@ -4604,51 +4605,161 @@ ${END}
     fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, "A passkey signs you in with this device's lock instead of your password and a code."), add);
   }
 
+  // src/company/company-model.ts
+  var LABEL2 = "tessaridb-vault/v1/company-drop";
+  var ACT_BYTE = { request: 1, cancel: 2 };
+  function dropStatement(act, company, at3) {
+    return concat(utf8(LABEL2), Uint8Array.of(FORMAT_VERSION, ACT_BYTE[act]), field2(utf8(company)), integer(at3, 8));
+  }
+  async function signedDrop(signingPrivate, act, company, now = Date.now) {
+    const at3 = Math.floor(now() / 1e3);
+    return { at: at3, signature: encode(await sign(signingPrivate, dropStatement(act, company, at3))) };
+  }
+  var isRecord14 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  function readStanding(v) {
+    if (!isRecord14(v)) {
+      return null;
+    }
+    if (v["state"] === "requested") {
+      return { state: "requested" };
+    }
+    const after = v["drop_after"];
+    return v["state"] === "scheduled" && typeof after === "number" && Number.isSafeInteger(after) ? { state: "scheduled", dropAfter: after } : null;
+  }
+  var deletionReady = (typed, reason, companyName) => typed.trim() === companyName && reason.trim() !== "";
+  function dropFailure(failure) {
+    switch (failure.code) {
+      case "drop_unsigned":
+        return "The server didn't take your signature: your key for this company isn't the one it holds, or this device's clock is more than ten minutes off. Check the clock, unlock again, then try again.";
+      case "drop_scheduled":
+        return "The deletion is already confirmed and waiting. Cancel it first if you want to ask again.";
+      case "forbidden":
+        return "Only an owner can delete the company or cancel its deletion.";
+      case "not_found":
+        return "No deletion is waiting any more. The page is shown again.";
+      case "network":
+        return "The vault didn't answer. Check your connection, then try again.";
+      default:
+        return "The vault couldn't make this change. Try again; if it keeps failing, contact the platform admin.";
+    }
+  }
+
+  // src/company/company-page.ts
+  var WHAT_HAPPENS = "The platform admin confirms the deletion. From then on the company is read-only for seven days, and any owner can cancel. After that its records, files, members and groups are deleted for good; its trail is kept. Backups taken before the deletion still hold the records, sealed, until the service key is next rotated.";
+  async function drawCompany(main2, held2, notice2 = null) {
+    const head = el("div", { class: "page-head" }, el("div", {}, heading("Company"), el("p", { class: "lede" }, held2.companyName)));
+    fill(main2, head, el("p", { class: "muted", role: "status" }, "Loading the company."));
+    const base = `${companyPath(held2)}/drop`;
+    const answer = await call("GET", base, readStanding);
+    const said = el("div", { "aria-live": "polite" }, notice2 === null ? null : el("p", { class: "muted", role: "status" }, notice2));
+    const again = (words) => void drawCompany(main2, held2, words);
+    if (answer.ok) {
+      fill(main2, head, said, waitingSection(held2, base, answer.value, said, again));
+      return;
+    }
+    if (answer.code === "not_found") {
+      fill(main2, head, said, deleteSection(held2, base, said, again));
+      return;
+    }
+    fill(main2, head, said, refusal(answer.code === "forbidden" ? dropFailure(answer) : loadFailure(answer)));
+  }
+  function waitingSection(held2, base, standing, said, again) {
+    const lead = standing.state === "requested" ? "An owner asked for this company to be deleted. It waits for the platform admin to confirm." : `This company is read-only and will be deleted after ${new Date(standing.dropAfter * 1e3).toLocaleString()}.`;
+    const cancel = el("button", { type: "button" }, "Cancel the deletion");
+    cancel.addEventListener("click", () => {
+      cancel.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Signing and sending."));
+      void signedDrop(held2.keys.signingPrivate, "cancel", held2.company).then((body) => call("POST", `${base}/cancel`, ignored, { body })).then((sent) => {
+        cancel.disabled = false;
+        return sent.ok ? again("The deletion is cancelled. The company is open again.") : fill(said, refusal(dropFailure(sent)));
+      });
+    });
+    return el("section", { class: "record-section", "aria-labelledby": "company-deletion" }, el("h2", { id: "company-deletion" }, "Deletion"), el("p", {}, lead), cancel);
+  }
+  function deleteSection(held2, base, said, again) {
+    const named2 = field("company-name", "Type the company's name to confirm", { autocomplete: "off" }, held2.companyName);
+    const why = field("company-reason", "Why it is being deleted", { autocomplete: "off" }, "Kept on the company's trail.");
+    const confirmed = el("button", { type: "button", class: "danger", disabled: "" }, `Delete ${held2.companyName}`);
+    const keep2 = el("button", { type: "button", autofocus: "" }, "Keep the company");
+    const dialog = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": "delete-company-title" },
+      el("h2", { id: "delete-company-title" }, `Delete ${held2.companyName}?`),
+      el("p", {}, WHAT_HAPPENS),
+      named2.row,
+      why.row,
+      el("div", { class: "actions" }, keep2, confirmed)
+    );
+    const ready = () => {
+      confirmed.disabled = !deletionReady(named2.input.value, why.input.value, held2.companyName);
+    };
+    named2.input.addEventListener("input", ready);
+    why.input.addEventListener("input", ready);
+    keep2.addEventListener("click", () => dialog.close());
+    confirmed.addEventListener("click", () => {
+      if (!deletionReady(named2.input.value, why.input.value, held2.companyName)) {
+        return;
+      }
+      const reason = why.input.value.trim();
+      dialog.close();
+      fill(said, el("p", { class: "muted", role: "status" }, "Signing and sending."));
+      void signedDrop(held2.keys.signingPrivate, "request", held2.company).then((body) => call("POST", base, ignored, { body, reason })).then((sent) => sent.ok ? again("The deletion is asked for. It waits for the platform admin to confirm.") : fill(said, refusal(dropFailure(sent))));
+    });
+    const open3 = el("button", { type: "button", class: "danger" }, "Delete this company");
+    open3.addEventListener("click", () => {
+      named2.input.value = "";
+      why.input.value = "";
+      ready();
+      dialog.showModal();
+    });
+    return el("section", { class: "record-section", "aria-labelledby": "company-delete" }, el("h2", { id: "company-delete" }, "Delete the company"), el("p", { class: "muted" }, WHAT_HAPPENS), open3, dialog);
+  }
+
   // src/recovery/recovery-model.ts
   var KEY_BYTES7 = 32;
-  var isRecord14 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord15 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   var isKeyId = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   var isText7 = (v) => typeof v === "string" && v !== "";
   function bytesOf(v, length) {
     const bytes = isText7(v) ? decode(v) : null;
     return bytes === null || bytes.length === 0 || length !== void 0 && bytes.length !== length ? null : bytes;
   }
-  var readOwnEscrow = (v) => isRecord14(v) && isKeyId(v["recovery_key_id"]) ? v["recovery_key_id"] : null;
+  var readOwnEscrow = (v) => isRecord15(v) && isKeyId(v["recovery_key_id"]) ? v["recovery_key_id"] : null;
   function readRecoveryKey(v) {
-    const key = isRecord14(v) && isKeyId(v["key_id"]) ? v["key_id"] : null;
-    const listed = isRecord14(v) ? bytesOf(v["public"], KEY_BYTES7) : null;
+    const key = isRecord15(v) && isKeyId(v["key_id"]) ? v["key_id"] : null;
+    const listed = isRecord15(v) ? bytesOf(v["public"], KEY_BYTES7) : null;
     return key === null || listed === null ? null : { keyId: key, public: listed };
   }
   function readWrap(idField) {
     return (v) => {
-      const key = isRecord14(v) && isKeyId(v[idField]) ? v[idField] : null;
-      const wrap = isRecord14(v) ? bytesOf(v["wrap"]) : null;
+      const key = isRecord15(v) && isKeyId(v[idField]) ? v[idField] : null;
+      const wrap = isRecord15(v) ? bytesOf(v["wrap"]) : null;
       return key === null || wrap === null ? null : { keyId: key, wrap };
     };
   }
   function readRequests(v) {
-    if (!isRecord14(v) || !Array.isArray(v["requests"])) {
+    if (!isRecord15(v) || !Array.isArray(v["requests"])) {
       return null;
     }
     const requests = [];
     for (const item of v["requests"]) {
-      const handoffPublic = isRecord14(item) ? bytesOf(item["handoff_public"], KEY_BYTES7) : null;
-      if (!isRecord14(item) || !isKeyId(item["id"]) || !isText7(item["account"]) || handoffPublic === null || !Number.isSafeInteger(item["created"])) {
+      const handoffPublic = isRecord15(item) ? bytesOf(item["handoff_public"], KEY_BYTES7) : null;
+      if (!isRecord15(item) || !isKeyId(item["id"]) || !isText7(item["account"]) || handoffPublic === null || !Number.isSafeInteger(item["created"])) {
         return null;
       }
       requests.push({ id: item["id"], account: item["account"], handoffPublic, created: Number(item["created"]) });
     }
     return requests;
   }
-  var readAsked = (v) => isRecord14(v) && isKeyId(v["id"]) ? v["id"] : null;
-  var readHandoff = (v) => isRecord14(v) ? bytesOf(v["wrap"]) : null;
+  var readAsked = (v) => isRecord15(v) && isKeyId(v["id"]) ? v["id"] : null;
+  var readHandoff = (v) => isRecord15(v) ? bytesOf(v["wrap"]) : null;
   function readNotices(v) {
-    if (!isRecord14(v) || !Array.isArray(v["notices"])) {
+    if (!isRecord15(v) || !Array.isArray(v["notices"])) {
       return null;
     }
     const notices = [];
     for (const item of v["notices"]) {
-      if (!isRecord14(item) || !isText7(item["by"]) || !isText7(item["kind"]) || !Number.isSafeInteger(item["at"])) {
+      if (!isRecord15(item) || !isText7(item["by"]) || !isText7(item["kind"]) || !Number.isSafeInteger(item["at"])) {
         return null;
       }
       notices.push({ by: item["by"], kind: item["kind"], at: Number(item["at"]) });
@@ -5034,9 +5145,9 @@ ${END}
   }
 
   // src/join-model.ts
-  var isRecord15 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord16 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readAuthenticator(v) {
-    if (!isRecord15(v)) {
+    if (!isRecord16(v)) {
       return null;
     }
     const { secret, uri } = v;
@@ -6134,7 +6245,8 @@ ${END}
     ["member", "members"],
     ["trail", "trail"],
     ["recovery", "recovery"],
-    ["account", "account"]
+    ["account", "account"],
+    ["company", "company"]
   ]);
   var sectionOf = (name) => SECTIONS.get(name) ?? "";
 
@@ -6157,6 +6269,7 @@ ${END}
     trail: { path: "/trail", guard: open2 },
     recovery: { path: "/recovery", guard: open2 },
     account: { path: "/account", guard: open2 },
+    company: { path: "/company", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
     join: { path: "/join", query: { token: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
@@ -6256,6 +6369,9 @@ ${END}
         break;
       case "account":
         withHeld((held2) => drawAccount(view2, held2));
+        break;
+      case "company":
+        withHeld((held2) => drawCompany(view2, held2));
         break;
       case "signIn": {
         if (signedIn()) {
