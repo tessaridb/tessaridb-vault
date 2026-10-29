@@ -4,6 +4,7 @@
 
 use tessari_vault_constants::COMPANY_DROP_WAIT_SECONDS;
 mod execute;
+mod reads;
 
 use tessari_vault_core::access::Action;
 use tessari_vault_core::company_drop::{Act, statement, verify};
@@ -92,7 +93,7 @@ impl CompanyDropService {
             bind("signature", base64url::encode(signature).as_str()),
         ]);
         let script = format!(
-            "BEGIN; {GUARD} \
+            "BEGIN; {GUARD} THROW 'drop scheduled' IF (GET company_drops:$company).state = 'scheduled'; \
              UPSERT company_drops:$company = {{ company: $company, state: 'requested', requested_by: $by, \
              requested_at: $at, signature: $signature }}; {RECORD} COMMIT;"
         );

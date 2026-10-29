@@ -277,6 +277,7 @@ pub(crate) fn thrown(error: Error) -> Error {
         ("already shared", Conflict::AlreadyShared),
         ("stale shares", Conflict::StaleShares),
         ("rotation due", Conflict::RotationDue),
+        ("drop scheduled", Conflict::DropScheduled),
     ];
     if message.starts_with("not found") {
         return Error::NotFound;

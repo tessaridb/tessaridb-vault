@@ -57,6 +57,9 @@ pub enum Conflict {
     /// A drop statement not signed, within ten minutes of now, by the caller's registered key for this company.
     #[error("the statement is not signed now by the caller's registered key")]
     DropUnsigned,
+    /// A deletion is already confirmed and waiting; asking again would not take the confirmation back.
+    #[error("the deletion is already confirmed and waiting")]
+    DropScheduled,
     /// The account's sign-in still opens under the key file, so its member can sign in and move it; nothing changed.
     #[error("the sign-in still opens under the key file")]
     SignInCurrent,

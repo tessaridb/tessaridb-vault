@@ -81,10 +81,16 @@ pub fn routes() -> Vec<Route> {
             delete(members::remove),
         ),
         route(
+            Method::GET,
+            "/api/companies/{company}/drop",
+            get(company_drop::standing),
+        ),
+        route(
             Method::POST,
             "/api/companies/{company}/drop",
             post(company_drop::request),
         ),
+        route(Method::GET, "/api/company-drops", get(company_drop::queue)),
         route(
             Method::POST,
             "/api/companies/{company}/drop/confirm",

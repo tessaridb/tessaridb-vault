@@ -222,6 +222,10 @@ const fn conflicted(conflict: Conflict) -> ApiError {
             "drop_unsigned",
             "sign the statement now with your registered key for this company",
         ),
+        Conflict::DropScheduled => (
+            "drop_scheduled",
+            "the deletion is already confirmed; cancel it to ask again",
+        ),
         Conflict::SignInCurrent => (
             "sign_in_current",
             "the member's password still opens under the service key; they can sign in",

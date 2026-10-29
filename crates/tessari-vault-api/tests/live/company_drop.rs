@@ -131,6 +131,18 @@ fn cancelling(company: &str, by: &Signer, at: u64) -> Value {
     })
 }
 
+/// Where `company`'s deletion stands, as `caller` reads it.
+async fn standing(world: &World, company: &str, caller: &str) -> (StatusCode, Value) {
+    world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{company}/drop"),
+            Some(caller),
+            None,
+        )
+        .await
+}
+
 #[tokio::test]
 #[ignore = "needs TESSARIDB_BIN"]
 async fn the_platform_admin_confirms_and_the_company_waits_read_only_until_an_owner_cancels() {
@@ -151,6 +163,8 @@ async fn the_platform_admin_confirms_and_the_company_waits_read_only_until_an_ow
         )
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "nothing asked for B: {body}");
+    let (status, body) = standing(&world, a, &owner).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "no deletion open: {body}");
     let (status, body) = world
         .call(
             Method::POST,
@@ -160,6 +174,46 @@ async fn the_platform_admin_confirms_and_the_company_waits_read_only_until_an_ow
         )
         .await;
     assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let (status, body) = standing(&world, a, &owner).await;
+    assert_eq!(
+        (status, body["state"].as_str()),
+        (StatusCode::OK, Some("requested")),
+        "{body}"
+    );
+    let (status, body) = world
+        .call(
+            Method::GET,
+            "/api/company-drops",
+            Some(&cast.platform),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["drops"],
+        json!([{ "company": a, "state": "requested" }]),
+        "the platform admin's queue: {body}"
+    );
+    let (status, body) = world
+        .call(Method::GET, "/api/company-drops", Some(&owner), None)
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "the queue is the platform admin's: {body}"
+    );
+    let (status, body) = standing(&world, a, &cast.admin_a).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "an admin does not ask, nor read: {body}"
+    );
+    let (status, body) = standing(&world, cast.company_b.as_str(), &owner).await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "another company's is not shown: {body}"
+    );
     let confirm = format!("{base}/confirm");
     let (status, body) = world
         .call(Method::POST, &confirm, Some(&cast.owner_a), None)
@@ -207,6 +261,25 @@ async fn the_platform_admin_confirms_and_the_company_waits_read_only_until_an_ow
         (StatusCode::CONFLICT, Some("company_closing")),
         "{body}"
     );
+    let (status, body) = standing(&world, a, &cast.platform).await;
+    assert_eq!(
+        (status, body["state"].as_str(), body["drop_after"].as_u64()),
+        (StatusCode::OK, Some("scheduled"), Some(after)),
+        "{body}"
+    );
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &base,
+            Some(&owner),
+            Some(asked(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(
+        (status, body["error_code"].as_str()),
+        (StatusCode::CONFLICT, Some("drop_scheduled")),
+        "asking again does not take back a confirmation: {body}"
+    );
 
     let cancel = format!("{base}/cancel");
     let (status, body) = world
@@ -241,6 +314,12 @@ async fn the_platform_admin_confirms_and_the_company_waits_read_only_until_an_ow
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["state"], "cancelled", "{body}");
+    let (status, body) = standing(&world, a, &owner).await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "closed by the cancel: {body}"
+    );
     let (status, body) = world
         .call(
             Method::POST,

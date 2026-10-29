@@ -144,6 +144,9 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             hidden,
         ),
         ("POST", "/api/companies/{company}/drop/confirm") => row(None, platform, other_platform),
+        ("GET", "/api/company-drops") => row(None, platform, other_platform),
+        // Where a deletion stands is an owner's to read (or the platform admin's).
+        ("GET", "/api/companies/{company}/drop") => row(None, manage, hidden),
         // A sign-in belongs to the person, not to one company: the platform admin's alone.
         ("POST", "/api/accounts/{account}/sign-in/reset") => row(None, platform, other_platform),
         ("GET", "/api/companies/{company}/members" | "/api/companies/{company}/groups") => {

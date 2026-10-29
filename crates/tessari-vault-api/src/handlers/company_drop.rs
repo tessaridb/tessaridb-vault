@@ -42,6 +42,51 @@ impl From<DropState> for Standing {
     }
 }
 
+#[derive(Serialize)]
+pub(crate) struct Listed {
+    company: String,
+    #[serde(flatten)]
+    standing: Standing,
+}
+
+#[derive(Serialize)]
+pub(crate) struct Queue {
+    drops: Vec<Listed>,
+}
+
+pub(crate) async fn queue(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+) -> Result<Json<Queue>, ApiError> {
+    let drops = state
+        .storage
+        .company_drops
+        .open(&actor)
+        .await?
+        .into_iter()
+        .map(|(company, open)| Listed {
+            company: company.as_str().to_owned(),
+            standing: open.into(),
+        })
+        .collect();
+    Ok(Json(Queue { drops }))
+}
+
+pub(crate) async fn standing(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(company): Path<String>,
+) -> Result<Json<Standing>, ApiError> {
+    let company = company_id(&company)?;
+    state
+        .storage
+        .company_drops
+        .standing(&actor, &company)
+        .await?
+        .map(|open| Json(open.into()))
+        .ok_or(ApiError::NOT_FOUND)
+}
+
 pub(crate) async fn request(
     State(state): State<AppState>,
     Caller(actor): Caller,
