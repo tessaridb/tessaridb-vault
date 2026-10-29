@@ -121,11 +121,13 @@ async fn token(State(issuer): State<Issuer>, Form(request): Form<TokenRequest>) 
 }
 
 impl Issuer {
-    /// A stub serving on a free loopback port.
+    /// A stub serving on a free loopback port, on a thread and runtime of its own: a test that waits on a child
+    /// process blocks its own runtime, and a server it started must still be able to discover the issuer meanwhile.
     pub async fn start() -> Self {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("a port");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        listener
+            .set_nonblocking(true)
+            .expect("a non-blocking listener");
         let issuer = format!("http://{}", listener.local_addr().expect("an address"));
         let random = SystemRandom::new();
         let pkcs8 =
@@ -161,7 +163,16 @@ impl Issuer {
             .route("/jwks", get(move || async move { Json::<Value>(keys) }))
             .route("/token", post(token))
             .with_state(stub.clone());
-        tokio::spawn(async move { axum::serve(listener, app).await });
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("the stub's runtime");
+            runtime.block_on(async move {
+                let listener = tokio::net::TcpListener::from_std(listener).expect("the listener");
+                axum::serve(listener, app).await
+            })
+        });
         stub
     }
 
