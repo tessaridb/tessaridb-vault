@@ -23,6 +23,7 @@ tessari-vault-api = { path = "crates/tessari-vault-api" }
 tessari-vault-daemons = { path = "crates/tessari-vault-daemons" }
 
 thiserror = "2"
+libc = "0.2"
 # Argon2id (RFC 9106) for the unlock derivation, the same pinned line the family's OAuth server uses; no default
 # features, so the browser build carries no random-number source and no password-hash string format.
 argon2 = { version = "=0.5.3", default-features = false, features = ["alloc", "zeroize"] }

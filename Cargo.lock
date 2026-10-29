@@ -1357,6 +1357,7 @@ name = "tessari-vault-infrastructure"
 version = "0.0.0"
 dependencies = [
  "argon2",
+ "libc",
  "ring",
  "tessari-vault-constants",
  "tessaridb-client",

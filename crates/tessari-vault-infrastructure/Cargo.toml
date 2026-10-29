@@ -25,6 +25,7 @@ zeroize.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time", "net", "io-util"] }
 tracing.workspace = true
 thiserror.workspace = true
+libc.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

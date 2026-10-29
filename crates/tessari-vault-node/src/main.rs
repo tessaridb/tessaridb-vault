@@ -20,6 +20,7 @@ use tessari_vault_infrastructure::config::{NodeConfig, listen_address};
 use tessari_vault_infrastructure::custody::{
     PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal, VaultKeys,
 };
+use tessari_vault_infrastructure::hardening::forbid_core_dumps;
 use tessari_vault_infrastructure::health::{PROBE_BUDGET, probe, probe_address};
 use tessari_vault_infrastructure::oidc::OidcProvider;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
@@ -32,6 +33,11 @@ use tokio::signal::unix::{SignalKind, signal};
 async fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("health") {
         return health().await;
+    }
+    // Before any key is read: a process that holds keys writes no core file and, on Linux, cannot be dumped.
+    if let Err(error) = forbid_core_dumps() {
+        eprintln!("tessaridb-vault: {error}");
+        return ExitCode::FAILURE;
     }
     let _guard = match init_tracing() {
         Ok(guard) => guard,

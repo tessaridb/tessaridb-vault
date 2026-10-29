@@ -49,6 +49,8 @@ exist.
 - **Every bundle served is on the record**, and one that cannot be recorded is not served.
 - **Removing a person takes effect at their next request**, and the record keys they held are rotated.
 - **Deleting a company destroys its key**, so no later copy of its data opens.
+- **The server writes no core file**: before it reads a key it sets its core size limit to zero and, on Linux, marks
+  itself undumpable, so a crash or a debugger of the same user does not take the keys it derives out of memory.
 
 ### What it does not protect against
 
