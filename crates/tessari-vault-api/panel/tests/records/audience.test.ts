@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { Bytes } from "../../src/crypto/bytes.ts";
-import { audienceChoices, companyAndGroups } from "../../src/records/audience.ts";
+import { audienceChoices, companyAndGroups, groupsToOpen } from "../../src/records/audience.ts";
 import { readGroupList } from "../../src/records/share-targets.ts";
 
 const [COMPANY, PLATFORM, DATA, ENGINEERING, SALES] = ["a", "b", "c", "d", "e"].map((c) => c.repeat(32)) as [string, string, string, string, string];
@@ -45,5 +45,9 @@ describe("a new record's audience", () => {
         ["Platform", "Team", "has no key yet"],
       ],
     );
+  });
+
+  it("opens records with the company's own key as well as its departments' and teams'", () => {
+    assert.deepEqual(groupsToOpen(COMPANY, [PLATFORM, COMPANY, SALES]), [COMPANY, PLATFORM, SALES]);
   });
 });

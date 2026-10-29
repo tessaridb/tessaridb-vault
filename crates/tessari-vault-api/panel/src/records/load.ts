@@ -11,6 +11,7 @@ import type { Unlocked } from "../vault.ts";
 import type { Listed } from "./listing.ts";
 import { openRecord, type RecipientKey } from "./open-record.ts";
 import { groupKey, memberKey, type ListedGroupKey } from "./recipient-keys.ts";
+import { groupsToOpen } from "./audience.ts";
 
 export const companyPath = (held: Unlocked): string => `/api/companies/${encodeURIComponent(held.company)}`;
 
@@ -68,7 +69,7 @@ export class Opener {
     if (!ids.ok) {
       return keys;
     }
-    for (const group of ids.value) {
+    for (const group of groupsToOpen(this.#held.company, ids.value)) {
       const listed = await call("GET", `${companyPath(this.#held)}/groups/${encodeURIComponent(group)}/key`, readGroupKey);
       if (listed.ok) {
         keys.set(hex(listed.value.keyId), { group, listed: listed.value });

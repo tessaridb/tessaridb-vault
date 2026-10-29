@@ -5,7 +5,8 @@
 import { call, ignored } from "../api.ts";
 import { readChain } from "../chain-model.ts";
 import { VaultCryptoError } from "../crypto/errors.ts";
-import { verifyChain, type Statement } from "../crypto/statements.ts";
+import { verifyChain, type Statement, type Vouched } from "../crypto/statements.ts";
+import { readGroupKey } from "../records-model.ts";
 import { el, fill } from "../dom.ts";
 import { statementBody } from "../members/members-model.ts";
 import { vouchFailure, vouchRefused } from "../members/members-words.ts";
@@ -13,7 +14,7 @@ import { CHAIN_REFUSED, loadFailure } from "../records/list-view.ts";
 import { companyPath } from "../records/load.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
-import { groupKeyBody, newGroupKey } from "./group-key.ts";
+import { groupKeyBody, newGroupKey, pendingWraps, wrapsBody } from "./group-key.ts";
 import { createFailure, groupTree, readGroupRows, readPending, type TreeRow } from "./groups-model.ts";
 
 const KIND_WORDS = { company: "Company", department: "Department", team: "Team" } as const;
@@ -39,7 +40,15 @@ export async function drawGroups(main: HTMLElement, held: Unlocked, notice: stri
   }
   const again = (words: string | null = null): void => void drawGroups(main, held, words);
   const tree = groupTree({ id: held.company, name: held.companyName }, groups.value);
-  const items = tree.map((row) => groupItem(held, row, vouched.groupKeyOf(row.id) !== undefined, chain.value.statements, again));
+  // Only an owner or an admin is told who is waiting; anyone else is refused, and sees no count.
+  const waiting = new Map(
+    await Promise.all(
+      tree
+        .filter((row) => vouched.groupKeyOf(row.id) !== undefined)
+        .map((row) => call("GET", `${path}/groups/${encodeURIComponent(row.id)}/key/pending`, readPending).then((answer) => [row.id, answer.ok ? answer.value.length : 0] as const)),
+    ),
+  );
+  const items = tree.map((row) => groupItem(held, row, vouched, waiting.get(row.id) ?? null, chain.value.statements, again));
   fill(
     main,
     el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "A record shared with a group opens for everyone in it. A group needs a key before anything can be shared with it."))),
@@ -50,9 +59,23 @@ export async function drawGroups(main: HTMLElement, held: Unlocked, notice: stri
   title.focus();
 }
 
-/** One group's line: its name, kind and key state, and "Key this group" while it has none. */
-function groupItem(held: Unlocked, row: TreeRow, keyed: boolean, chain: readonly Statement[], again: (words?: string | null) => void): HTMLElement {
+/** One group's line: its name, kind and key state, "Key this group" while it has none, and access for who waits. */
+function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: number | null, chain: readonly Statement[], again: (words?: string | null) => void): HTMLElement {
   const said = el("div", { "aria-live": "polite" });
+  const keyed = vouched.groupKeyOf(row.id) !== undefined;
+  const give = waiting === null || waiting === 0 ? null : el("button", { type: "button", "aria-label": `Give ${row.name}'s key to the ${waiting} waiting` }, `Give access (${waiting} waiting)`);
+  give?.addEventListener("click", () => {
+    give.disabled = true;
+    fill(said, el("p", { class: "muted", role: "status" }, "Giving the group's key to the members waiting."));
+    void giveAccess(held, row.id, vouched).then((words) => {
+      give.disabled = false;
+      if (words === null) {
+        again();
+        return;
+      }
+      fill(said, refusal(words));
+    });
+  });
   const key = keyed ? null : el("button", { type: "button", "aria-label": `Key ${row.name}` }, "Key this group");
   key?.addEventListener("click", () => {
     key.disabled = true;
@@ -71,7 +94,7 @@ function groupItem(held: Unlocked, row: TreeRow, keyed: boolean, chain: readonly
     { class: "share group", "data-depth": String(row.depth) },
     el("div", {}, el("span", { class: "share-name" }, row.name), el("span", { class: "detail" }, KIND_WORDS[row.kind])),
     el("span", { class: `state ${keyed ? "vouched" : "waiting"}` }, keyed ? "Has a key" : "No key yet"),
-    key ?? el("span", {}),
+    key ?? give ?? el("span", {}),
     said,
   );
 }
@@ -96,6 +119,30 @@ async function keyGroup(held: Unlocked, id: string, chain: readonly Statement[])
     return vouchFailure(stated.status, stated.code, loadFailure(stated));
   }
   const kept = await call("PUT", path, ignored, { body: groupKeyBody(made) });
+  return kept.ok ? null : loadFailure(kept);
+}
+
+/** Wraps group `id`'s key, opened from the caller's own wrap, to the members waiting; null once kept, else why not. */
+async function giveAccess(held: Unlocked, id: string, vouched: Vouched): Promise<string | null> {
+  const path = `${companyPath(held)}/groups/${encodeURIComponent(id)}/key`;
+  const [listed, pending] = await Promise.all([call("GET", path, readGroupKey), call("GET", `${path}/pending`, readPending)]);
+  if (!listed.ok || !pending.ok) {
+    const failed = !listed.ok ? listed : pending;
+    return failed.ok ? null : loadFailure(failed);
+  }
+  if (listed.value.wrap === null) {
+    return "You don't hold this group's key. Ask someone in the group to give access.";
+  }
+  let given;
+  try {
+    given = await pendingWraps(held.company, id, held.keys, vouched, listed.value, pending.value);
+  } catch (problem) {
+    return vouchRefused(problem instanceof VaultCryptoError ? problem.reason : "chain-broken");
+  }
+  if (given.wraps.length === 0) {
+    return "Nobody has vouched for the waiting members' keys yet. Vouch for them on the Members page first.";
+  }
+  const kept = await call("POST", `${path}/wraps`, ignored, { body: wrapsBody(given) });
   return kept.ok ? null : loadFailure(kept);
 }
 

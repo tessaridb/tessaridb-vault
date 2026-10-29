@@ -632,6 +632,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
   function audienceChoices(company, groups, groupKeys) {
     return shareTargets([], companyAndGroups(company, groups), /* @__PURE__ */ new Map(), groupKeys, "", []);
   }
+  function groupsToOpen(company, ids) {
+    return [company, ...ids.filter((id) => id !== company)];
+  }
 
   // src/icons.ts
   var SVG = "http://www.w3.org/2000/svg";
@@ -1731,7 +1734,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       if (!ids.ok) {
         return keys;
       }
-      for (const group of ids.value) {
+      for (const group of groupsToOpen(this.#held.company, ids.value)) {
         const listed = await call("GET", `${companyPath(this.#held)}/groups/${encodeURIComponent(group)}/key`, readGroupKey);
         if (listed.ok) {
           keys.set(hex(listed.value.keyId), { group, listed: listed.value });
@@ -3118,24 +3121,46 @@ ${target.detail}`.toLowerCase().includes(wanted));
       const statement = await appendStatement(company, chain.at(-1), { kind: "group", subject: group, agreementPublic: groupPublic, signingPublic: new Uint8Array(0) }, signer);
       await verifyChain(company, ownerSigning, [...chain, statement]);
       const keyId = random(KEY_ID_BYTES3);
-      const wraps = [];
-      const unvouched = [];
-      for (const member of pending) {
-        const context2 = { company, wrappedKind: "group", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: member.keyId };
-        try {
-          wraps.push({ keyId: member.keyId, wrap: await wrapToVouched(vouched, { kind: "member", account: member.account }, member.agreementPublic, context2, raw) });
-        } catch (problem2) {
-          if (!(problem2 instanceof VaultCryptoError && problem2.reason === "unvouched-recipient")) {
-            throw problem2;
-          }
-          unvouched.push(member.account);
-        }
-      }
-      return { statement, keyId, public: groupPublic, wraps, unvouched };
+      return { statement, keyId, public: groupPublic, ...await wrapToPending(company, keyId, raw, vouched, pending) };
     } finally {
       wipe(raw);
     }
   }
+  async function pendingWraps(company, group, member, vouched, listed, pending) {
+    const vouchedPublic = vouched.groupKeyOf(group);
+    if (vouchedPublic === void 0 || !sameBytes(vouchedPublic, listed.public)) {
+      throw new VaultCryptoError("unvouched-recipient");
+    }
+    if (listed.wrap === null) {
+      throw new VaultCryptoError("unknown-key");
+    }
+    const context2 = { company, wrappedKind: "group", wrappedKeyId: listed.keyId, recipientKind: "member", recipientKeyId: member.keyId };
+    const raw = await unwrapSecret(member.agreementPrivate, member.agreementPublic, context2, listed.wrap);
+    try {
+      return await wrapToPending(company, listed.keyId, raw, vouched, pending);
+    } finally {
+      wipe(raw);
+    }
+  }
+  async function wrapToPending(company, keyId, raw, vouched, pending) {
+    const wraps = [];
+    const unvouched = [];
+    for (const member of pending) {
+      const context2 = { company, wrappedKind: "group", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: member.keyId };
+      try {
+        wraps.push({ keyId: member.keyId, wrap: await wrapToVouched(vouched, { kind: "member", account: member.account }, member.agreementPublic, context2, raw) });
+      } catch (problem2) {
+        if (!(problem2 instanceof VaultCryptoError && problem2.reason === "unvouched-recipient")) {
+          throw problem2;
+        }
+        unvouched.push(member.account);
+      }
+    }
+    return { wraps, unvouched };
+  }
+  var wrapsBody = (given) => ({
+    wraps: given.wraps.map((each) => ({ key_id: hex(each.keyId), wrap: encode(each.wrap) }))
+  });
   var groupKeyBody = (made) => ({
     key_id: hex(made.keyId),
     public: encode(made.public),
@@ -3213,7 +3238,12 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
     const again = (words = null) => void drawGroups(main2, held2, words);
     const tree = groupTree({ id: held2.company, name: held2.companyName }, groups.value);
-    const items = tree.map((row2) => groupItem(held2, row2, vouched.groupKeyOf(row2.id) !== void 0, chain.value.statements, again));
+    const waiting = new Map(
+      await Promise.all(
+        tree.filter((row2) => vouched.groupKeyOf(row2.id) !== void 0).map((row2) => call("GET", `${path}/groups/${encodeURIComponent(row2.id)}/key/pending`, readPending).then((answer) => [row2.id, answer.ok ? answer.value.length : 0]))
+      )
+    );
+    const items = tree.map((row2) => groupItem(held2, row2, vouched, waiting.get(row2.id) ?? null, chain.value.statements, again));
     fill(
       main2,
       el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "A record shared with a group opens for everyone in it. A group needs a key before anything can be shared with it."))),
@@ -3223,8 +3253,22 @@ ${target.detail}`.toLowerCase().includes(wanted));
     );
     title.focus();
   }
-  function groupItem(held2, row2, keyed, chain, again) {
+  function groupItem(held2, row2, vouched, waiting, chain, again) {
     const said = el("div", { "aria-live": "polite" });
+    const keyed = vouched.groupKeyOf(row2.id) !== void 0;
+    const give = waiting === null || waiting === 0 ? null : el("button", { type: "button", "aria-label": `Give ${row2.name}'s key to the ${waiting} waiting` }, `Give access (${waiting} waiting)`);
+    give?.addEventListener("click", () => {
+      give.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Giving the group's key to the members waiting."));
+      void giveAccess(held2, row2.id, vouched).then((words) => {
+        give.disabled = false;
+        if (words === null) {
+          again();
+          return;
+        }
+        fill(said, refusal(words));
+      });
+    });
     const key = keyed ? null : el("button", { type: "button", "aria-label": `Key ${row2.name}` }, "Key this group");
     key?.addEventListener("click", () => {
       key.disabled = true;
@@ -3243,7 +3287,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       { class: "share group", "data-depth": String(row2.depth) },
       el("div", {}, el("span", { class: "share-name" }, row2.name), el("span", { class: "detail" }, KIND_WORDS[row2.kind])),
       el("span", { class: `state ${keyed ? "vouched" : "waiting"}` }, keyed ? "Has a key" : "No key yet"),
-      key ?? el("span", {}),
+      key ?? give ?? el("span", {}),
       said
     );
   }
@@ -3266,6 +3310,28 @@ ${target.detail}`.toLowerCase().includes(wanted));
       return vouchFailure(stated.status, stated.code, loadFailure(stated));
     }
     const kept = await call("PUT", path, ignored, { body: groupKeyBody(made) });
+    return kept.ok ? null : loadFailure(kept);
+  }
+  async function giveAccess(held2, id, vouched) {
+    const path = `${companyPath(held2)}/groups/${encodeURIComponent(id)}/key`;
+    const [listed, pending] = await Promise.all([call("GET", path, readGroupKey), call("GET", `${path}/pending`, readPending)]);
+    if (!listed.ok || !pending.ok) {
+      const failed2 = !listed.ok ? listed : pending;
+      return failed2.ok ? null : loadFailure(failed2);
+    }
+    if (listed.value.wrap === null) {
+      return "You don't hold this group's key. Ask someone in the group to give access.";
+    }
+    let given;
+    try {
+      given = await pendingWraps(held2.company, id, held2.keys, vouched, listed.value, pending.value);
+    } catch (problem2) {
+      return vouchRefused(problem2 instanceof VaultCryptoError ? problem2.reason : "chain-broken");
+    }
+    if (given.wraps.length === 0) {
+      return "Nobody has vouched for the waiting members' keys yet. Vouch for them on the Members page first.";
+    }
+    const kept = await call("POST", `${path}/wraps`, ignored, { body: wrapsBody(given) });
     return kept.ok ? null : loadFailure(kept);
   }
   function createForm(held2, tree, again) {

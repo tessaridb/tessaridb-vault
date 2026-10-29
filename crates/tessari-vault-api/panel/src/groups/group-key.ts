@@ -3,11 +3,14 @@
 // group's reach whom the chain vouches for, and wiped. A member the chain does not vouch for yet stays pending.
 
 import { encode } from "../base64url.ts";
-import { hex, random, wipe, type Bytes } from "../crypto/bytes.ts";
+import { hex, random, sameBytes, wipe, type Bytes } from "../crypto/bytes.ts";
 import { VaultCryptoError } from "../crypto/errors.ts";
+import type { OpenKeySet } from "../crypto/key-set.ts";
 import { generatePair, publicBytes } from "../crypto/keys.ts";
 import { wrapToVouched } from "../crypto/recipients.ts";
 import { appendStatement, verifyChain, type Signer, type Statement, type Vouched } from "../crypto/statements.ts";
+import { unwrapSecret } from "../crypto/wraps.ts";
+import type { ListedGroupKey } from "../records/recipient-keys.ts";
 
 const KEY_ID_BYTES = 16;
 const KEY_BYTES = 32;
@@ -48,24 +51,67 @@ export async function newGroupKey(
     const statement = await appendStatement(company, chain.at(-1), { kind: "group", subject: group, agreementPublic: groupPublic, signingPublic: new Uint8Array(0) }, signer);
     await verifyChain(company, ownerSigning, [...chain, statement]);
     const keyId = random(KEY_ID_BYTES);
-    const wraps: { keyId: Bytes; wrap: Bytes }[] = [];
-    const unvouched: string[] = [];
-    for (const member of pending) {
-      const context = { company, wrappedKind: "group", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: member.keyId } as const;
-      try {
-        wraps.push({ keyId: member.keyId, wrap: await wrapToVouched(vouched, { kind: "member", account: member.account }, member.agreementPublic, context, raw) });
-      } catch (problem) {
-        if (!(problem instanceof VaultCryptoError && problem.reason === "unvouched-recipient")) {
-          throw problem;
-        }
-        unvouched.push(member.account);
-      }
-    }
-    return { statement, keyId, public: groupPublic, wraps, unvouched };
+    return { statement, keyId, public: groupPublic, ...(await wrapToPending(company, keyId, raw, vouched, pending)) };
   } finally {
     wipe(raw);
   }
 }
+
+/** Wraps for members waiting for a group's key: what a holder of the key adds for them. */
+export interface PendingWraps {
+  readonly wraps: readonly { readonly keyId: Bytes; readonly wrap: Bytes }[];
+  readonly unvouched: readonly string[];
+}
+
+/**
+ * The key of `group`, opened from `member`'s own wrap of it in `listed`, wrapped to each of `pending` the chain vouches
+ * for; refused unless the chain vouches for the key the server lists.
+ */
+export async function pendingWraps(
+  company: string,
+  group: string,
+  member: OpenKeySet,
+  vouched: Vouched,
+  listed: ListedGroupKey,
+  pending: readonly PendingKey[],
+): Promise<PendingWraps> {
+  const vouchedPublic = vouched.groupKeyOf(group);
+  if (vouchedPublic === undefined || !sameBytes(vouchedPublic, listed.public)) {
+    throw new VaultCryptoError("unvouched-recipient");
+  }
+  if (listed.wrap === null) {
+    throw new VaultCryptoError("unknown-key");
+  }
+  const context = { company, wrappedKind: "group", wrappedKeyId: listed.keyId, recipientKind: "member", recipientKeyId: member.keyId } as const;
+  const raw = await unwrapSecret(member.agreementPrivate, member.agreementPublic, context, listed.wrap);
+  try {
+    return await wrapToPending(company, listed.keyId, raw, vouched, pending);
+  } finally {
+    wipe(raw);
+  }
+}
+
+async function wrapToPending(company: string, keyId: Bytes, raw: Bytes, vouched: Vouched, pending: readonly PendingKey[]): Promise<PendingWraps> {
+  const wraps: { keyId: Bytes; wrap: Bytes }[] = [];
+  const unvouched: string[] = [];
+  for (const member of pending) {
+    const context = { company, wrappedKind: "group", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: member.keyId } as const;
+    try {
+      wraps.push({ keyId: member.keyId, wrap: await wrapToVouched(vouched, { kind: "member", account: member.account }, member.agreementPublic, context, raw) });
+    } catch (problem) {
+      if (!(problem instanceof VaultCryptoError && problem.reason === "unvouched-recipient")) {
+        throw problem;
+      }
+      unvouched.push(member.account);
+    }
+  }
+  return { wraps, unvouched };
+}
+
+/** The body `POST …/groups/{group}/key/wraps` takes for `given`. */
+export const wrapsBody = (given: PendingWraps): Readonly<Record<string, unknown>> => ({
+  wraps: given.wraps.map((each) => ({ key_id: hex(each.keyId), wrap: encode(each.wrap) })),
+});
 
 /** The body `PUT /api/companies/{company}/groups/{group}/key` takes for `made`. */
 export const groupKeyBody = (made: NewGroupKey): Readonly<Record<string, unknown>> => ({

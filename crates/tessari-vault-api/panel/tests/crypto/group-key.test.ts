@@ -9,9 +9,9 @@ import type { Bytes } from "../../src/crypto/bytes.ts";
 import type { OpenKeySet } from "../../src/crypto/key-set.ts";
 import { generatePair, publicBytes } from "../../src/crypto/keys.ts";
 import { appendStatement, verifyChain, type Signer, type Statement } from "../../src/crypto/statements.ts";
-import { newGroupKey } from "../../src/groups/group-key.ts";
+import { newGroupKey, pendingWraps } from "../../src/groups/group-key.ts";
 import { groupKey } from "../../src/records/recipient-keys.ts";
-import { noise, toHex } from "./support.ts";
+import { noise, refusedWith, toHex } from "./support.ts";
 
 const COMPANY = "c".repeat(32);
 const TEAM = "d".repeat(32);
@@ -62,5 +62,29 @@ describe("keying a group", () => {
     const opened = await groupKey(COMPANY, after, alice.keys, TEAM, { keyId: made.keyId, public: made.public, wrap });
     assert.equal(opened.kind, "group");
     assert.equal(toHex(opened.agreementPublic), toHex(made.public));
+  });
+
+  it("lets a member who holds the key give it to a member vouched since, who can then open it", async () => {
+    const owner = await person("a".repeat(32));
+    const alice = await person("b".repeat(32), owner.keys.signingPublic);
+    const bob = await person("e".repeat(32), owner.keys.signingPublic);
+    const chain: Statement[] = [await memberStatement(COMPANY, undefined, owner, owner.signer)];
+    chain.push(await memberStatement(COMPANY, chain.at(-1), alice, owner.signer));
+    const pendingOf = (who: Person) => ({ account: who.account, keyId: who.keys.keyId, agreementPublic: who.keys.agreementPublic });
+    const made = await newGroupKey(COMPANY, TEAM, owner.signer, owner.keys.signingPublic, chain, await verifyChain(COMPANY, owner.keys.signingPublic, chain), [pendingOf(alice), pendingOf(bob)]);
+    chain.push(made.statement);
+    chain.push(await memberStatement(COMPANY, chain.at(-1), bob, owner.signer));
+    const now = await verifyChain(COMPANY, owner.keys.signingPublic, chain);
+    const alicesWrap = made.wraps[0]?.wrap ?? new Uint8Array();
+
+    const given = await pendingWraps(COMPANY, TEAM, alice.keys, now, { keyId: made.keyId, public: made.public, wrap: alicesWrap }, [pendingOf(bob)]);
+
+    assert.deepEqual(given.unvouched, []);
+    const bobsWrap = given.wraps[0]?.wrap ?? new Uint8Array();
+    const opened = await groupKey(COMPANY, now, bob.keys, TEAM, { keyId: made.keyId, public: made.public, wrap: bobsWrap });
+    assert.equal(toHex(opened.agreementPublic), toHex(made.public));
+
+    // A server that lists a key of its own for the group gets nothing wrapped to anyone.
+    await refusedWith(pendingWraps(COMPANY, TEAM, alice.keys, now, { keyId: made.keyId, public: noise(32), wrap: alicesWrap }, [pendingOf(bob)]), "unvouched-recipient");
   });
 });

@@ -22,3 +22,8 @@ export function audienceChoices(
 ): readonly ShareTarget[] {
   return shareTargets([], companyAndGroups(company, groups), new Map(), groupKeys, "", []);
 }
+
+/** The groups whose keys may open a record: the company itself, which the groups list leaves out, and `ids`. */
+export function groupsToOpen(company: string, ids: readonly string[]): readonly string[] {
+  return [company, ...ids.filter((id) => id !== company)];
+}
