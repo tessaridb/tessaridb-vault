@@ -5,6 +5,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
+use tessari_vault_storage::company_drops::DropState;
+
 use super::company_id;
 use super::records::decoded;
 use crate::ApiError;
@@ -23,6 +25,21 @@ pub(crate) struct Signed {
 #[derive(Serialize)]
 pub(crate) struct Standing {
     state: &'static str,
+    /// When a confirmed deletion may be carried out, in seconds since 1970.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    drop_after: Option<i64>,
+}
+
+impl From<DropState> for Standing {
+    fn from(state: DropState) -> Self {
+        Self {
+            state: state.word(),
+            drop_after: match state {
+                DropState::Scheduled { drop_after } => Some(drop_after),
+                DropState::Requested | DropState::Cancelled => None,
+            },
+        }
+    }
 }
 
 pub(crate) async fn request(
@@ -38,10 +55,35 @@ pub(crate) async fn request(
         .company_drops
         .request(&actor, &company, body.at, &signature)
         .await?;
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(Standing {
-            state: standing.word(),
-        }),
-    ))
+    Ok((StatusCode::ACCEPTED, Json(standing.into())))
+}
+
+pub(crate) async fn confirm(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(company): Path<String>,
+) -> Result<Json<Standing>, ApiError> {
+    let company = company_id(&company)?;
+    let standing = state
+        .storage
+        .company_drops
+        .confirm(&actor, &company)
+        .await?;
+    Ok(Json(standing.into()))
+}
+
+pub(crate) async fn cancel(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(company): Path<String>,
+    Body(body): Body<Signed>,
+) -> Result<Json<Standing>, ApiError> {
+    let company = company_id(&company)?;
+    let signature = decoded(&body.signature)?;
+    let standing = state
+        .storage
+        .company_drops
+        .cancel(&actor, &company, body.at, &signature)
+        .await?;
+    Ok(Json(standing.into()))
 }

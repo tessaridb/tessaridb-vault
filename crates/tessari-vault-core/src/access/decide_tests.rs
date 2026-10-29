@@ -201,13 +201,16 @@ fn reference(standing: Option<&Standing>, action: Action) -> Decision {
     let Some(held) = standing else {
         return Decision::Refused(Refusal::NotVisible);
     };
-    if held.member != MemberState::Active || held.company != CompanyState::Active {
+    if held.member != MemberState::Active
+        || !matches!(held.company, CompanyState::Active | CompanyState::Dropping)
+    {
         return Decision::Refused(Refusal::NotVisible);
     }
     let touches_owner = match action {
         Action::AddMember { role } | Action::RemoveMember { role } => role == Role::Owner,
         Action::ChangeMember { from, to } => from == Role::Owner || to == Role::Owner,
         Action::Vouch { genesis } => genesis,
+        Action::DropCompany => true,
         _ => false,
     };
     let reads = matches!(
@@ -215,10 +218,22 @@ fn reference(standing: Option<&Standing>, action: Action) -> Decision {
         Action::ReadMembers | Action::ReadGroups | Action::KeepKeys | Action::ReadKeys
     );
     let allowed = reads || held.role == Role::Owner || (held.role == Role::Admin && !touches_owner);
-    if allowed {
-        Decision::Permitted
-    } else {
+    // A company waiting to be deleted is read-only; its owners may still cancel.
+    let readable = matches!(
+        action,
+        Action::ReadMembers
+            | Action::ReadGroups
+            | Action::ReadKeys
+            | Action::ReadAudit
+            | Action::ReadRecord
+            | Action::DropCompany
+    );
+    if !allowed {
         Decision::Refused(Refusal::Forbidden)
+    } else if held.company == CompanyState::Dropping && !readable {
+        Decision::Refused(Refusal::ReadOnly)
+    } else {
+        Decision::Permitted
     }
 }
 
@@ -238,6 +253,7 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
         Action::ReadKeys,
         Action::Vouch { genesis: false },
         Action::Vouch { genesis: true },
+        Action::DropCompany,
         Action::KeyGroup,
     ];
     for role in roles {
@@ -252,7 +268,11 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
         assert_eq!(decide(None, *action), reference(None, *action));
         for role in roles {
             for member in [MemberState::Active, MemberState::Suspended] {
-                for company in [CompanyState::Active, CompanyState::Suspended] {
+                for company in [
+                    CompanyState::Active,
+                    CompanyState::Suspended,
+                    CompanyState::Dropping,
+                ] {
                     let held = Standing {
                         role,
                         member,
@@ -269,6 +289,45 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
             }
         }
     }
-    // 28 actions (13 without a role, 5 per role) under 12 standings.
-    assert_eq!(compared, 28 * 12);
+    // 29 actions (14 without a role, 5 per role) under 18 standings.
+    assert_eq!(compared, 29 * 18);
+}
+
+#[test]
+fn a_company_waiting_to_be_deleted_is_read_only_and_its_owners_may_cancel() {
+    let waiting = |role| Standing {
+        company: CompanyState::Dropping,
+        ..standing(role)
+    };
+    assert_eq!(
+        decide(Some(&waiting(Role::Member)), Action::ReadRecord),
+        Decision::Permitted
+    );
+    assert_eq!(
+        decide(Some(&waiting(Role::Member)), Action::ReviseRecord),
+        Decision::Refused(Refusal::ReadOnly)
+    );
+    assert_eq!(
+        decide(Some(&waiting(Role::Admin)), Action::CreateGroup),
+        Decision::Refused(Refusal::ReadOnly)
+    );
+    assert_eq!(
+        decide(
+            Some(&waiting(Role::Owner)),
+            Action::CreateRecord {
+                allowed: Roles::ALL
+            }
+        ),
+        Decision::Refused(Refusal::ReadOnly),
+        "no new record either"
+    );
+    assert_eq!(
+        decide(Some(&waiting(Role::Owner)), Action::DropCompany),
+        Decision::Permitted,
+        "the owner cancels"
+    );
+    assert_eq!(
+        decide(Some(&waiting(Role::Admin)), Action::DropCompany),
+        Decision::Refused(Refusal::Forbidden)
+    );
 }

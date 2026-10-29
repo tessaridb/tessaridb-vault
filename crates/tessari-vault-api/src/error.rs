@@ -132,6 +132,11 @@ impl From<Error> for ApiError {
         match error {
             Error::Refused(Refusal::NotVisible) | Error::NotFound => Self::NOT_FOUND,
             Error::Refused(Refusal::Forbidden) => Self::FORBIDDEN,
+            Error::Refused(Refusal::ReadOnly) => ApiError::new(
+                StatusCode::CONFLICT,
+                "company_closing",
+                "the company is waiting to be deleted; nothing in it changes unless an owner cancels",
+            ),
             Error::Conflict(conflict) => conflicted(conflict),
             Error::Store(failure) => {
                 // Indeterminate: the decision could not be made, which is never folded into a refusal.

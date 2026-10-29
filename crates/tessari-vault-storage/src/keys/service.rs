@@ -83,12 +83,13 @@ impl KeyService {
     ///
     /// [`Error::Refused`] unless the caller is an active member; [`Error::NotFound`] when they keep none.
     pub async fn mine(&self, actor: &Actor, company: &CompanyId) -> Result<KeySet> {
+        // A read, so a member can still unlock and read while the company waits to be deleted.
         let standing = access::authorize(
             &self.database,
             &self.place,
             actor,
             company,
-            Action::KeepKeys,
+            Action::ReadKeys,
         )
         .await?;
         let entity = self

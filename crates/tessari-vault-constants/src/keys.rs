@@ -25,3 +25,7 @@ pub const RECOVERY_REQUEST_SECONDS: i64 = 259_200;
 
 /// The most open recovery requests one listing answers.
 pub const RECOVERY_REQUEST_LIST_MAX: i64 = 1_000;
+
+/// How long a confirmed company deletion waits, read-only and cancellable by an owner, before it may be carried out:
+/// seven days.
+pub const COMPANY_DROP_WAIT_SECONDS: i64 = 604_800;

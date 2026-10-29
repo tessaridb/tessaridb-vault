@@ -82,6 +82,8 @@ words!(
         Active => "active",
         /// Closed to every member until a platform admin resumes it.
         Suspended => "suspended",
+        /// Read-only, waiting to be deleted; an owner may cancel.
+        Dropping => "dropping",
     }
 );
 

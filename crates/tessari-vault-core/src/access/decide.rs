@@ -96,6 +96,8 @@ pub enum Refusal {
     NotVisible,
     /// The caller sees the company and their role does not include the action.
     Forbidden,
+    /// The company is waiting to be deleted, so nothing in it changes until an owner cancels.
+    ReadOnly,
 }
 
 /// The answer.
@@ -110,9 +112,10 @@ pub enum Decision {
 /// Whether a caller standing as `standing` (or not at all) in a company may take `action` there.
 #[must_use]
 pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
-    let Some(held) = standing
-        .filter(|held| held.member == MemberState::Active && held.company == CompanyState::Active)
-    else {
+    let Some(held) = standing.filter(|held| {
+        held.member == MemberState::Active
+            && matches!(held.company, CompanyState::Active | CompanyState::Dropping)
+    }) else {
         return Decision::Refused(Refusal::NotVisible);
     };
     let needed = match action {
@@ -120,10 +123,12 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
             let admitted = [Role::Owner, Role::Admin, Role::Member]
                 .into_iter()
                 .any(|role| allowed.contains(role) && reaches(held.role, role));
-            return if admitted {
-                Decision::Permitted
-            } else {
+            return if !admitted {
                 Decision::Refused(Refusal::Forbidden)
+            } else if held.company == CompanyState::Dropping {
+                Decision::Refused(Refusal::ReadOnly)
+            } else {
+                Decision::Permitted
             };
         }
         Action::ReadMembers
@@ -159,11 +164,26 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::KeyGroup
         | Action::ReadAudit => Role::Admin,
     };
-    if reaches(held.role, needed) {
-        Decision::Permitted
-    } else {
+    if !reaches(held.role, needed) {
         Decision::Refused(Refusal::Forbidden)
+    } else if held.company == CompanyState::Dropping && !reads_only(action) {
+        Decision::Refused(Refusal::ReadOnly)
+    } else {
+        Decision::Permitted
     }
+}
+
+/// What a company waiting to be deleted still allows: reading, and its owners cancelling.
+const fn reads_only(action: Action) -> bool {
+    matches!(
+        action,
+        Action::ReadMembers
+            | Action::ReadGroups
+            | Action::ReadKeys
+            | Action::ReadAudit
+            | Action::ReadRecord
+            | Action::DropCompany
+    )
 }
 
 /// Whether `held` includes everything `needed` may do: owner ⊇ admin ⊇ member.

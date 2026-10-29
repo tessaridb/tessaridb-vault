@@ -123,3 +123,142 @@ async fn an_owner_asks_with_a_statement_their_own_key_signed_and_nobody_else_may
         "the request is on the trail: {trail}"
     );
 }
+
+fn cancelling(company: &str, by: &Signer, at: u64) -> Value {
+    json!({
+        "at": at,
+        "signature": encoded(&by.stored(&statement(Act::Cancel, company, at))),
+    })
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn the_platform_admin_confirms_and_the_company_waits_read_only_until_an_owner_cancels() {
+    use crate::world::sealed_record;
+
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let signer = Signer::new();
+    let owner = signing_owner(&world, &cast, &signer).await;
+    let a = cast.company_a.as_str();
+    let base = format!("/api/companies/{a}/drop");
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &format!("/api/companies/{}/drop/confirm", cast.company_b),
+            Some(&cast.platform),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "nothing asked for B: {body}");
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &base,
+            Some(&owner),
+            Some(asked(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let confirm = format!("{base}/confirm");
+    let (status, body) = world
+        .call(Method::POST, &confirm, Some(&cast.owner_a), None)
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "an owner is not the second party: {body}"
+    );
+    let (status, body) = world
+        .call(Method::POST, &confirm, Some(&cast.platform), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["state"], "scheduled", "{body}");
+    let after = body["drop_after"].as_u64().expect("a time");
+    assert!(
+        after.abs_diff(now().saturating_add(604_800)) < 120,
+        "seven days: {body}"
+    );
+
+    let records = format!("/api/companies/{a}/records");
+    let (status, body) = world
+        .call(Method::GET, &records, Some(&cast.member_a), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "reads go on: {body}");
+    let (status, body) = world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{a}/keys/me"),
+            Some(&cast.member_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "a member can still unlock: {body}");
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &records,
+            Some(&cast.member_a),
+            Some(sealed_record()),
+        )
+        .await;
+    assert_eq!(
+        (status, body["error_code"].as_str()),
+        (StatusCode::CONFLICT, Some("company_closing")),
+        "{body}"
+    );
+
+    let cancel = format!("{base}/cancel");
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &cancel,
+            Some(&cast.admin_a),
+            Some(cancelling(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &cancel,
+            Some(&owner),
+            Some(asked(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(
+        (status, body["error_code"].as_str()),
+        (StatusCode::CONFLICT, Some("drop_unsigned")),
+        "a request's signature does not cancel: {body}"
+    );
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &cancel,
+            Some(&owner),
+            Some(cancelling(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["state"], "cancelled", "{body}");
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &records,
+            Some(&cast.member_a),
+            Some(sealed_record()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "writes resume: {body}");
+    let (_, trail) = world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{a}/audit"),
+            Some(&cast.owner_a),
+            None,
+        )
+        .await;
+    for action in ["company.drop.confirm", "company.drop.cancel"] {
+        assert!(trail.to_string().contains(action), "{action} on the trail");
+    }
+}

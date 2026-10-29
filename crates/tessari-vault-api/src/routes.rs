@@ -87,6 +87,16 @@ pub fn routes() -> Vec<Route> {
         ),
         route(
             Method::POST,
+            "/api/companies/{company}/drop/confirm",
+            post(company_drop::confirm),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/drop/cancel",
+            post(company_drop::cancel),
+        ),
+        route(
+            Method::POST,
             "/api/companies/{company}/members/{account}/enrolment",
             post(enrolment::issue),
         ),
