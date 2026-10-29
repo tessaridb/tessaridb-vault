@@ -296,3 +296,59 @@ async fn the_page_is_told_which_ways_in_this_server_offers() {
         json!({ "password": true, "passkey": true, "provider": false })
     );
 }
+
+/// A session the store has expired is refused at the server, not only at the browser: every session is shortened to
+/// one second behind the server's back, keeping its value, and the same token is then signed out. `KEYS` answers
+/// each key as a literal, quoted, so the quotes come off before the key is bound.
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_session_the_store_has_expired_is_refused() {
+    use tessari_vault_infrastructure::tessaridb::{Answer, Value as Stored};
+
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let (status, body) = world
+        .call(Method::GET, "/api/me", Some(&cast.member_a), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let answers = world
+        .database
+        .run_at(&world.place, "KEYS FROM sessions;", Vec::new())
+        .await
+        .expect("the store answers");
+    let Some(Answer::Keys(keys)) = answers.last() else {
+        panic!("expected keys, got {answers:?}");
+    };
+    assert!(!keys.is_empty(), "no session was held");
+    for key in keys {
+        world
+            .database
+            .run_at(
+                &world.place,
+                "SET sessions:$key = GET sessions:$key EXPIRE $lifetime;",
+                vec![
+                    ("key".to_owned(), key.trim_matches('\'').into()),
+                    (
+                        "lifetime".to_owned(),
+                        Stored::Duration {
+                            seconds: 1,
+                            nanos: 0,
+                        },
+                    ),
+                ],
+            )
+            .await
+            .expect("the session is shortened");
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        let (status, _) = world
+            .call(Method::GET, "/api/me", Some(&cast.member_a), None)
+            .await;
+        if status != StatusCode::OK || Instant::now() > deadline {
+            break status;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
