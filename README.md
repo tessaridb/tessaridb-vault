@@ -98,6 +98,26 @@ exist.
 | Designed, not yet built | recovery in the web application, files in TessariDB S3, the audit events of sharing, and deleting a company |
 | Licence | BUSL-1.1 (see [Licence](#licence)) |
 
+## Running
+
+The server reads its settings from the environment and refuses to start, naming the variable, when one it needs is
+missing or wrong.
+
+| Variable | Required | Default | What it is |
+|---|---|---|---|
+| `TESSARIDB_VAULT_STORE` | yes | | the TessariDB node, `host:port` |
+| `TESSARIDB_VAULT_STORE_USER`, `TESSARIDB_VAULT_STORE_PASSWORD` | yes | | the server's own database account, never the store's owner |
+| `TESSARIDB_VAULT_STORE_AUTHORITY` | | | PEM certificates for a store reached over TLS; without it the store is reached only at `127.0.0.1` or `[::1]` |
+| `TESSARIDB_VAULT_SERVICE_KEY_FILE` | yes | | the service key file, readable by the server's user alone |
+| `TESSARIDB_VAULT_NAMESPACE`, `TESSARIDB_VAULT_DATABASE` | | `vault`, `main` | where in the store the vault keeps everything |
+| `TESSARIDB_VAULT_LISTEN` | | `127.0.0.1:8080` | the address the server listens on |
+| `TESSARIDB_VAULT_PUBLIC_URL` | | | the https origin people reach the server at (http only to `localhost` or a loopback address); passkeys are offered only when it is set |
+| `TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL`, `TESSARIDB_VAULT_PLATFORM_ADMIN_NAME` | both or neither | | the platform admin, who creates companies |
+| `TESSARIDB_VAULT_OIDC_ISSUER`, `TESSARIDB_VAULT_OIDC_CLIENT_ID`, `TESSARIDB_VAULT_OIDC_REDIRECT` | all three or none | | sign-in through an OpenID Connect issuer |
+
+`tessaridb-vault` serves; `tessaridb-vault enrolment-link` prints a single-use enrolment token for the platform
+admin, valid for 24 hours, and exits; `tessaridb-vault health` asks the running server whether it answers.
+
 ## In a container
 
 The `Dockerfile` builds an image holding only the `tessaridb-vault` server, with the web application inside it. Its
