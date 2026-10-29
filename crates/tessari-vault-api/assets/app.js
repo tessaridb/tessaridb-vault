@@ -673,6 +673,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
     groups: [box(9, 3, 6, 5, 1.5), box(3, 16, 6, 5, 1.5), box(15, 16, 6, 5, 1.5), "M12 8v4", "M6 16v-4h12v4"],
     trail: [ring(12, 12, 8.5), "M12 7.5V12l3 2"],
+    account: [ring(12, 8, 4), "M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"],
     sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
     moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
     menu: ["M4 7h16", "M4 12h16", "M4 17h16"],
@@ -4463,10 +4464,141 @@ ${END}
     title.focus();
   }
 
-  // src/join-model.ts
+  // src/sign-in-model.ts
   var isRecord12 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  function readAuthenticator(v) {
+  function readMethods(v) {
     if (!isRecord12(v)) {
+      return null;
+    }
+    const { password, passkey: passkey2, provider } = v;
+    return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
+  }
+  function readChallenge(v) {
+    return isRecord12(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+  }
+  function readSession(v) {
+    return isRecord12(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+  }
+  function readPasskeyRequest(v) {
+    return isRecord12(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+  }
+  function signInFailure(failure) {
+    switch (failure.code) {
+      case "sign_in_failed":
+        return "That email and password don't open an account here. Check both and try again.";
+      case "wrong_code":
+        return "That code didn't match. Use the newest code from your authenticator app.";
+      case "passkey_refused":
+        return "That passkey wasn't accepted here. Try again, or sign in with your password.";
+      case "throttled":
+        return "Too many tries from here. Wait a few minutes, then try again.";
+      case "network":
+        return "The vault didn't answer. Check your connection, then try again.";
+      case "unavailable":
+        return "The vault can't sign you in right now. Try again in a minute.";
+      default:
+        return failure.status >= 500 ? "The vault couldn't finish signing you in. Try again; if it keeps failing, tell your admin." : "The vault refused this sign-in. Try again.";
+    }
+  }
+  var isProviderReturn = (search) => {
+    const query = new URLSearchParams(search);
+    return query.has("state") && (query.has("code") || query.has("error"));
+  };
+  var PROVIDER_START = "/api/sign-in/oidc";
+
+  // src/account/passkey.ts
+  var isRecord13 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  function readRegistrationOptions(v) {
+    if (!isRecord13(v) || typeof v["challenge"] !== "string" || typeof v["rp_id"] !== "string" || typeof v["user_id"] !== "string" || typeof v["user_name"] !== "string" || !Array.isArray(v["exclude"])) {
+      return null;
+    }
+    const challenge = decode(v["challenge"]);
+    const userId = decode(v["user_id"]);
+    const exclude = v["exclude"].map((each) => typeof each === "string" ? decode(each) : null);
+    if (challenge === null || userId === null || !exclude.every((each) => each !== null)) {
+      return null;
+    }
+    return { challenge, rpId: v["rp_id"], userId, userName: v["user_name"], exclude };
+  }
+  var ALGORITHMS2 = [-8, -7, -257];
+  function creationOptions(options, displayName) {
+    return {
+      challenge: options.challenge,
+      rp: { id: options.rpId, name: "TessariDB Vault" },
+      user: { id: options.userId, name: options.userName, displayName },
+      pubKeyCredParams: ALGORITHMS2.map((alg) => ({ type: "public-key", alg })),
+      authenticatorSelection: { residentKey: "required", userVerification: "required" },
+      excludeCredentials: options.exclude.map((id) => ({ type: "public-key", id })),
+      attestation: "none"
+    };
+  }
+  function passkeyFailure(failure) {
+    switch (failure.code) {
+      case "passkey_registered":
+        return "That passkey is already registered with your account.";
+      case "cancelled":
+        return "The passkey prompt was cancelled, so nothing was added.";
+      case "passkey_refused":
+        return "That passkey wasn't accepted here. Try again, or use another device.";
+      case "network":
+        return "The vault didn't answer. Check your connection, then try again.";
+      default:
+        return "The vault couldn't add the passkey. Try again; if it keeps failing, tell your admin.";
+    }
+  }
+
+  // src/account/account-view.ts
+  var cancelled = { ok: false, status: 0, code: "cancelled", message: "" };
+  async function addPasskey(held2) {
+    const begun = await call("POST", "/api/me/passkeys/begin", readRegistrationOptions);
+    if (!begun.ok) {
+      return begun;
+    }
+    let credential;
+    try {
+      credential = await navigator.credentials.create({ publicKey: creationOptions(begun.value, held2.name) });
+    } catch {
+      return cancelled;
+    }
+    if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAttestationResponse)) {
+      return cancelled;
+    }
+    const kept = await call("POST", "/api/me/passkeys", ignored, {
+      body: {
+        client_data_json: encode(new Uint8Array(credential.response.clientDataJSON)),
+        attestation_object: encode(new Uint8Array(credential.response.attestationObject))
+      }
+    });
+    return kept.ok ? null : kept;
+  }
+  async function drawAccount(main2, held2) {
+    const title = heading("Account");
+    const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, `${held2.name} · ${held2.email} · ${held2.companyName}`)));
+    const said = el("div", { "aria-live": "polite" });
+    const passkeys = el("section", { class: "record-section", "aria-labelledby": "passkeys" }, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted", role: "status" }, "Checking what this vault offers."));
+    fill(main2, head, said, passkeys);
+    title.focus();
+    const methods = await call("GET", "/api/sign-in/methods", readMethods);
+    if (!methods.ok || !methods.value.passkey || typeof PublicKeyCredential !== "function") {
+      fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, methods.ok && !methods.value.passkey ? "This vault doesn't offer passkeys." : "This browser can't make passkeys."));
+      return;
+    }
+    const add = el("button", { type: "button" }, "Add a passkey");
+    add.addEventListener("click", () => {
+      add.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Follow your device's prompt."));
+      void addPasskey(held2).then((failed2) => {
+        add.disabled = false;
+        fill(said, failed2 === null ? el("p", { class: "muted", role: "status" }, "The passkey is added. Next time, sign in with it.") : refusal(passkeyFailure(failed2)));
+      });
+    });
+    fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, "A passkey signs you in with this device's lock instead of your password and a code."), add);
+  }
+
+  // src/join-model.ts
+  var isRecord14 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  function readAuthenticator(v) {
+    if (!isRecord14(v)) {
       return null;
     }
     const { secret, uri } = v;
@@ -4509,48 +4641,6 @@ ${END}
         return "The vault couldn't finish setting up your account. Try again; if it keeps failing, tell your admin.";
     }
   }
-
-  // src/sign-in-model.ts
-  var isRecord13 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  function readMethods(v) {
-    if (!isRecord13(v)) {
-      return null;
-    }
-    const { password, passkey: passkey2, provider } = v;
-    return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
-  }
-  function readChallenge(v) {
-    return isRecord13(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
-  }
-  function readSession(v) {
-    return isRecord13(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
-  }
-  function readPasskeyRequest(v) {
-    return isRecord13(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
-  }
-  function signInFailure(failure) {
-    switch (failure.code) {
-      case "sign_in_failed":
-        return "That email and password don't open an account here. Check both and try again.";
-      case "wrong_code":
-        return "That code didn't match. Use the newest code from your authenticator app.";
-      case "passkey_refused":
-        return "That passkey wasn't accepted here. Try again, or sign in with your password.";
-      case "throttled":
-        return "Too many tries from here. Wait a few minutes, then try again.";
-      case "network":
-        return "The vault didn't answer. Check your connection, then try again.";
-      case "unavailable":
-        return "The vault can't sign you in right now. Try again in a minute.";
-      default:
-        return failure.status >= 500 ? "The vault couldn't finish signing you in. Try again; if it keeps failing, tell your admin." : "The vault refused this sign-in. Try again.";
-    }
-  }
-  var isProviderReturn = (search) => {
-    const query = new URLSearchParams(search);
-    return query.has("state") && (query.has("code") || query.has("error"));
-  };
-  var PROVIDER_START = "/api/sign-in/oidc";
 
   // src/sign-in.ts
   function card(title, lead, ...body) {
@@ -5370,7 +5460,8 @@ ${END}
     ["group", "groups"],
     ["members", "members"],
     ["member", "members"],
-    ["trail", "trail"]
+    ["trail", "trail"],
+    ["account", "account"]
   ]);
   var sectionOf = (name) => SECTIONS.get(name) ?? "";
 
@@ -5391,6 +5482,7 @@ ${END}
     groups: { path: "/groups", guard: open2 },
     group: { path: "/groups/:group", guard: open2 },
     trail: { path: "/trail", guard: open2 },
+    account: { path: "/account", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
     join: { path: "/join", query: { token: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
@@ -5407,6 +5499,12 @@ ${END}
   var stopView = () => {
     for (const stop of stops.splice(0)) {
       stop();
+    }
+  };
+  var withHeld = (drawn) => {
+    const held2 = unlocked();
+    if (held2 !== null) {
+      void drawn(held2);
     }
   };
   var go = (href) => {
@@ -5453,18 +5551,12 @@ ${END}
         }
         break;
       }
-      case "members": {
-        const held2 = unlocked();
-        if (held2 !== null) {
-          void drawMembers(view2, held2, (account) => router.href("member", { account }));
-        }
+      case "members":
+        withHeld((held2) => drawMembers(view2, held2, (account) => router.href("member", { account })));
         break;
-      }
       case "member": {
-        const held2 = unlocked();
-        if (held2 !== null) {
-          void drawMember(view2, held2, outcome.match.params.account, router.href("members", {}), () => go(router.href("members", {})));
-        }
+        const account = outcome.match.params.account;
+        withHeld((held2) => drawMember(view2, held2, account, router.href("members", {}), () => go(router.href("members", {}))));
         break;
       }
       case "groups": {
@@ -5481,13 +5573,12 @@ ${END}
         }
         break;
       }
-      case "trail": {
-        const held2 = unlocked();
-        if (held2 !== null) {
-          void drawTrail(view2, held2);
-        }
+      case "trail":
+        withHeld((held2) => drawTrail(view2, held2));
         break;
-      }
+      case "account":
+        withHeld((held2) => drawAccount(view2, held2));
+        break;
       case "signIn": {
         if (signedIn()) {
           go(afterSignIn(outcome.match.query.next));

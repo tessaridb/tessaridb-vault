@@ -18,11 +18,12 @@ import { drawMembers } from "./members/members-view.ts";
 import { drawGroup } from "./groups/group-page.ts";
 import { drawGroups } from "./groups/groups-view.ts";
 import { drawTrail } from "./trail/trail-view.ts";
+import { drawAccount } from "./account/account-view.ts";
 import { bearer, forget } from "./session.ts";
 import { join } from "./join.ts";
 import { providerReturned, signIn } from "./sign-in.ts";
 import { unlock } from "./unlock.ts";
-import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked } from "./vault.ts";
+import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked, type Unlocked } from "./vault.ts";
 import { installTips } from "./icon-action.ts";
 import { decorateShell, setIcon } from "./shell-icons.ts";
 import { installMenu } from "./menu.ts";
@@ -47,6 +48,7 @@ const routes = defineRoutes({
   groups: { path: "/groups", guard: open },
   group: { path: "/groups/:group", guard: open },
   trail: { path: "/trail", guard: open },
+  account: { path: "/account", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
   join: { path: "/join", query: { token: text } },
   unlock: { path: "/unlock", query: { next: text }, guard: session },
@@ -69,6 +71,14 @@ const stops: Stops = [];
 const stopView = (): void => {
   for (const stop of stops.splice(0)) {
     stop();
+  }
+};
+
+/** Draws a view that needs the unlocked company, when it is unlocked; the route's guard sends a locked vault away. */
+const withHeld = (drawn: (held: Unlocked) => Promise<void>): void => {
+  const held = unlocked();
+  if (held !== null) {
+    void drawn(held);
   }
 };
 
@@ -119,18 +129,12 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
       }
       break;
     }
-    case "members": {
-      const held = unlocked();
-      if (held !== null) {
-        void drawMembers(view, held, (account) => router.href("member", { account }));
-      }
+    case "members":
+      withHeld((held) => drawMembers(view, held, (account) => router.href("member", { account })));
       break;
-    }
     case "member": {
-      const held = unlocked();
-      if (held !== null) {
-        void drawMember(view, held, outcome.match.params.account, router.href("members", {}), () => go(router.href("members", {})));
-      }
+      const account = outcome.match.params.account;
+      withHeld((held) => drawMember(view, held, account, router.href("members", {}), () => go(router.href("members", {}))));
       break;
     }
     case "groups": {
@@ -147,13 +151,12 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
       }
       break;
     }
-    case "trail": {
-      const held = unlocked();
-      if (held !== null) {
-        void drawTrail(view, held);
-      }
+    case "trail":
+      withHeld((held) => drawTrail(view, held));
       break;
-    }
+    case "account":
+      withHeld((held) => drawAccount(view, held));
+      break;
     case "signIn": {
       if (signedIn()) {
         go(afterSignIn(outcome.match.query.next));
