@@ -7,6 +7,7 @@ import { readOpened } from "../records-model.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { fieldView, type Stops } from "./field-view.ts";
+import { deleteControls } from "./delete-dialog.ts";
 import { CHAIN_REFUSED, loadFailure } from "./list-view.ts";
 import { typeName, unreadableWords, type copier } from "./listing.ts";
 import { Opener, companyPath, vouchedChain } from "./load.ts";
@@ -20,6 +21,7 @@ export async function drawRecord(
   stops: Stops,
   back: string,
   editHref: string,
+  gone: () => void,
 ): Promise<void> {
   const toList = el("a", { href: back, class: "back" }, "All records");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening the record."));
@@ -52,7 +54,8 @@ export async function drawRecord(
     ),
   );
   const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document.type))));
-  const actions = el("a", { class: "button", href: editHref }, "Edit");
-  fill(main, toList, el("div", { class: "page-head" }, head, actions), ...sections);
+  const [remove, dialog] = deleteControls(held, id, document.title === "" ? "Untitled" : document.title, gone);
+  const actions = el("div", { class: "actions" }, el("a", { class: "button", href: editHref }, "Edit"), remove ?? null);
+  fill(main, toList, el("div", { class: "page-head" }, head, actions), ...sections, dialog ?? null);
   title.focus();
 }

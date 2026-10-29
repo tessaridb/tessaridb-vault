@@ -40,7 +40,8 @@ function headers(options: Options): Record<string, string> {
     made["authorization"] = `Bearer ${token}`;
   }
   if (options.reason !== undefined && options.reason !== "") {
-    made["vault-reason"] = options.reason;
+    // A header carries ASCII only; the server decodes the reason back to the text the person wrote.
+    made["vault-reason"] = encodeURIComponent(options.reason);
   }
   return made;
 }

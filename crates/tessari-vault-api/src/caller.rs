@@ -50,17 +50,20 @@ impl FromRequestParts<AppState> for Caller {
     }
 }
 
-/// Why the caller says they act, from the `vault-reason` header: text a person wrote, so at most 500 characters and
-/// no control characters; empty when absent.
+/// Why the caller says they act, from the `vault-reason` header: text a person wrote, sent as percent-encoded UTF-8
+/// because a header carries ASCII only, so at most 500 characters and no control characters once decoded; empty
+/// when absent.
 fn reason(parts: &Parts) -> Result<String, ApiError> {
     let Some(value) = parts.headers.get(REASON) else {
         return Ok(String::new());
     };
-    let text = value.to_str().map_err(|_| ApiError::INVALID)?;
+    let text = percent_encoding::percent_decode(value.as_bytes())
+        .decode_utf8()
+        .map_err(|_| ApiError::INVALID)?;
     if text.chars().count() > REASON_MAX_CHARS || text.chars().any(char::is_control) {
         return Err(ApiError::INVALID);
     }
-    Ok(text.to_owned())
+    Ok(text.into_owned())
 }
 
 /// A request with no session, counted against its network address, which it carries: the unsigned routes take this

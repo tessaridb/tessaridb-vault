@@ -15,6 +15,7 @@ doctest = false
 [dependencies]
 tessari-vault-infrastructure.workspace = true
 url.workspace = true
+percent-encoding.workspace = true
 zeroize.workspace = true
 tessari-vault-constants.workspace = true
 tessari-vault-types.workspace = true

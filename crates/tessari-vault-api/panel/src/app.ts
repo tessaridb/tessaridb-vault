@@ -80,7 +80,7 @@ function draw(outcome: Outcome<Routes>, view: HTMLElement, router: Router<Routes
       const held = unlocked();
       if (held !== null) {
         const record = outcome.match.params.record;
-        void drawRecord(view, held, record, copy, stops, router.href("records", {}), router.href("editRecord", { record }));
+        void drawRecord(view, held, record, copy, stops, router.href("records", {}), router.href("editRecord", { record }), () => go(router.href("records", {})));
       }
       break;
     }

@@ -18,6 +18,8 @@
   --violet-650: oklch(0.5 0.15 289);
   --violet-a12: oklch(0.647 0.137 289 / 0.12);
   --violet-a20: oklch(0.647 0.137 289 / 0.2);
+  --n-1000-a50: oklch(0.13 0.009 286 / 0.5);
+  --n-1000-a70: oklch(0.13 0.009 286 / 0.7);
 
   --n-1000: oklch(0.13 0.009 286);
   --n-950: oklch(0.16 0.011 286);
@@ -102,6 +104,7 @@
   --on-bad: var(--n-0);
   --focus: var(--violet-600);
   --shadow: 0 1px 2px oklch(0.13 0.009 286 / 0.06);
+  --backdrop: var(--n-1000-a50);
 
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -131,6 +134,7 @@
     --on-bad: var(--n-1000);
     --focus: var(--violet-300);
     --shadow: none;
+    --backdrop: var(--n-1000-a70);
   }
 }
 
@@ -155,6 +159,7 @@
   --on-bad: var(--n-1000);
   --focus: var(--violet-300);
   --shadow: none;
+  --backdrop: var(--n-1000-a70);
 }
 
 /* ─────────────────────────────────────────────────────────── 3. COMPONENT ── */

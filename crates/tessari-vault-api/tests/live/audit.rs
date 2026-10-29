@@ -271,8 +271,16 @@ async fn every_admin_change_is_recorded_with_who_what_to_whom_and_why_and_a_refu
     // Another company's trail holds none of it.
     let b = trail(&world, &cast.company_b, &cast.admin_b).await;
     assert!(b.iter().all(|event| event["target"] != hire), "{b:?}");
-    // A reason is text a person wrote, so control characters and an essay are refused before anything happens.
-    for reason in ["tab\there", &"x".repeat(501)] {
+    // A reason is text a person wrote, so control characters and an essay are refused before anything happens, also
+    // when they arrive percent-encoded, and so is an encoding that is not UTF-8.
+    let encoded_essay = "%78".repeat(501);
+    for reason in [
+        "tab\there",
+        &"x".repeat(501),
+        "line%0Abreak",
+        "%FF",
+        &encoded_essay,
+    ] {
         let (status, body) = because(
             &world,
             Method::POST,

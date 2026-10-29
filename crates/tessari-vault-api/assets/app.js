@@ -31,7 +31,7 @@
       made["authorization"] = `Bearer ${token2}`;
     }
     if (options.reason !== void 0 && options.reason !== "") {
-      made["vault-reason"] = options.reason;
+      made["vault-reason"] = encodeURIComponent(options.reason);
     }
     return made;
   }
@@ -1998,8 +1998,64 @@
     }
   }
 
+  // src/records/delete-words.ts
+  function deleteFailure(status, code, fallback) {
+    if (status === 403) {
+      return "Only the record's author or a company admin can delete it.";
+    }
+    if (status === 404) {
+      return "This record is already gone, or it isn't shared with you.";
+    }
+    if (status === 409 && code === "stale_revision") {
+      return "This record changed while you were deciding. Open it again, then delete it.";
+    }
+    return fallback;
+  }
+
+  // src/records/delete-dialog.ts
+  function deleteControls(held2, id, title, gone) {
+    const reason = el("input", { id: "delete-reason", type: "text", autocomplete: "off", maxlength: "500" });
+    const said = el("div", { "aria-live": "polite" });
+    const keep2 = el("button", { type: "button", autofocus: "" }, "Keep the record");
+    const confirm = el("button", { type: "button", class: "danger" }, "Delete record");
+    const dialog = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": "delete-title" },
+      el("h2", { id: "delete-title" }, `Delete “${title}”?`),
+      el(
+        "p",
+        {},
+        "The record, its files and its history are removed for everyone it is shared with. Backups taken before now keep a sealed copy until they expire."
+      ),
+      el("div", { class: "field" }, el("label", { for: reason.id }, "Reason, kept on the company's trail (optional)"), reason),
+      said,
+      el("div", { class: "actions" }, keep2, confirm)
+    );
+    const open3 = el("button", { type: "button", class: "danger" }, "Delete");
+    open3.addEventListener("click", () => {
+      fill(said, null);
+      reason.value = "";
+      dialog.showModal();
+    });
+    keep2.addEventListener("click", () => dialog.close());
+    confirm.addEventListener("click", () => {
+      confirm.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Deleting the record."));
+      void call("DELETE", `${companyPath(held2)}/records/${encodeURIComponent(id)}`, ignored, { reason: reason.value.trim() }).then((answer) => {
+        confirm.disabled = false;
+        if (answer.ok) {
+          dialog.close();
+          gone();
+          return;
+        }
+        fill(said, refusal(deleteFailure(answer.status, answer.code, loadFailure(answer))));
+      });
+    });
+    return [open3, dialog];
+  }
+
   // src/records/record-view.ts
-  async function drawRecord(main2, held2, id, copy2, stops2, back, editHref) {
+  async function drawRecord(main2, held2, id, copy2, stops2, back, editHref, gone) {
     const toList = el("a", { href: back, class: "back" }, "All records");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening the record."));
     fill(main2, toList, el("div", { class: "page-head" }, heading("Record")), said);
@@ -2031,8 +2087,9 @@
       )
     );
     const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type))));
-    const actions = el("a", { class: "button", href: editHref }, "Edit");
-    fill(main2, toList, el("div", { class: "page-head" }, head, actions), ...sections);
+    const [remove, dialog] = deleteControls(held2, id, document2.title === "" ? "Untitled" : document2.title, gone);
+    const actions = el("div", { class: "actions" }, el("a", { class: "button", href: editHref }, "Edit"), remove ?? null);
+    fill(main2, toList, el("div", { class: "page-head" }, head, actions), ...sections, dialog ?? null);
     title.focus();
   }
 
@@ -2799,7 +2856,7 @@
         const held2 = unlocked();
         if (held2 !== null) {
           const record = outcome.match.params.record;
-          void drawRecord(view2, held2, record, copy, stops, router.href("records", {}), router.href("editRecord", { record }));
+          void drawRecord(view2, held2, record, copy, stops, router.href("records", {}), router.href("editRecord", { record }), () => go(router.href("records", {})));
         }
         break;
       }

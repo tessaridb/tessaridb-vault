@@ -9,10 +9,20 @@ use crate::records::create_by;
 use crate::shares::{record_path, shares, to_member};
 use crate::world::{Cast, World};
 
+/// The reason each delete gives, as the page sends it: percent-encoded UTF-8.
+const REASON: &str = "left the team";
+/// "ушёл из команды", encoded as the page encodes it.
+const ENCODED: &str =
+    "%D1%83%D1%88%D1%91%D0%BB%20%D0%B8%D0%B7%20%D0%BA%D0%BE%D0%BC%D0%B0%D0%BD%D0%B4%D1%8B";
+
 async fn delete(world: &World, path: &str, token: &str) -> (StatusCode, Json) {
+    delete_for(world, path, token, REASON).await
+}
+
+async fn delete_for(world: &World, path: &str, token: &str, reason: &str) -> (StatusCode, Json) {
     let headers = [
         ("authorization", format!("Bearer {token}")),
-        ("vault-reason", "left the team".to_owned()),
+        ("vault-reason", reason.to_owned()),
     ];
     let (status, _, body) = world.call_with(Method::DELETE, path, &headers, None).await;
     (status, body)
@@ -174,7 +184,8 @@ async fn a_record_is_deleted_whole_by_its_author_or_an_admin_and_by_nobody_else(
 
     let shared = "RETURN array::len((SELECT * FROM shares WHERE record = $record));";
     assert_eq!(answered(&world, shared, &owners).await, Value::from(1_i64));
-    let (status, body) = delete(&world, &record_path(&cast, &owners), &cast.admin_a).await;
+    let (status, body) =
+        delete_for(&world, &record_path(&cast, &owners), &cast.admin_a, ENCODED).await;
     assert_eq!(
         status,
         StatusCode::NO_CONTENT,
@@ -210,7 +221,7 @@ async fn a_record_is_deleted_whole_by_its_author_or_an_admin_and_by_nobody_else(
     assert_eq!(
         deletes,
         [
-            (owners.clone(), "left the team".to_owned()),
+            (owners.clone(), "ушёл из команды".to_owned()),
             (mine.clone(), "left the team".to_owned())
         ],
         "newest first, each with its reason"

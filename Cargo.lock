@@ -1299,6 +1299,7 @@ name = "tessari-vault-api"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "percent-encoding",
  "reqwest",
  "ring",
  "serde",

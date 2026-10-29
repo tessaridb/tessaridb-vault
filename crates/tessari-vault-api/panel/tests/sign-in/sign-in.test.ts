@@ -125,6 +125,13 @@ describe("the call every request goes through", () => {
     assert.equal(seen[0]?.headers.get("content-type"), "application/json");
   });
 
+  it("sends a reason in any language as percent-encoded UTF-8, which a header can carry", async () => {
+    const seen: Request[] = [];
+    answering(204, null, seen);
+    await call("DELETE", "/api/x", ignored, { reason: "ушёл из команды, 100%" });
+    assert.equal(seen[0]?.headers.get("vault-reason"), "%D1%83%D1%88%D1%91%D0%BB%20%D0%B8%D0%B7%20%D0%BA%D0%BE%D0%BC%D0%B0%D0%BD%D0%B4%D1%8B%2C%20100%25");
+  });
+
   it("sends no bearer without a session", async () => {
     const seen: Request[] = [];
     answering(200, { session: "s2" }, seen);
