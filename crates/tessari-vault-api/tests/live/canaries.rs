@@ -1,9 +1,11 @@
 //! C2 through the browser's own crypto path: a canary sealed by the panel's crypto module, sent as the browser sends a
 //! record, appears neither in the body the server holds, nor in the store's backup, nor in its directory, nor in the
-//! company's audit trail.
+//! company's audit trail; and the store's own passphrase, unsealing the store, opens none of the company vaults.
 
 use axum::http::{Method, StatusCode};
 use serde_json::Value;
+
+use tessari_vault_infrastructure::tessaridb::{Answer, Value as StoreValue};
 
 use crate::records::{count, encoded, files_under};
 use crate::world::{Cast, World};
@@ -123,4 +125,135 @@ async fn a_canary_sealed_by_the_browser_is_absent_from_backup_store_and_audit() 
     }
     drop(world);
     let _ = std::fs::remove_dir_all(&directory);
+}
+
+/// The passphrase the store administrator unseals the store with in this test.
+const STORE_PASSPHRASE: &str = "the-store-passphrase-of-the-live-suite";
+
+/// Present the store's passphrase on the node's vault surface, for the store or for one vault, as the store's owner.
+async fn unseal(world: &World, path: &str) -> (reqwest::StatusCode, String) {
+    let answer = reqwest::Client::new()
+        .post(format!("http://{}{path}", world.node.http))
+        .basic_auth(crate::world::STORE_USER, Some(crate::world::STORE_PASSWORD))
+        .body(STORE_PASSPHRASE)
+        .send()
+        .await
+        .expect("the vault surface answers");
+    let status = answer.status();
+    (status, answer.text().await.expect("its body"))
+}
+
+/// Whether the store's owner, with the store unsealed and no key presented, reads `field` of `record` in `vault`.
+async fn reveals(world: &World, vault: &str, record: &str, field: &str) -> Result<String, String> {
+    match world
+        .database
+        .run_at(
+            &world.place,
+            &format!("REVEAL {field} FROM {vault}:'{record}';"),
+            Vec::new(),
+        )
+        .await
+    {
+        Ok(answers) => Ok(format!("{answers:?}")),
+        Err(refused) => Err(refused.to_string()),
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn the_store_passphrase_opens_no_company_vault() {
+    let world = World::new().await;
+    // The store administrator unseals the store with its own passphrase before any company exists, and it stays open.
+    let (status, opened) = unseal(&world, "/vault/unseal").await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{opened}");
+    assert!(opened.contains("\"unsealed\""), "{opened}");
+    let cast = Cast::new(&world).await;
+    let companies = [&cast.company_a, &cast.company_b];
+    for company in companies {
+        let vault = format!("records_{company}");
+        world
+            .database
+            .run_presenting(
+                &world.place,
+                &format!("CREATE {vault}:'probe' = {{ body: 'company-secret' }};"),
+                Vec::new(),
+                &vault,
+                world
+                    .vault_keys
+                    .company(company)
+                    .expect("the company's key"),
+            )
+            .await
+            .expect("the company's key opens its vault");
+    }
+    let info = world
+        .database
+        .run_at(&world.place, "INFO FOR DATABASE;", Vec::new())
+        .await
+        .expect("the database describes itself");
+    let vaults: Vec<String> = match info.last() {
+        Some(Answer::Value {
+            value: StoreValue::Object(fields),
+            ..
+        }) => match fields.get("vaults") {
+            Some(StoreValue::Array(names)) => names
+                .iter()
+                .filter_map(|name| match name {
+                    StoreValue::String(name) => Some(name.clone()),
+                    _ => None,
+                })
+                .collect(),
+            other => panic!("expected the vault names, got {other:?}"),
+        },
+        other => panic!("expected the database's description, got {other:?}"),
+    };
+    assert_eq!(
+        vaults.len(),
+        companies.len(),
+        "one vault per company: {vaults:?}"
+    );
+
+    // The control: the same act (the store unsealed, no key presented) opens a vault in the store's own custody.
+    world
+        .database
+        .run_at(
+            &world.place,
+            "DEFINE VAULT control; DEFINE FIELD secret ON control TYPE string SECRET; \
+             CREATE control:'probe' = { secret: 'control-secret' };",
+            Vec::new(),
+        )
+        .await
+        .expect("a store-custody vault is declared and written while the store is unsealed");
+    let control = reveals(&world, "control", "probe", "secret").await;
+    assert!(
+        control
+            .as_ref()
+            .is_ok_and(|answer| answer.contains("control-secret")),
+        "the unsealed store does not open its own vault: {control:?}"
+    );
+
+    let mut opened = 0_usize;
+    for vault in &vaults {
+        match reveals(&world, vault, "probe", "body").await {
+            Ok(answer) => {
+                opened = opened.checked_add(1).expect("a handful of vaults");
+                eprintln!("{vault} opened: {answer}");
+            }
+            Err(refused) => assert_eq!(refused, "the vault is sealed", "{vault}"),
+        }
+    }
+    assert_eq!(opened, 0, "company vaults opened by the store's passphrase");
+    for vault in &vaults {
+        let path = format!(
+            "/vault/{}/{}/{vault}/unseal",
+            world.place.namespace(),
+            world.place.database()
+        );
+        let (status, refused) = unseal(&world, &path).await;
+        assert!(!status.is_success(), "{vault} unsealed: {refused}");
+        assert!(
+            refused.contains("opens with a key presented with each request"),
+            "{vault}: {refused}"
+        );
+    }
 }
