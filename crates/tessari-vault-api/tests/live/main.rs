@@ -19,6 +19,7 @@ mod keyed_vault;
 mod keys;
 mod oauth_e2e;
 mod oidc;
+mod page;
 mod passkeys;
 mod record_types;
 mod records;
@@ -35,10 +36,21 @@ use tessari_vault_api::routes;
 use world::{Cast, World};
 
 /// Routes that refuse nobody by design, each with the reason; every other route has a probe.
-const EXEMPT: [(&str, &str); 1] = [(
-    "/api/sign-in/passkey/begin",
-    "a fresh challenge that names no account",
-)];
+const EXEMPT: [(Method, &str, &str); 5] = [
+    (
+        Method::POST,
+        "/api/sign-in/passkey/begin",
+        "a fresh challenge that names no account",
+    ),
+    (
+        Method::GET,
+        "/",
+        "the page: the same committed bytes for anyone, no data",
+    ),
+    (Method::GET, "/app.js", "the page's script: no data"),
+    (Method::GET, "/app.css", "the page's style: no data"),
+    (Method::GET, "/favicon.svg", "the product mark: no data"),
+];
 
 /// Who a probe is sent as.
 #[derive(Clone, Copy, Debug)]
@@ -326,9 +338,9 @@ async fn every_route_refuses_the_unsigned_the_lower_role_and_another_company() {
     let mut exempt = Vec::new();
     for route in routes() {
         source = source.saturating_add(1);
-        if let Some((_, reason)) = EXEMPT
+        if let Some((_, _, reason)) = EXEMPT
             .iter()
-            .find(|(path, _)| route.method == Method::POST && *path == route.path)
+            .find(|(method, path, _)| route.method == *method && *path == route.path)
         {
             exempt.push(format!("{} {}: {reason}", route.method, route.path));
             continue;

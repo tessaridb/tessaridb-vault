@@ -3,16 +3,19 @@
   "version": "0.0.0",
   "author": "boogvar",
   "private": true,
-  "description": "Source for the web application the vault serves. Records are encrypted and decrypted here, in the browser; the server stores ciphertext only.",
+  "description": "Source for the web application the vault serves. Records are encrypted and decrypted here, in the browser; the server stores ciphertext only. The build's output is committed to ../assets/ and embedded by include_str!, so nothing here is needed to build or run the server.",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "pretest": "cargo build --quiet -p tessari-vault-crypto --target wasm32-unknown-unknown --release",
     "test": "node --test --test-reporter=spec 'tests/**/*.test.ts'",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "build": "node build.mjs",
+    "verify": "bash verify.sh"
   },
   "devDependencies": {
     "@types/node": "26.6.4",
+    "esbuild": "0.25.10",
     "typescript": "5.9.3"
   }
 }

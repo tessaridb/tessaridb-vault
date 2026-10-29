@@ -1,0 +1,195 @@
+/*
+ * The TessariDB Vault web application, in the family console style: the same mode (neo-grotesque, calm, room between
+ * things), the same TessariDB tokens (violet and neutrals on hue 286) and the same shell as the TessariDB S3 console,
+ * so the products read as one family. System fonts only: nothing is fetched from off this server.
+ *
+ * Three token tiers, never skipped: PRIMITIVE values, SEMANTIC roles (the only thing rules below read), COMPONENT
+ * values. A theme is a remap of the semantic tier: dark by the system preference unless the person chose light, or by
+ * `data-theme="dark"` on <html>; every semantic token is mapped in both.
+ */
+
+/* ─────────────────────────────────────────────────────────── 1. PRIMITIVE ── */
+
+:root {
+  --violet-300: oklch(0.8 0.11 289);
+  --violet-400: oklch(0.72 0.145 289);
+  --violet-500: oklch(0.647 0.137 289);
+  --violet-600: oklch(0.54 0.15 289);
+  --violet-a12: oklch(0.647 0.137 289 / 0.12);
+  --violet-a20: oklch(0.647 0.137 289 / 0.2);
+
+  --n-1000: oklch(0.13 0.009 286);
+  --n-950: oklch(0.16 0.011 286);
+  --n-900: oklch(0.18 0.013 286);
+  --n-850: oklch(0.2 0.015 286);
+  --n-800: oklch(0.24 0.016 286);
+  --n-700: oklch(0.28 0.018 286);
+  --n-500: oklch(0.52 0.022 286);
+  --n-450: oklch(0.62 0.02 286);
+  --n-400: oklch(0.7 0.018 286);
+  --n-200: oklch(0.93 0.01 286);
+  --n-150: oklch(0.95 0.008 286);
+  --n-100: oklch(0.97 0.006 286);
+  --n-50: oklch(0.985 0.003 286);
+  --n-0: oklch(1 0 0);
+
+  --green-400: oklch(0.76 0.14 155);
+  --green-600: oklch(0.5 0.13 155);
+  --amber-400: oklch(0.79 0.13 75);
+  --amber-600: oklch(0.52 0.11 75);
+  --red-400: oklch(0.7 0.17 25);
+  --red-600: oklch(0.53 0.19 25);
+
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 2.5rem;
+  --s-8: 3rem;
+
+  /* Type: four sizes on a compact ratio (≈1.333) for a data-dense surface —
+     caption 12, data 14 (tables, chips), body 16, heading/figure 28. */
+  --t-caption: 0.75rem;
+  --t-data: 0.875rem;
+  --t-body: 1rem;
+  --t-heading: 1.75rem;
+
+  /* Layers: one named scale, never a literal. */
+  --z-sticky: 20;
+  --z-toast: 50;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  /* Dials (designer ref 28): quiet, near-static, airy enough to breathe. */
+  --dial-variance: 30;
+  --dial-motion: 25;
+  --dial-density: 55;
+
+  /* MOTION 20: state feedback only — one short duration, a strong ease-out. */
+  --dur-fast: 120ms;
+  --dur-press: 160ms;
+  --ease: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* ──────────────────────────────────────────────────────────── 2. SEMANTIC ── */
+
+/* Light. */
+:root {
+  color-scheme: light;
+  --surface: var(--n-100);
+  --surface-raised: var(--n-0);
+  --surface-sunken: var(--n-150);
+  --side: var(--n-50);
+  --border: var(--n-200);
+  --border-strong: var(--n-450);
+  --text: var(--n-1000);
+  --text-muted: var(--n-500);
+  --accent: var(--violet-600);
+  --accent-hover: var(--violet-500);
+  --accent-text: var(--violet-600);
+  --accent-wash: var(--violet-a12);
+  --on-accent: var(--n-0);
+  --ok: var(--green-600);
+  --warn: var(--amber-600);
+  --bad: var(--red-600);
+  --on-bad: var(--n-0);
+  --focus: var(--violet-600);
+  --shadow: 0 1px 2px oklch(0.13 0.009 286 / 0.06);
+
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Dark — the site's own surfaces. Written twice (system preference, explicit
+   choice) because CSS cannot name one block for two conditions. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: var(--n-950);
+    --surface-raised: var(--n-850);
+    --surface-sunken: var(--n-1000);
+    --side: var(--n-900);
+    --border: var(--n-700);
+    --border-strong: var(--n-500);
+    --text: var(--n-200);
+    --text-muted: var(--n-400);
+    --accent: var(--violet-400);
+    --accent-hover: var(--violet-300);
+    --accent-text: var(--violet-300);
+    --accent-wash: var(--violet-a20);
+    --on-accent: var(--n-1000);
+    --ok: var(--green-400);
+    --warn: var(--amber-400);
+    --bad: var(--red-400);
+    --on-bad: var(--n-1000);
+    --focus: var(--violet-300);
+    --shadow: none;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: var(--n-950);
+  --surface-raised: var(--n-850);
+  --surface-sunken: var(--n-1000);
+  --side: var(--n-900);
+  --border: var(--n-700);
+  --border-strong: var(--n-500);
+  --text: var(--n-200);
+  --text-muted: var(--n-400);
+  --accent: var(--violet-400);
+  --accent-hover: var(--violet-300);
+  --accent-text: var(--violet-300);
+  --accent-wash: var(--violet-a20);
+  --on-accent: var(--n-1000);
+  --ok: var(--green-400);
+  --warn: var(--amber-400);
+  --bad: var(--red-400);
+  --on-bad: var(--n-1000);
+  --focus: var(--violet-300);
+  --shadow: none;
+}
+
+/* ─────────────────────────────────────────────────────────── 3. COMPONENT ── */
+
+:root {
+  --side-width: 16rem;
+  --row-height: 3rem; /* 48px — the 40-48px band DENSITY 55 asks for */
+  --control-height: 2.5rem; /* 40px controls, one height across every form */
+  --card-radius: var(--radius-lg);
+  --button-radius: var(--radius-pill); /* the product site's buttons are pills */
+  --card-inset: var(--s-6);
+  --control-radius: var(--radius-md);
+  --page-inset: var(--s-7);
+  --stack: var(--s-6); /* between cards and sections */
+  --page-max: 80rem;
+  --measure: 65ch;
+  --icon: 1.125rem;
+}
+
+/* ≤768px: DENSITY 65, body never under 16px, targets taller, sidebar on top. */
+@media (max-width: 48rem) {
+  :root {
+    --dial-density: 50;
+    --row-height: 3rem;
+    --control-height: 2.75rem; /* 44px touch targets */
+    --card-inset: var(--s-5);
+    --page-inset: var(--s-4);
+    --stack: var(--s-5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dial-motion: 0;
+    --dur-fast: 0ms;
+    --dur-press: 0ms;
+  }
+}
+

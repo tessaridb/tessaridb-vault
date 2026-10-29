@@ -1,0 +1,163 @@
+/* ─────────────────────────────────────────────────────────────── shell ── */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--side-width) minmax(0, 1fr);
+  min-height: 0;
+  /* The sidebar's colour and edge run the whole height of a long page, while
+     the sidebar itself stays pinned to the viewport. */
+  background: linear-gradient(
+    to right,
+    var(--side) calc(var(--side-width) - 1px),
+    var(--border) calc(var(--side-width) - 1px),
+    var(--border) var(--side-width),
+    transparent var(--side-width)
+  );
+}
+
+.side {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--z-sticky);
+  align-self: start;
+  block-size: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-7);
+  padding: var(--s-6) var(--s-4);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  padding-inline: var(--s-2);
+  font-weight: 650;
+}
+
+.brand b {
+  color: var(--accent-text);
+}
+
+.logo {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+}
+
+.side nav {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.side nav a {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-block-size: var(--control-height);
+  padding: 0 var(--s-3);
+  border-radius: var(--control-radius);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 500;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.side nav a:hover {
+  color: var(--text);
+  background: var(--surface-sunken);
+}
+
+.side nav a[aria-current="page"] {
+  color: var(--accent-text);
+  background: var(--accent-wash);
+}
+
+.side-foot {
+  margin-block-start: auto;
+  display: grid;
+  gap: var(--s-1);
+}
+
+.side-foot button {
+  justify-content: flex-start;
+  padding-inline: var(--s-3);
+}
+
+main {
+  padding: var(--page-inset);
+  min-inline-size: 0;
+  max-inline-size: var(--page-max);
+}
+
+main:focus,
+.view-title:focus {
+  /* Focus lands here after a route change so a screen reader starts at the
+     new view; neither is a control, so there is no ring to show. */
+  outline: none;
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+  padding: var(--s-4) var(--page-inset);
+  border-block-start: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--t-caption);
+}
+
+.foot p {
+  margin: 0;
+}
+
+@media (max-width: 48rem) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    background: none;
+  }
+
+  .side {
+    position: static;
+    block-size: auto;
+    padding: var(--s-3) var(--s-4);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-4);
+    background: var(--side);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .side nav {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .side-foot {
+    margin-block-start: 0;
+    margin-inline-start: auto;
+    display: flex;
+  }
+
+}
+
+/* ─────────────────────────────────────────────────────────── page header ── */
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-block-end: var(--s-7);
+}
+
+.page-head .lede {
+  margin: var(--s-2) 0 0;
+  max-inline-size: var(--measure);
+  color: var(--text-muted);
+}
+

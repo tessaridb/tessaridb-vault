@@ -9,6 +9,7 @@ pub(crate) mod groups;
 pub(crate) mod keys;
 pub(crate) mod members;
 pub(crate) mod oidc;
+pub(crate) mod page;
 pub(crate) mod passkeys;
 pub(crate) mod record_types;
 pub(crate) mod records;
