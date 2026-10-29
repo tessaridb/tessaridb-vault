@@ -476,6 +476,18 @@
     return null;
   }
   var readKept = (sent) => (v) => isRecord2(v) && v["key_id"] === hex(sent) ? hex(sent) : null;
+  function firstSave(refused, chained) {
+    if (refused === "keys_exist") {
+      return { kind: "kept", words: "You already set an unlock password for this company. Unlock with it." };
+    }
+    if (refused !== null) {
+      return { kind: "failed" };
+    }
+    return chained ? { kind: "done" } : {
+      kind: "kept",
+      words: "Your keys are made and kept, but the vault couldn't record you as your company's owner yet. Unlock with the password you just set to try again."
+    };
+  }
 
   // src/records-model.ts
   var isRecord3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -933,6 +945,9 @@
         await clear();
       }
     };
+  }
+  function findsRecords(press) {
+    return press.key.toLowerCase() === "k" && (press.ctrlKey || press.metaKey) && !press.altKey && !press.shiftKey;
   }
 
   // src/chain-model.ts
@@ -1612,6 +1627,7 @@
   // src/records/list-view.ts
   var when = new Intl.DateTimeFormat(void 0, { dateStyle: "medium", timeStyle: "short" });
   var loadFailure = (failure) => failure.code === "network" ? "The vault didn't answer. Check your connection, then try again." : "The vault couldn't load your records. Try again in a minute.";
+  var SKELETON_AFTER_MS = 200;
   var CHAIN_REFUSED = "Your company's list of who may read what doesn't check out against the owner key your keys trust, so nothing is opened. Tell your company's owner.";
   function row(item, href) {
     const changed = el("span", { class: "muted" }, `Changed ${when.format(new Date(item.row.updated * 1e3))}`);
@@ -1632,13 +1648,21 @@
       changed
     );
   }
-  async function drawList(main2, held2, href, newHref) {
+  async function drawList(main2, held2, href, newHref, stops2) {
     const title = heading("Records");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening your records."));
     const head = el("div", { class: "page-head" }, title, el("a", { class: "button primary", href: newHref }, "New record"));
     fill(main2, head, said);
+    const skeleton = el("ul", { class: "records skeleton", "aria-hidden": "true" }, ...[1, 2, 3].map(() => el("li", { class: "record" }, el("span", { class: "bone" }))));
+    const slow = window.setTimeout(() => main2.append(skeleton), SKELETON_AFTER_MS);
+    const loaded = () => {
+      window.clearTimeout(slow);
+      skeleton.remove();
+    };
+    stops2.push(loaded);
     const chain = await vouchedChain(held2);
     if (!chain.ok) {
+      loaded();
       fill(said, refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
       return;
     }
@@ -1646,7 +1670,15 @@
     const items = [];
     let next = null;
     let type = null;
-    const search = el("input", { id: "record-filter", type: "search", autocomplete: "off" });
+    const search = el("input", { id: "record-filter", type: "search", autocomplete: "off", "aria-keyshortcuts": "Control+K Meta+K" });
+    const toFilter = (event) => {
+      if (findsRecords(event) && !filter.hidden) {
+        event.preventDefault();
+        search.focus();
+      }
+    };
+    document.addEventListener("keydown", toFilter);
+    stops2.push(() => document.removeEventListener("keydown", toFilter));
     const types = el("div", { class: "chips", role: "group", "aria-label": "Type" });
     const list = el("ul", { class: "records", "aria-label": "Records" });
     const more = el("button", { type: "button", class: "quiet" }, "Load more");
@@ -1700,11 +1732,13 @@
       next = page.value.next;
       return true;
     };
-    if (!await load()) {
+    const first = await load();
+    loaded();
+    if (!first) {
       return;
     }
     search.addEventListener("input", render);
-    more.addEventListener("click", () => void load().then((loaded) => loaded && render()));
+    more.addEventListener("click", () => void load().then((loaded2) => loaded2 && render()));
     fill(main2, head, filter, types, said, list, tail);
     render();
     title.focus();
@@ -2750,11 +2784,14 @@
     );
     return { row: row2, chosen: () => companies.find((company) => company.id === inputs.find((input) => input.checked)?.value) ?? first };
   }
+  function unlockAccount(me, company) {
+    return el("input", { type: "text", autocomplete: "username", value: `${me.email} (unlock, ${company.name})`, hidden: "", tabindex: "-1" });
+  }
   function unlockForm(main2, me, company, stored, choice, done) {
     const password = field("unlock-password", "Unlock password", { type: "password", autocomplete: "current-password", required: "" });
     const submit = el("button", { type: "submit", class: "primary" }, "Unlock");
     const said = el("div", { "aria-live": "polite" });
-    const view2 = card2("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, password.row, submit, said);
+    const view2 = card2("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, unlockAccount(me, company), password.row, submit, said);
     view2.querySelector("form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       submit.disabled = true;
@@ -2794,6 +2831,7 @@
       "Set your unlock password",
       `Your records in ${company.name} are encrypted with keys this browser makes now. The unlock password opens them.`,
       choice,
+      unlockAccount(me, company),
       password.row,
       repeated.row,
       submit,
@@ -2814,14 +2852,22 @@
         const answer = await call("PUT", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readKept(made.stored.keyId), {
           body: keySetBody(made.stored)
         });
-        if (!answer.ok) {
-          fill(said, refusal(loadFailure2(answer)));
+        const chained = answer.ok && (owner !== "self" || await beginChain(company, me, made.open));
+        const outcome = firstSave(answer.ok ? null : answer.code, chained);
+        if (outcome.kind === "failed") {
+          if (!answer.ok) {
+            fill(said, refusal(loadFailure2(answer)));
+          }
           return;
         }
         password.input.value = "";
         repeated.input.value = "";
-        if (owner === "self" && !await beginChain(company, me, made.open)) {
-          fill(said, refusal(CHAIN_FAILURE));
+        if (outcome.kind === "kept") {
+          const onward = el("button", { type: "button", class: "primary" }, "Unlock");
+          onward.addEventListener("click", () => void unlock(main2, done, signOutHere));
+          submit.hidden = true;
+          fill(said, refusal(outcome.words), onward);
+          onward.focus();
           return;
         }
         hold({ company: company.id, account: me.account, keys: made.open });
@@ -2931,7 +2977,7 @@
       case "records": {
         const held2 = unlocked();
         if (held2 !== null) {
-          void drawList(view2, held2, (record) => router.href("record", { record }), router.href("newRecord", {}));
+          void drawList(view2, held2, (record) => router.href("record", { record }), router.href("newRecord", {}), stops);
         }
         break;
       }

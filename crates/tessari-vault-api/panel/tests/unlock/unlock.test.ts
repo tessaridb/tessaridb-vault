@@ -9,6 +9,7 @@ import type { OpenKeySet } from "../../src/crypto/key-set.ts";
 import { afterUnlock, every, needsSession, needsUnlock } from "../../src/guards.ts";
 import {
   keySetBody,
+  firstSave,
   newPasswordProblem,
   readCompanies,
   readKept,
@@ -166,5 +167,24 @@ describe("the vault", () => {
     clock.pass(60_000);
     assert.equal(unlocked(), null, "fifteen minutes with no input");
     stop();
+  });
+});
+
+describe("saving a first key set", () => {
+  it("is done once the keys are kept and the chain began", () => {
+    assert.deepEqual(firstSave(null, true), { kind: "done" });
+  });
+
+  it("sends the person to unlock when the keys are kept but the chain did not begin, or were kept before", () => {
+    const afterChain = firstSave(null, false);
+    const existing = firstSave("keys_exist", true);
+    assert.equal(afterChain.kind, "kept");
+    assert.equal(existing.kind, "kept");
+    assert.match(afterChain.kind === "kept" ? afterChain.words : "", /Unlock with the password you just set/);
+    assert.match(existing.kind === "kept" ? existing.words : "", /already set an unlock password/);
+  });
+
+  it("is a plain failure for any other refusal", () => {
+    assert.deepEqual(firstSave("unavailable", false), { kind: "failed" });
   });
 });

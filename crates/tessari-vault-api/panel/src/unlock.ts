@@ -11,6 +11,7 @@ import { appendStatement } from "./crypto/statements.ts";
 import { el, field, fill } from "./dom.ts";
 import { heading, refusal } from "./screen.ts";
 import {
+  firstSave,
   keySetBody,
   newPasswordProblem,
   readCompanies,
@@ -110,12 +111,20 @@ function companyChoice(companies: readonly Company[]): { readonly row: HTMLEleme
   return { row, chosen: () => companies.find((company) => company.id === inputs.find((input) => input.checked)?.value) ?? first };
 }
 
+/**
+ * The account a password manager files the unlock password under: the person and company with "unlock" beside them,
+ * so it is kept apart from the sign-in password and never offered in its place.
+ */
+function unlockAccount(me: Me, company: Company): HTMLElement {
+  return el("input", { type: "text", autocomplete: "username", value: `${me.email} (unlock, ${company.name})`, hidden: "", tabindex: "-1" });
+}
+
 /** The form that opens an existing key set. */
 function unlockForm(main: HTMLElement, me: Me, company: Company, stored: StoredKeySet, choice: HTMLElement | null, done: () => void): void {
   const password = field("unlock-password", "Unlock password", { type: "password", autocomplete: "current-password", required: "" });
   const submit = el("button", { type: "submit", class: "primary" }, "Unlock");
   const said = el("div", { "aria-live": "polite" });
-  const view = card("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, password.row, submit, said);
+  const view = card("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, unlockAccount(me, company), password.row, submit, said);
   view.querySelector("form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     submit.disabled = true;
@@ -157,6 +166,7 @@ function firstUnlockForm(main: HTMLElement, me: Me, company: Company, owner: Byt
     "Set your unlock password",
     `Your records in ${company.name} are encrypted with keys this browser makes now. The unlock password opens them.`,
     choice,
+    unlockAccount(me, company),
     password.row,
     repeated.row,
     submit,
@@ -177,14 +187,22 @@ function firstUnlockForm(main: HTMLElement, me: Me, company: Company, owner: Byt
       const answer = await call("PUT", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readKept(made.stored.keyId), {
         body: keySetBody(made.stored),
       });
-      if (!answer.ok) {
-        fill(said, refusal(loadFailure(answer)));
+      const chained = answer.ok && (owner !== "self" || (await beginChain(company, me, made.open)));
+      const outcome = firstSave(answer.ok ? null : answer.code, chained);
+      if (outcome.kind === "failed") {
+        if (!answer.ok) {
+          fill(said, refusal(loadFailure(answer)));
+        }
         return;
       }
       password.input.value = "";
       repeated.input.value = "";
-      if (owner === "self" && !(await beginChain(company, me, made.open))) {
-        fill(said, refusal(CHAIN_FAILURE));
+      if (outcome.kind === "kept") {
+        const onward = el("button", { type: "button", class: "primary" }, "Unlock");
+        onward.addEventListener("click", () => void unlock(main, done, signOutHere));
+        submit.hidden = true;
+        fill(said, refusal(outcome.words), onward);
+        onward.focus();
         return;
       }
       hold({ company: company.id, account: me.account, keys: made.open });

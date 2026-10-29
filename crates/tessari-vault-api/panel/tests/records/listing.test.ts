@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { COPY_CLEARS_AFTER_MS, copier, matches, typeName, unreadableWords, type Listed } from "../../src/records/listing.ts";
+import { COPY_CLEARS_AFTER_MS, copier, findsRecords, matches, typeName, unreadableWords, type Listed } from "../../src/records/listing.ts";
 import type { RecordRow } from "../../src/records-model.ts";
 
 const row = (recordType: string): RecordRow => ({
@@ -131,5 +131,28 @@ describe("copying", () => {
     await copy.copy("hunter2", "Password");
     assert.equal(said.at(-1), "This browser didn't allow copying. Show the value and copy it yourself.");
     assert.equal(timers.size, 0);
+  });
+});
+
+describe("the find shortcut", () => {
+  const key = (over: Partial<{ key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean }>) => ({
+    key: "k",
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...over,
+  });
+
+  it("is Ctrl-K or Cmd-K, in either case", () => {
+    assert.equal(findsRecords(key({ ctrlKey: true })), true);
+    assert.equal(findsRecords(key({ metaKey: true, key: "K" })), true);
+  });
+
+  it("is not a bare K, nor one with Alt or Shift held, nor another letter", () => {
+    assert.equal(findsRecords(key({})), false);
+    assert.equal(findsRecords(key({ ctrlKey: true, altKey: true })), false);
+    assert.equal(findsRecords(key({ metaKey: true, shiftKey: true })), false);
+    assert.equal(findsRecords(key({ ctrlKey: true, key: "j" })), false);
   });
 });

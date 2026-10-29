@@ -84,3 +84,14 @@ export function copier(clipboard: { readonly write: (text: string) => Promise<vo
     },
   };
 }
+
+/** Whether a key press is the shortcut that moves to the records filter: Ctrl-K, or Cmd-K on a Mac. */
+export function findsRecords(press: {
+  readonly key: string;
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+  readonly altKey: boolean;
+  readonly shiftKey: boolean;
+}): boolean {
+  return press.key.toLowerCase() === "k" && (press.ctrlKey || press.metaKey) && !press.altKey && !press.shiftKey;
+}

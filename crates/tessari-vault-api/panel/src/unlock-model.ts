@@ -116,3 +116,22 @@ export const readKept =
   (sent: Bytes) =>
   (v: unknown): string | null =>
     isRecord(v) && v["key_id"] === hex(sent) ? hex(sent) : null;
+
+/**
+ * What saving a first key set comes to: `refused` is the refusal's code (null when the keys were kept) and `chained`
+ * whether the owner's chain began. Keys already kept send the person to unlock with them, which retries the chain.
+ */
+export function firstSave(refused: string | null, chained: boolean): { readonly kind: "done" } | { readonly kind: "kept"; readonly words: string } | { readonly kind: "failed" } {
+  if (refused === "keys_exist") {
+    return { kind: "kept", words: "You already set an unlock password for this company. Unlock with it." };
+  }
+  if (refused !== null) {
+    return { kind: "failed" };
+  }
+  return chained
+    ? { kind: "done" }
+    : {
+        kind: "kept",
+        words: "Your keys are made and kept, but the vault couldn't record you as your company's owner yet. Unlock with the password you just set to try again.",
+      };
+}

@@ -72,7 +72,7 @@ function draw(outcome: Outcome<Routes>, view: HTMLElement, router: Router<Routes
     case "records": {
       const held = unlocked();
       if (held !== null) {
-        void drawList(view, held, (record) => router.href("record", { record }), router.href("newRecord", {}));
+        void drawList(view, held, (record) => router.href("record", { record }), router.href("newRecord", {}), stops);
       }
       break;
     }

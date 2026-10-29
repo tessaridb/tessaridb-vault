@@ -163,3 +163,12 @@ dialog.confirm .actions {
   justify-content: flex-end;
   margin-block-start: var(--s-5);
 }
+
+/* Where the rows will be while the first page loads; still, so there is nothing to reduce. */
+.skeleton .bone {
+  display: block;
+  inline-size: 40%;
+  block-size: 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}

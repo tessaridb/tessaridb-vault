@@ -6,7 +6,8 @@ import { el, fill } from "../dom.ts";
 import { openedPagePath, readOpenedPage } from "../records-model.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
-import { matches, typeName, unreadableWords, type Listed } from "./listing.ts";
+import type { Stops } from "./field-view.ts";
+import { findsRecords, matches, typeName, unreadableWords, type Listed } from "./listing.ts";
 import { Opener, vouchedChain } from "./load.ts";
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -15,6 +16,9 @@ export const loadFailure = (failure: Failure): string =>
   failure.code === "network"
     ? "The vault didn't answer. Check your connection, then try again."
     : "The vault couldn't load your records. Try again in a minute.";
+
+/** How long the list loads before its skeleton shows. */
+const SKELETON_AFTER_MS = 200;
 
 export const CHAIN_REFUSED =
   "Your company's list of who may read what doesn't check out against the owner key your keys trust, so nothing is opened. Tell your company's owner.";
@@ -40,13 +44,22 @@ function row(item: Listed, href: (record: string) => string): HTMLElement {
 }
 
 /** Draws the list into `main`; `href` names the view of one record. */
-export async function drawList(main: HTMLElement, held: Unlocked, href: (record: string) => string, newHref: string): Promise<void> {
+export async function drawList(main: HTMLElement, held: Unlocked, href: (record: string) => string, newHref: string, stops: Stops): Promise<void> {
   const title = heading("Records");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening your records."));
   const head = el("div", { class: "page-head" }, title, el("a", { class: "button primary", href: newHref }, "New record"));
   fill(main, head, said);
+  // A load that takes longer than a glance shows where the rows will be, so the page does not sit blank.
+  const skeleton = el("ul", { class: "records skeleton", "aria-hidden": "true" }, ...[1, 2, 3].map(() => el("li", { class: "record" }, el("span", { class: "bone" }))));
+  const slow = window.setTimeout(() => main.append(skeleton), SKELETON_AFTER_MS);
+  const loaded = (): void => {
+    window.clearTimeout(slow);
+    skeleton.remove();
+  };
+  stops.push(loaded);
   const chain = await vouchedChain(held);
   if (!chain.ok) {
+    loaded();
     fill(said, refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
     return;
   }
@@ -54,7 +67,15 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
   const items: Listed[] = [];
   let next: string | null = null;
   let type: string | null = null;
-  const search = el("input", { id: "record-filter", type: "search", autocomplete: "off" });
+  const search = el("input", { id: "record-filter", type: "search", autocomplete: "off", "aria-keyshortcuts": "Control+K Meta+K" });
+  const toFilter = (event: KeyboardEvent): void => {
+    if (findsRecords(event) && !filter.hidden) {
+      event.preventDefault();
+      search.focus();
+    }
+  };
+  document.addEventListener("keydown", toFilter);
+  stops.push(() => document.removeEventListener("keydown", toFilter));
   const types = el("div", { class: "chips", role: "group", "aria-label": "Type" });
   const list = el("ul", { class: "records", "aria-label": "Records" });
   const more = el("button", { type: "button", class: "quiet" }, "Load more");
@@ -108,7 +129,9 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
     next = page.value.next;
     return true;
   };
-  if (!(await load())) {
+  const first = await load();
+  loaded();
+  if (!first) {
     return;
   }
   search.addEventListener("input", render);
