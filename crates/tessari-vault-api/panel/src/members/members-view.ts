@@ -16,12 +16,13 @@ import { readDirectory } from "../records/shares-model.ts";
 import { memberRows, statementBody, vouchStatement, type MemberRow } from "./members-model.ts";
 import { keyStateWords, vouchFailure, vouchRefused } from "./members-words.ts";
 import { addMemberForm, invitedBlock, type Invited } from "./add-member.ts";
+import { mayManage } from "./member-admin.ts";
 
 const ROLE_WORDS = { owner: "Owner", admin: "Admin", member: "Member" } as const;
 
 /** Draws the members page into `main`; `notice` is said at its top, as after a vouch the chain had moved past, and
  *  `invited` shows the join link of someone just added. */
-export async function drawMembers(main: HTMLElement, held: Unlocked, notice: string | null = null, invited: Invited | null = null): Promise<void> {
+export async function drawMembers(main: HTMLElement, held: Unlocked, pageOf: (account: string) => string, notice: string | null = null, invited: Invited | null = null): Promise<void> {
   const title = heading("Members");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the members."));
   fill(main, el("div", { class: "page-head" }, title), said);
@@ -47,7 +48,7 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, notice: str
   const rows = await memberRows(members.value, directory.value, vouched);
   const me = rows.find((row) => row.account === held.account);
   const mayVouch = me?.role === "owner" || me?.role === "admin";
-  const again = (words: string | null = null): void => void drawMembers(main, held, words);
+  const again = (words: string | null = null): void => void drawMembers(main, held, pageOf, words);
 
   const fingerprint = el("p", { class: "fingerprint" });
   const dialogSaid = el("div", { "aria-live": "polite" });
@@ -106,10 +107,11 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, notice: str
       fill(dialogSaid, null);
       dialog.showModal();
     });
+    const shownName = row.account === held.account ? `${row.label} (you)` : row.label;
     return el(
       "li",
       { class: "share member" },
-      el("div", {}, el("span", { class: "share-name" }, row.account === held.account ? `${row.label} (you)` : row.label), el("span", { class: "detail" }, row.detail)),
+      el("div", {}, me !== undefined && mayManage(me.role, row.role) ? el("a", { class: "share-name", href: pageOf(row.account) }, shownName) : el("span", { class: "share-name" }, shownName), el("span", { class: "detail" }, row.detail)),
       el("span", { class: "muted" }, ROLE_WORDS[row.role]),
       row.suspended ? el("span", { class: "state" }, "Suspended") : el("span", { class: `state ${row.state}` }, keyStateWords(row.state)),
       vouch ?? el("span", {}),
@@ -123,7 +125,7 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, notice: str
     invited === null ? null : invitedBlock(invited),
     own === null ? null : el("section", { class: "record-section", "aria-labelledby": "own-key" }, el("h2", { id: "own-key" }, "Your key's fingerprint"), el("p", { class: "fingerprint" }, own)),
     el("section", { class: "record-section", "aria-labelledby": "everyone" }, el("h2", { id: "everyone" }, "Everyone in the company"), el("ul", { class: "shares" }, ...items)),
-    me === undefined || !mayVouch ? null : addMemberForm(held, me.role, (added) => void drawMembers(main, held, null, added)),
+    me === undefined || !mayVouch ? null : addMemberForm(held, me.role, (added) => void drawMembers(main, held, pageOf, null, added)),
     dialog,
   );
   title.focus();

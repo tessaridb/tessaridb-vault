@@ -42,3 +42,21 @@ export function memberFailure(failure: Failure): string {
       return "The vault couldn't make this change. Try again; if it keeps failing, tell your company's owner.";
   }
 }
+
+/** Whether someone holding `mine` may change, suspend or remove a member holding `theirs`: an owner's acts are an owner's. */
+export const mayManage = (mine: Role, theirs: Role): boolean => mine === "owner" || (mine === "admin" && theirs !== "owner");
+
+/** The trail above a member's own page; `name` is null until the member is read. */
+export const memberCrumbs = (members: string, name: string | null): Array<{ readonly label: string; readonly href: string | null }> => [
+  { label: "Members", href: members },
+  { label: name ?? "Member", href: null },
+];
+
+/** What the dialog removing `name` from `company` says, and its confirm button. */
+export function removeWords(name: string, company: string): { readonly title: string; readonly body: string; readonly confirm: string } {
+  return {
+    title: `Remove \u201C${name}\u201D from ${company}?`,
+    body: "They lose every record and group at their next request. The keys they held are marked for new keys: make the groups\u2019 on the Groups page; each record gets one the next time it is saved.",
+    confirm: `Remove ${name}`,
+  };
+}

@@ -3490,65 +3490,6 @@ ${END}
     title.focus();
   }
 
-  // src/crypto/fingerprint.ts
-  var SHOWN_BYTES = 16;
-  async function keyFingerprint(agreementPublic, signingPublic) {
-    const digest2 = new Uint8Array(await crypto.subtle.digest("SHA-256", concat(utf8(LABEL.fingerprint), field2(agreementPublic), field2(signingPublic))));
-    const digits = [...digest2.subarray(0, SHOWN_BYTES)].map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join("");
-    return digits.match(/.{4}/g)?.join(" ") ?? digits;
-  }
-
-  // src/members/members-model.ts
-  async function memberRows(members, directory, vouched) {
-    return Promise.all(
-      members.map(async (member) => {
-        const listed = directory.get(member.account);
-        const base = { account: member.account, label: member.name, detail: member.email, role: member.role, suspended: !member.active };
-        if (listed === void 0) {
-          return { ...base, state: "no-key", fingerprint: null };
-        }
-        const agreement = vouched.agreementKeyOf(member.account);
-        const signing = vouched.signingKeyOf(member.account);
-        const matches2 = agreement !== void 0 && signing !== void 0 && sameBytes(agreement, listed.agreementPublic) && sameBytes(signing, listed.signingPublic);
-        return { ...base, state: matches2 ? "vouched" : "waiting", fingerprint: await keyFingerprint(listed.agreementPublic, listed.signingPublic) };
-      })
-    );
-  }
-  async function vouchStatement(company, ownerSigning, chain, signer, account, key) {
-    const statement = await appendStatement(company, chain.at(-1), { kind: "member", subject: account, agreementPublic: key.agreementPublic, signingPublic: key.signingPublic }, signer);
-    await verifyChain(company, ownerSigning, [...chain, statement]);
-    return statement;
-  }
-  var statementBody = (seq, statement) => ({
-    seq,
-    bytes: encode(statement.bytes),
-    signature: encode(statement.signature)
-  });
-
-  // src/members/members-words.ts
-  function keyStateWords(state) {
-    switch (state) {
-      case "vouched":
-        return "Key vouched for";
-      case "waiting":
-        return "Key waiting to be vouched for";
-      case "no-key":
-        return "Hasn't set an unlock password yet";
-    }
-  }
-  function vouchFailure(status, code, fallback) {
-    if (status === 403) {
-      return "Only the company's owner or an admin can vouch for keys.";
-    }
-    if (status === 409 && code === "stale_chain") {
-      return "Someone vouched for a key meanwhile. The list is shown again; vouch once more.";
-    }
-    return fallback;
-  }
-  function vouchRefused(reason) {
-    return reason === "unvouched-signer" ? "Only the company's owner or an admin the owner vouched for can vouch for keys, and your key isn't one of them yet." : "Your company's list of who may read what doesn't check out, so nothing was vouched for. Tell your company's owner.";
-  }
-
   // src/members/member-admin.ts
   var joinLink = (origin, path, token2) => `${origin}${path}#/join?token=${encodeURIComponent(token2)}`;
   function roleChoices(mine) {
@@ -3580,6 +3521,18 @@ ${END}
       default:
         return "The vault couldn't make this change. Try again; if it keeps failing, tell your company's owner.";
     }
+  }
+  var mayManage = (mine, theirs) => mine === "owner" || mine === "admin" && theirs !== "owner";
+  var memberCrumbs = (members, name) => [
+    { label: "Members", href: members },
+    { label: name ?? "Member", href: null }
+  ];
+  function removeWords(name, company) {
+    return {
+      title: `Remove “${name}” from ${company}?`,
+      body: "They lose every record and group at their next request. The keys they held are marked for new keys: make the groups’ on the Groups page; each record gets one the next time it is saved.",
+      confirm: `Remove ${name}`
+    };
   }
 
   // src/members/add-member.ts
@@ -3652,9 +3605,151 @@ ${END}
     return form2;
   }
 
-  // src/members/members-view.ts
+  // src/members/member-page.ts
   var ROLE_WORDS2 = { owner: "Owner", admin: "Admin", member: "Member" };
-  async function drawMembers(main2, held2, notice2 = null, invited = null) {
+  var ROLE_AS = { owner: "an owner", admin: "an admin", member: "a member" };
+  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var readToken2 = (v) => isRecord8(v) && typeof v["token"] === "string" && v["token"] !== "" ? v["token"] : null;
+  async function drawMember(main2, held2, account, members, gone, notice2 = null) {
+    fill(main2, breadcrumbs(memberCrumbs(members, null)), el("div", { class: "page-head" }, heading("Member")), el("p", { class: "muted", role: "status" }, "Loading the member."));
+    const listed = await call("GET", `${companyPath(held2)}/members`, readMemberList);
+    const them = listed.ok ? listed.value.find((each) => each.account === account) : void 0;
+    const me = listed.ok ? listed.value.find((each) => each.account === held2.account) : void 0;
+    if (!listed.ok || them === void 0 || me === void 0) {
+      const words = listed.ok ? memberFailure({ ok: false, status: 404, code: "not_found", message: "" }) : loadFailure(listed);
+      fill(main2, breadcrumbs(memberCrumbs(members, null)), el("div", { class: "page-head" }, heading("Member")), refusal(words));
+      return;
+    }
+    const base = `${companyPath(held2)}/members/${encodeURIComponent(account)}`;
+    const said = el("div", { "aria-live": "polite" }, notice2 === null ? null : el("p", { class: "muted", role: "status" }, notice2));
+    const again = (words = null) => void drawMember(main2, held2, account, members, gone, words);
+    const send = (method, body, then) => {
+      fill(said, el("p", { class: "muted", role: "status" }, "Saving."));
+      void call(method, base, ignored, body === void 0 ? {} : { body }).then((answer) => answer.ok ? then() : fill(said, refusal(memberFailure(answer))));
+    };
+    const head = el("div", { class: "page-head" }, el("div", {}, heading(them.name), el("p", { class: "lede" }, `${ROLE_WORDS2[them.role]} · ${them.email}${them.active ? "" : " · Suspended"}`)));
+    if (!mayManage(me.role, them.role)) {
+      fill(main2, breadcrumbs(memberCrumbs(members, them.name)), head, refusal(memberFailure({ ok: false, status: 403, code: "forbidden", message: "" })));
+      return;
+    }
+    fill(main2, breadcrumbs(memberCrumbs(members, them.name)), head, said, roleSection(me, them, (role) => send("PATCH", { role }, () => again(`${them.name} is now ${ROLE_AS[role]}.`))), accessSection(them, send, again), linkSection(them, base, said), removeSection(held2, them, send, gone));
+  }
+  function roleSection(me, them, change) {
+    let role = them.role;
+    const choices = roleChoices(me.role);
+    const chips = choices.map((each) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === role) }, ROLE_WORDS2[each]));
+    chips.forEach(
+      (chip, at2) => chip.addEventListener("click", () => {
+        role = choices[at2] ?? role;
+        chips.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at2)));
+      })
+    );
+    const save = el("button", { type: "button" }, "Change role");
+    save.addEventListener("click", () => role === them.role ? void 0 : change(role));
+    return el("section", { class: "record-section", "aria-labelledby": "member-role" }, el("h2", { id: "member-role" }, "Role"), el("div", { class: "chips", role: "group", "aria-labelledby": "member-role" }, ...chips), save);
+  }
+  function accessSection(them, send, again) {
+    const button = el("button", { type: "button" }, them.active ? "Suspend" : "Resume");
+    button.addEventListener(
+      "click",
+      () => send("PATCH", { state: them.active ? "suspended" : "active" }, () => again(them.active ? `${them.name} is suspended and can't sign in until resumed.` : `${them.name} can sign in again.`))
+    );
+    const lead = them.active ? "Suspending stops them signing in and opening anything, until they are resumed." : "They can't sign in while suspended.";
+    return el("section", { class: "record-section", "aria-labelledby": "member-access" }, el("h2", { id: "member-access" }, "Access"), el("p", { class: "muted" }, lead), button);
+  }
+  function linkSection(them, base, said) {
+    const shown = el("div", {});
+    const button = el("button", { type: "button" }, "New join link");
+    button.addEventListener("click", () => {
+      button.disabled = true;
+      void call("POST", `${base}/enrolment`, readToken2).then((answer) => {
+        button.disabled = false;
+        if (!answer.ok) {
+          fill(said, refusal(memberFailure(answer)));
+          return;
+        }
+        fill(shown, invitedBlock({ name: them.name, link: joinLink(window.location.origin, window.location.pathname, answer.value) }));
+      });
+    });
+    return el("section", { class: "record-section", "aria-labelledby": "member-link" }, el("h2", { id: "member-link" }, "Join link"), el("p", { class: "muted" }, "For someone who hasn't joined yet, or whose link expired."), button, shown);
+  }
+  function removeSection(held2, them, send, gone) {
+    const words = removeWords(them.name, held2.companyName);
+    const keep2 = el("button", { type: "button", autofocus: "" }, "Keep them");
+    const confirmed = el("button", { type: "button", class: "danger" }, words.confirm);
+    const dialog = el("dialog", { class: "confirm", "aria-labelledby": "remove-member-title" }, el("h2", { id: "remove-member-title" }, words.title), el("p", {}, words.body), el("div", { class: "actions" }, keep2, confirmed));
+    const remove = el("button", { type: "button", class: "danger" }, "Remove from the company");
+    remove.addEventListener("click", () => dialog.showModal());
+    keep2.addEventListener("click", () => dialog.close());
+    confirmed.addEventListener("click", () => {
+      dialog.close();
+      send("DELETE", void 0, gone);
+    });
+    return el("section", { class: "record-section", "aria-labelledby": "member-remove" }, el("h2", { id: "member-remove" }, "Remove"), remove, dialog);
+  }
+
+  // src/crypto/fingerprint.ts
+  var SHOWN_BYTES = 16;
+  async function keyFingerprint(agreementPublic, signingPublic) {
+    const digest2 = new Uint8Array(await crypto.subtle.digest("SHA-256", concat(utf8(LABEL.fingerprint), field2(agreementPublic), field2(signingPublic))));
+    const digits = [...digest2.subarray(0, SHOWN_BYTES)].map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join("");
+    return digits.match(/.{4}/g)?.join(" ") ?? digits;
+  }
+
+  // src/members/members-model.ts
+  async function memberRows(members, directory, vouched) {
+    return Promise.all(
+      members.map(async (member) => {
+        const listed = directory.get(member.account);
+        const base = { account: member.account, label: member.name, detail: member.email, role: member.role, suspended: !member.active };
+        if (listed === void 0) {
+          return { ...base, state: "no-key", fingerprint: null };
+        }
+        const agreement = vouched.agreementKeyOf(member.account);
+        const signing = vouched.signingKeyOf(member.account);
+        const matches2 = agreement !== void 0 && signing !== void 0 && sameBytes(agreement, listed.agreementPublic) && sameBytes(signing, listed.signingPublic);
+        return { ...base, state: matches2 ? "vouched" : "waiting", fingerprint: await keyFingerprint(listed.agreementPublic, listed.signingPublic) };
+      })
+    );
+  }
+  async function vouchStatement(company, ownerSigning, chain, signer, account, key) {
+    const statement = await appendStatement(company, chain.at(-1), { kind: "member", subject: account, agreementPublic: key.agreementPublic, signingPublic: key.signingPublic }, signer);
+    await verifyChain(company, ownerSigning, [...chain, statement]);
+    return statement;
+  }
+  var statementBody = (seq, statement) => ({
+    seq,
+    bytes: encode(statement.bytes),
+    signature: encode(statement.signature)
+  });
+
+  // src/members/members-words.ts
+  function keyStateWords(state) {
+    switch (state) {
+      case "vouched":
+        return "Key vouched for";
+      case "waiting":
+        return "Key waiting to be vouched for";
+      case "no-key":
+        return "Hasn't set an unlock password yet";
+    }
+  }
+  function vouchFailure(status, code, fallback) {
+    if (status === 403) {
+      return "Only the company's owner or an admin can vouch for keys.";
+    }
+    if (status === 409 && code === "stale_chain") {
+      return "Someone vouched for a key meanwhile. The list is shown again; vouch once more.";
+    }
+    return fallback;
+  }
+  function vouchRefused(reason) {
+    return reason === "unvouched-signer" ? "Only the company's owner or an admin the owner vouched for can vouch for keys, and your key isn't one of them yet." : "Your company's list of who may read what doesn't check out, so nothing was vouched for. Tell your company's owner.";
+  }
+
+  // src/members/members-view.ts
+  var ROLE_WORDS3 = { owner: "Owner", admin: "Admin", member: "Member" };
+  async function drawMembers(main2, held2, pageOf, notice2 = null, invited = null) {
     const title = heading("Members");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Loading the members."));
     fill(main2, el("div", { class: "page-head" }, title), said);
@@ -3680,7 +3775,7 @@ ${END}
     const rows = await memberRows(members.value, directory.value, vouched);
     const me = rows.find((row2) => row2.account === held2.account);
     const mayVouch = me?.role === "owner" || me?.role === "admin";
-    const again = (words = null) => void drawMembers(main2, held2, words);
+    const again = (words = null) => void drawMembers(main2, held2, pageOf, words);
     const fingerprint = el("p", { class: "fingerprint" });
     const dialogSaid = el("div", { "aria-live": "polite" });
     const dialogTitle = el("h2", { id: "vouch-title" });
@@ -3735,11 +3830,12 @@ ${END}
         fill(dialogSaid, null);
         dialog.showModal();
       });
+      const shownName = row2.account === held2.account ? `${row2.label} (you)` : row2.label;
       return el(
         "li",
         { class: "share member" },
-        el("div", {}, el("span", { class: "share-name" }, row2.account === held2.account ? `${row2.label} (you)` : row2.label), el("span", { class: "detail" }, row2.detail)),
-        el("span", { class: "muted" }, ROLE_WORDS2[row2.role]),
+        el("div", {}, me !== void 0 && mayManage(me.role, row2.role) ? el("a", { class: "share-name", href: pageOf(row2.account) }, shownName) : el("span", { class: "share-name" }, shownName), el("span", { class: "detail" }, row2.detail)),
+        el("span", { class: "muted" }, ROLE_WORDS3[row2.role]),
         row2.suspended ? el("span", { class: "state" }, "Suspended") : el("span", { class: `state ${row2.state}` }, keyStateWords(row2.state)),
         vouch ?? el("span", {})
       );
@@ -3752,22 +3848,22 @@ ${END}
       invited === null ? null : invitedBlock(invited),
       own === null ? null : el("section", { class: "record-section", "aria-labelledby": "own-key" }, el("h2", { id: "own-key" }, "Your key's fingerprint"), el("p", { class: "fingerprint" }, own)),
       el("section", { class: "record-section", "aria-labelledby": "everyone" }, el("h2", { id: "everyone" }, "Everyone in the company"), el("ul", { class: "shares" }, ...items)),
-      me === void 0 || !mayVouch ? null : addMemberForm(held2, me.role, (added) => void drawMembers(main2, held2, null, added)),
+      me === void 0 || !mayVouch ? null : addMemberForm(held2, me.role, (added) => void drawMembers(main2, held2, pageOf, null, added)),
       dialog
     );
     title.focus();
   }
 
   // src/groups/group-members.ts
-  var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord9 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   var isId4 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   var isText5 = (v) => typeof v === "string" && v !== "";
   function readGroupMembers(v) {
-    if (!isRecord8(v) || !Array.isArray(v["members"])) {
+    if (!isRecord9(v) || !Array.isArray(v["members"])) {
       return null;
     }
     const members = v["members"].map(
-      (member) => isRecord8(member) && isId4(member["id"]) && isText5(member["email"]) && isText5(member["name"]) ? { account: member["id"], email: member["email"], name: member["name"] } : null
+      (member) => isRecord9(member) && isId4(member["id"]) && isText5(member["email"]) && isText5(member["name"]) ? { account: member["id"], email: member["email"], name: member["name"] } : null
     );
     return members.every((member) => member !== null) ? members : null;
   }
@@ -3793,15 +3889,15 @@ ${END}
 
   // src/groups/groups-model.ts
   var KEY_BYTES5 = 32;
-  var isRecord9 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord10 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   var isId5 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
   var isText6 = (v) => typeof v === "string" && v !== "";
   function readGroupRows(v) {
-    if (!isRecord9(v) || !Array.isArray(v["groups"])) {
+    if (!isRecord10(v) || !Array.isArray(v["groups"])) {
       return null;
     }
     const rows = v["groups"].map((group) => {
-      if (!isRecord9(group) || !isId5(group["id"]) || !isText6(group["name"]) || !isId5(group["parent"])) {
+      if (!isRecord10(group) || !isId5(group["id"]) || !isText6(group["name"]) || !isId5(group["parent"])) {
         return null;
       }
       const { kind } = group;
@@ -3816,11 +3912,11 @@ ${END}
     return [{ id: company.id, kind: "company", name: company.name, depth: 0 }, ...departments, ...teamsOf(company.id, 1)];
   }
   function readPending(v) {
-    if (!isRecord9(v) || !Array.isArray(v["pending"])) {
+    if (!isRecord10(v) || !Array.isArray(v["pending"])) {
       return null;
     }
     const keys = v["pending"].map((item) => {
-      if (!isRecord9(item) || !isId5(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
+      if (!isRecord10(item) || !isId5(item["account"]) || typeof item["key_id"] !== "string" || typeof item["agreement_public"] !== "string") {
         return null;
       }
       const keyId = keyIdBytes(item["key_id"]);
@@ -3842,7 +3938,7 @@ ${END}
     }
   }
   function readRotationDue(v) {
-    return isRecord9(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
+    return isRecord10(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
   }
 
   // src/groups/group-page.ts
@@ -4170,9 +4266,9 @@ ${END}
   }
 
   // src/join-model.ts
-  var isRecord10 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord11 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readAuthenticator(v) {
-    if (!isRecord10(v)) {
+    if (!isRecord11(v)) {
       return null;
     }
     const { secret, uri } = v;
@@ -4217,22 +4313,22 @@ ${END}
   }
 
   // src/sign-in-model.ts
-  var isRecord11 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord12 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readMethods(v) {
-    if (!isRecord11(v)) {
+    if (!isRecord12(v)) {
       return null;
     }
     const { password, passkey: passkey2, provider } = v;
     return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
   }
   function readChallenge(v) {
-    return isRecord11(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+    return isRecord12(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
   }
   function readSession(v) {
-    return isRecord11(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+    return isRecord12(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
   function readPasskeyRequest(v) {
-    return isRecord11(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+    return isRecord12(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
   function signInFailure(failure) {
     switch (failure.code) {
@@ -5079,6 +5175,7 @@ ${END}
     record: { path: "/records/:record", guard: open2 },
     editRecord: { path: "/records/:record/edit", guard: open2 },
     members: { path: "/members", guard: open2 },
+    member: { path: "/members/:account", guard: open2 },
     groups: { path: "/groups", guard: open2 },
     group: { path: "/groups/:group", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
@@ -5146,7 +5243,14 @@ ${END}
       case "members": {
         const held2 = unlocked();
         if (held2 !== null) {
-          void drawMembers(view2, held2);
+          void drawMembers(view2, held2, (account) => router.href("member", { account }));
+        }
+        break;
+      }
+      case "member": {
+        const held2 = unlocked();
+        if (held2 !== null) {
+          void drawMember(view2, held2, outcome.match.params.account, router.href("members", {}), () => go(router.href("members", {})));
         }
         break;
       }

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { tokenFrom } from "../../src/join-model.ts";
-import { joinLink, memberFailure, roleChoices } from "../../src/members/member-admin.ts";
+import { joinLink, mayManage, memberCrumbs, memberFailure, removeWords, roleChoices } from "../../src/members/member-admin.ts";
 
 const failure = (status: number, code: string) => ({ ok: false as const, status, code, message: "server words" });
 
@@ -40,5 +40,36 @@ describe("what a refused change to a member says", () => {
     assert.match(memberFailure(failure(404, "not_found")), /aren't in the company any more/);
     assert.match(memberFailure(failure(400, "invalid")), /name and a work email/);
     assert.match(memberFailure(failure(0, "network")), /didn't answer/);
+  });
+});
+
+describe("whom a person may manage", () => {
+  it("is anyone for an owner, anyone but an owner for an admin, nobody for a member", () => {
+    assert.equal(mayManage("owner", "owner"), true);
+    assert.equal(mayManage("admin", "admin"), true);
+    assert.equal(mayManage("admin", "member"), true);
+    assert.equal(mayManage("admin", "owner"), false);
+    assert.equal(mayManage("member", "member"), false);
+  });
+});
+
+describe("a member's own page", () => {
+  it("trails under Members, the person unlinked", () => {
+    assert.deepEqual(memberCrumbs("#/members", "Kim Third"), [
+      { label: "Members", href: "#/members" },
+      { label: "Kim Third", href: null },
+    ]);
+    assert.deepEqual(memberCrumbs("#/members", null), [
+      { label: "Members", href: "#/members" },
+      { label: "Member", href: null },
+    ]);
+  });
+
+  it("asks before removing someone, naming them and what changes", () => {
+    const words = removeWords("Kim Third", "Northwind");
+    assert.equal(words.title, "Remove \u201CKim Third\u201D from Northwind?");
+    assert.match(words.body, /next request/);
+    assert.match(words.body, /new keys/);
+    assert.equal(words.confirm, "Remove Kim Third");
   });
 });

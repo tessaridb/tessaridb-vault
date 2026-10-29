@@ -109,6 +109,11 @@ button.chip[aria-pressed="true"] {
   margin-block-start: var(--s-6);
 }
 
+/* A section's action sits as far under a line of words or a row of chips as under a field. */
+.record-section > :is(p, .chips):has(+ button) {
+  margin-block-end: var(--s-5);
+}
+
 /* A record's fields read as a table: one row per field, a label column, and the value with its actions pushed to the
    row's end, so every Copy sits in one column. Each row is one line box tall and centred on it, whatever it holds. */
 .fields {
