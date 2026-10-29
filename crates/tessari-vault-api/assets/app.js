@@ -4715,51 +4715,198 @@ ${END}
     return el("section", { class: "record-section", "aria-labelledby": "company-delete" }, el("h2", { id: "company-delete" }, "Delete the company"), el("p", { class: "muted" }, WHAT_HAPPENS), open3, dialog);
   }
 
+  // src/platform/platform-model.ts
+  var isRecord15 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isText7 = (v) => typeof v === "string" && v !== "";
+  function readQueue(v) {
+    if (!isRecord15(v) || !Array.isArray(v["drops"])) {
+      return null;
+    }
+    const open3 = [];
+    for (const item of v["drops"]) {
+      const standing = readStanding(item);
+      if (!isRecord15(item) || !isText7(item["company"]) || standing === null) {
+        return null;
+      }
+      open3.push({ company: item["company"], standing });
+    }
+    return open3;
+  }
+  var platformRows = (companies, open3) => companies.map((company) => ({
+    id: company.id,
+    name: company.name,
+    state: company.active ? "active" : company.closing ? "closing" : "suspended",
+    deletion: open3.find((each) => each.company === company.id)?.standing ?? null
+  }));
+  function readCreated2(v) {
+    if (!isRecord15(v) || !isText7(v["id"]) || !isText7(v["name"])) {
+      return null;
+    }
+    const token2 = v["owner_enrolment"];
+    return token2 === null || isText7(token2) ? { id: v["id"], name: v["name"], token: token2 } : null;
+  }
+  function platformFailure(failure) {
+    switch (failure.code) {
+      case "invalid":
+        return "Give the company a name, and its owner's work email and name.";
+      case "forbidden":
+        return "Only the platform admin manages companies.";
+      case "not_found":
+        return "No owner is asking for this deletion any more. The list is shown again.";
+      case "network":
+        return "The vault didn't answer. Check your connection, then try again.";
+      default:
+        return "The vault couldn't make this change. Try again.";
+    }
+  }
+
+  // src/platform/platform-page.ts
+  var STATE_WORDS = { active: "Active", suspended: "Suspended", closing: "Read-only, being deleted" };
+  async function drawPlatform(main2, notice2 = null, invited = null) {
+    fill(main2, el("div", { class: "page-head" }, heading("Companies")), el("p", { class: "muted", role: "status" }, "Loading the companies."));
+    const [companies, queue] = await Promise.all([call("GET", "/api/companies", readCompanies), call("GET", "/api/company-drops", readQueue)]);
+    if (!companies.ok || !queue.ok) {
+      const failed2 = !companies.ok ? companies : queue.ok ? null : queue;
+      fill(main2, el("div", { class: "page-head" }, heading("Companies")), refusal(failed2 === null ? "" : failed2.code === "forbidden" ? platformFailure(failed2) : loadFailure(failed2)));
+      return;
+    }
+    const said = el("div", { "aria-live": "polite" }, notice2 === null ? null : el("p", { class: "muted", role: "status" }, notice2));
+    const again = (words) => void drawPlatform(main2, words);
+    const rows = platformRows(companies.value, queue.value);
+    const list = rows.length === 0 ? el("p", { class: "muted" }, "No company yet. Create the first one below.") : el("ul", { class: "shares" }, ...rows.map((row2) => companyRow(row2, said, again)));
+    fill(
+      main2,
+      el("div", { class: "page-head" }, el("div", {}, heading("Companies"), el("p", { class: "lede" }, "Every company on this vault.")), el("a", { href: "#/unlock" }, "Unlock a company")),
+      said,
+      invited === null ? null : invitedBlock(invited),
+      el("section", { class: "record-section", "aria-labelledby": "platform-list" }, el("h2", { id: "platform-list" }, "Companies"), list),
+      createSection(said, (words, made) => void drawPlatform(main2, words, made))
+    );
+  }
+  function companyRow(row2, said, again) {
+    const base = `/api/companies/${encodeURIComponent(row2.id)}`;
+    const send = (path2, reason, words) => {
+      fill(said, el("p", { class: "muted", role: "status" }, "Saving."));
+      void call("POST", path2, ignored, reason === void 0 ? {} : { reason }).then((answer) => answer.ok ? again(words) : fill(said, refusal(platformFailure(answer))));
+    };
+    const detail = row2.deletion === null ? STATE_WORDS[row2.state] : row2.deletion.state === "requested" ? `${STATE_WORDS[row2.state]} · an owner asked for its deletion` : `${STATE_WORDS[row2.state]} · deleted after ${new Date(row2.deletion.dropAfter * 1e3).toLocaleString()}`;
+    const actions = [];
+    if (row2.state !== "closing") {
+      const toggle = el("button", { type: "button" }, row2.state === "active" ? "Suspend" : "Resume");
+      toggle.addEventListener("click", () => send(`${base}/${row2.state === "active" ? "suspend" : "resume"}`, void 0, row2.state === "active" ? `${row2.name} is suspended.` : `${row2.name} is active again.`));
+      actions.push(toggle);
+    }
+    if (row2.deletion?.state === "requested") {
+      actions.push(confirmControl(row2, (reason) => send(`${base}/drop/confirm`, reason, `${row2.name} is read-only and will be deleted in seven days unless an owner cancels.`)));
+    }
+    return el("li", { class: "share" }, el("div", {}, el("span", { class: "share-name" }, row2.name), el("span", { class: "detail" }, detail)), el("span", { class: "row-actions" }, ...actions));
+  }
+  function confirmControl(row2, confirmed) {
+    const named2 = field(`confirm-name-${row2.id}`, "Type the company's name to confirm", { autocomplete: "off" }, row2.name);
+    const why = field(`confirm-reason-${row2.id}`, "Why you confirm it", { autocomplete: "off" }, "Kept on the company's trail.");
+    const go2 = el("button", { type: "button", class: "danger", disabled: "" }, `Confirm deleting ${row2.name}`);
+    const keep2 = el("button", { type: "button", autofocus: "" }, "Not now");
+    const dialog = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": `confirm-title-${row2.id}` },
+      el("h2", { id: `confirm-title-${row2.id}` }, `Confirm deleting ${row2.name}?`),
+      el("p", {}, "An owner asked for this. Once you confirm, the company is read-only for seven days and any owner can still cancel; then the operator's deletion run deletes it for good, keeping its trail."),
+      named2.row,
+      why.row,
+      el("div", { class: "actions" }, keep2, go2)
+    );
+    const ready = () => {
+      go2.disabled = !deletionReady(named2.input.value, why.input.value, row2.name);
+    };
+    named2.input.addEventListener("input", ready);
+    why.input.addEventListener("input", ready);
+    keep2.addEventListener("click", () => dialog.close());
+    go2.addEventListener("click", () => {
+      if (deletionReady(named2.input.value, why.input.value, row2.name)) {
+        dialog.close();
+        confirmed(why.input.value.trim());
+      }
+    });
+    const open3 = el("button", { type: "button", class: "danger" }, "Confirm deletion");
+    open3.addEventListener("click", () => {
+      named2.input.value = "";
+      why.input.value = "";
+      ready();
+      dialog.showModal();
+    });
+    return el("span", {}, open3, dialog);
+  }
+  function createSection(said, created) {
+    const name = field("new-company-name", "Company name", { autocomplete: "off" });
+    const email = field("new-owner-email", "Owner's work email", { type: "email", autocomplete: "off" });
+    const owner = field("new-owner-name", "Owner's name", { autocomplete: "off" });
+    const create = el("button", { type: "submit" }, "Create company");
+    const form2 = el("form", { novalidate: "" }, name.row, email.row, owner.row, create);
+    form2.addEventListener("submit", (event) => {
+      event.preventDefault();
+      create.disabled = true;
+      const body = { name: name.input.value.trim(), owner_email: email.input.value.trim(), owner_name: owner.input.value.trim() };
+      void call("POST", "/api/companies", readCreated2, { body }).then((answer) => {
+        create.disabled = false;
+        if (!answer.ok) {
+          fill(said, refusal(platformFailure(answer)));
+          return;
+        }
+        announce(`${answer.value.name} is created.`);
+        created(
+          answer.value.token === null ? `${answer.value.name} is created. Its owner already has a sign-in and finds it after signing in.` : `${answer.value.name} is created. Send its owner the join link below.`,
+          answer.value.token === null ? null : { name: body.owner_name, link: joinLink(window.location.origin, window.location.pathname, answer.value.token) }
+        );
+      });
+    });
+    return el("section", { class: "record-section", "aria-labelledby": "platform-create" }, el("h2", { id: "platform-create" }, "Create a company"), el("p", { class: "muted" }, "Its owner gets a single-use join link, shown here once. Send it to them yourself."), form2);
+  }
+
   // src/recovery/recovery-model.ts
   var KEY_BYTES7 = 32;
-  var isRecord15 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord16 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   var isKeyId = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
-  var isText7 = (v) => typeof v === "string" && v !== "";
+  var isText8 = (v) => typeof v === "string" && v !== "";
   function bytesOf(v, length) {
-    const bytes = isText7(v) ? decode(v) : null;
+    const bytes = isText8(v) ? decode(v) : null;
     return bytes === null || bytes.length === 0 || length !== void 0 && bytes.length !== length ? null : bytes;
   }
-  var readOwnEscrow = (v) => isRecord15(v) && isKeyId(v["recovery_key_id"]) ? v["recovery_key_id"] : null;
+  var readOwnEscrow = (v) => isRecord16(v) && isKeyId(v["recovery_key_id"]) ? v["recovery_key_id"] : null;
   function readRecoveryKey(v) {
-    const key = isRecord15(v) && isKeyId(v["key_id"]) ? v["key_id"] : null;
-    const listed = isRecord15(v) ? bytesOf(v["public"], KEY_BYTES7) : null;
+    const key = isRecord16(v) && isKeyId(v["key_id"]) ? v["key_id"] : null;
+    const listed = isRecord16(v) ? bytesOf(v["public"], KEY_BYTES7) : null;
     return key === null || listed === null ? null : { keyId: key, public: listed };
   }
   function readWrap(idField) {
     return (v) => {
-      const key = isRecord15(v) && isKeyId(v[idField]) ? v[idField] : null;
-      const wrap = isRecord15(v) ? bytesOf(v["wrap"]) : null;
+      const key = isRecord16(v) && isKeyId(v[idField]) ? v[idField] : null;
+      const wrap = isRecord16(v) ? bytesOf(v["wrap"]) : null;
       return key === null || wrap === null ? null : { keyId: key, wrap };
     };
   }
   function readRequests(v) {
-    if (!isRecord15(v) || !Array.isArray(v["requests"])) {
+    if (!isRecord16(v) || !Array.isArray(v["requests"])) {
       return null;
     }
     const requests = [];
     for (const item of v["requests"]) {
-      const handoffPublic = isRecord15(item) ? bytesOf(item["handoff_public"], KEY_BYTES7) : null;
-      if (!isRecord15(item) || !isKeyId(item["id"]) || !isText7(item["account"]) || handoffPublic === null || !Number.isSafeInteger(item["created"])) {
+      const handoffPublic = isRecord16(item) ? bytesOf(item["handoff_public"], KEY_BYTES7) : null;
+      if (!isRecord16(item) || !isKeyId(item["id"]) || !isText8(item["account"]) || handoffPublic === null || !Number.isSafeInteger(item["created"])) {
         return null;
       }
       requests.push({ id: item["id"], account: item["account"], handoffPublic, created: Number(item["created"]) });
     }
     return requests;
   }
-  var readAsked = (v) => isRecord15(v) && isKeyId(v["id"]) ? v["id"] : null;
-  var readHandoff = (v) => isRecord15(v) ? bytesOf(v["wrap"]) : null;
+  var readAsked = (v) => isRecord16(v) && isKeyId(v["id"]) ? v["id"] : null;
+  var readHandoff = (v) => isRecord16(v) ? bytesOf(v["wrap"]) : null;
   function readNotices(v) {
-    if (!isRecord15(v) || !Array.isArray(v["notices"])) {
+    if (!isRecord16(v) || !Array.isArray(v["notices"])) {
       return null;
     }
     const notices = [];
     for (const item of v["notices"]) {
-      if (!isRecord15(item) || !isText7(item["by"]) || !isText7(item["kind"]) || !Number.isSafeInteger(item["at"])) {
+      if (!isRecord16(item) || !isText8(item["by"]) || !isText8(item["kind"]) || !Number.isSafeInteger(item["at"])) {
         return null;
       }
       notices.push({ by: item["by"], kind: item["kind"], at: Number(item["at"]) });
@@ -5145,9 +5292,9 @@ ${END}
   }
 
   // src/join-model.ts
-  var isRecord16 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord17 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readAuthenticator(v) {
-    if (!isRecord16(v)) {
+    if (!isRecord17(v)) {
       return null;
     }
     const { secret, uri } = v;
@@ -6123,7 +6270,8 @@ ${END}
         main2,
         card2(
           "No company yet",
-          me.value.platformAdmin ? "You're a platform admin and not a member of any company, so there are no records to unlock." : "You aren't a member of an active company yet. Ask your company's admin to add you."
+          me.value.platformAdmin ? "You're a platform admin and not a member of any company, so there are no records to unlock." : "You aren't a member of an active company yet. Ask your company's admin to add you.",
+          me.value.platformAdmin ? el("a", { class: "button", href: "#/platform" }, "Manage companies") : null
         )
       );
       return;
@@ -6270,6 +6418,7 @@ ${END}
     recovery: { path: "/recovery", guard: open2 },
     account: { path: "/account", guard: open2 },
     company: { path: "/company", guard: open2 },
+    platform: { path: "/platform", guard: session },
     signIn: { path: "/sign-in", query: { next: text } },
     join: { path: "/join", query: { token: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
@@ -6372,6 +6521,9 @@ ${END}
         break;
       case "company":
         withHeld((held2) => drawCompany(view2, held2));
+        break;
+      case "platform":
+        void drawPlatform(view2);
         break;
       case "signIn": {
         if (signedIn()) {

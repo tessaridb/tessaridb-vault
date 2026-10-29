@@ -249,6 +249,7 @@ export async function unlock(main: HTMLElement, done: () => void, signOut: () =>
         me.value.platformAdmin
           ? "You're a platform admin and not a member of any company, so there are no records to unlock."
           : "You aren't a member of an active company yet. Ask your company's admin to add you.",
+        me.value.platformAdmin ? el("a", { class: "button", href: "#/platform" }, "Manage companies") : null,
       ),
     );
     return;

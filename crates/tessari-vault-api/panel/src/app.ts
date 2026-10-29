@@ -20,6 +20,7 @@ import { drawGroups } from "./groups/groups-view.ts";
 import { drawTrail } from "./trail/trail-view.ts";
 import { drawAccount } from "./account/account-view.ts";
 import { drawCompany } from "./company/company-page.ts";
+import { drawPlatform } from "./platform/platform-page.ts";
 import { checkNotices, dropBanner, placeBanner } from "./recovery/notice-banner.ts";
 import { drawRecovery } from "./recovery/recovery-view.ts";
 import { bearer, forget } from "./session.ts";
@@ -55,6 +56,7 @@ const routes = defineRoutes({
   recovery: { path: "/recovery", guard: open },
   account: { path: "/account", guard: open },
   company: { path: "/company", guard: open },
+  platform: { path: "/platform", guard: session },
   signIn: { path: "/sign-in", query: { next: text } },
   join: { path: "/join", query: { token: text } },
   unlock: { path: "/unlock", query: { next: text }, guard: session },
@@ -169,6 +171,9 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
       break;
     case "company":
       withHeld((held) => drawCompany(view, held));
+      break;
+    case "platform":
+      void drawPlatform(view);
       break;
     case "signIn": {
       if (signedIn()) {
