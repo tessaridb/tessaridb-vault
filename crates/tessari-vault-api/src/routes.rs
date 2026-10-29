@@ -1,7 +1,7 @@
 //! The route table. The router is built from it and nothing else, so it is also the source set of the
 //! enforcement-point coverage matrix: a route added anywhere else would not be served.
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -236,7 +236,7 @@ fn part_limit() -> usize {
 
 /// The API's router, built from [`routes`].
 pub fn router(state: AppState) -> Router {
-    let mut by_path: BTreeMap<&'static str, MethodRouter<AppState>> = BTreeMap::new();
+    let mut by_path: HashMap<&'static str, MethodRouter<AppState>> = HashMap::new();
     for Route { path, handler, .. } in routes() {
         let merged = match by_path.remove(path) {
             Some(existing) => existing.merge(handler),
