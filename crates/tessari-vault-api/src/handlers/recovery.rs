@@ -20,6 +20,7 @@ use crate::state::AppState;
 pub(crate) struct RecoveryKeyItem {
     key_id: String,
     public: String,
+    rotation_due: bool,
 }
 
 #[derive(Serialize)]
@@ -84,6 +85,7 @@ pub(crate) async fn read(
     Ok(Json(RecoveryKeyItem {
         key_id: key.key_id.to_string(),
         public: base64url::encode(&key.public),
+        rotation_due: key.rotation_due,
     }))
 }
 

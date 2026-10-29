@@ -16,6 +16,12 @@ pub(crate) struct Escrowed<'a> {
     pub(crate) wrap: &'a [u8],
 }
 
+/// The recovery key a re-key retires, and the accounts whose escrow is made to it.
+pub(crate) struct Retiring<'a> {
+    pub(crate) key_id: &'a str,
+    pub(crate) escrowed: &'a [String],
+}
+
 #[async_trait]
 pub(crate) trait RecoveryRepository: Send + Sync {
     /// The company's recovery key, if an owner has made one.
@@ -33,6 +39,26 @@ pub(crate) trait RecoveryRepository: Send + Sync {
         key: &NewGroupKey,
         vault_key: VaultKey,
     ) -> Result<()>;
+
+    /// Replace the recovery key due for rotation, `retiring`, with `key` and its owners' wraps, and drop the escrows
+    /// made to the retiring key, under `guard`.
+    async fn rekey(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        company: &CompanyId,
+        retiring: Retiring<'_>,
+        key: &NewGroupKey,
+        vault_key: VaultKey,
+    ) -> Result<()>;
+
+    /// The accounts whose escrow is wrapped to the recovery key `key_id`.
+    async fn escrowed_to(
+        &self,
+        place: &Place,
+        company: &CompanyId,
+        key_id: &str,
+    ) -> Result<Vec<String>>;
 
     /// The wraps of the recovery key by the owner key id they are wrapped to; with `audit`, the read is on the trail
     /// first.

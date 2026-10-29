@@ -9,7 +9,7 @@ use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_types::{CompanyId, KeyId};
 
 use super::entity::RecoveryKey;
-use super::repository::RecoveryRepository;
+use super::repository::{RecoveryRepository, Retiring};
 use crate::access::{self, Actor, recorded};
 use crate::group_keys::{MemberWrap, NewGroupKey};
 use crate::keys::PublicKeys;
@@ -39,11 +39,13 @@ impl RecoveryService {
         }
     }
 
-    /// Keep the company's recovery key `key`, wrapped to owners' key sets.
+    /// Keep the company's recovery key `key`, wrapped to owners' key sets; a key due for rotation is replaced, and the
+    /// escrows made to it are dropped, so each member escrows again to the new one.
     ///
     /// # Errors
     ///
-    /// [`Error::Refused`] per the decision (owners only); [`Conflict::RecoveryKeyed`] when the company has one;
+    /// [`Error::Refused`] per the decision (owners only); [`Conflict::RecoveryKeyed`] when the company has one not
+    /// due for rotation;
     /// [`Conflict::OutsideReach`] for no wrap, a wrap to a key set that is not an owner's, or two to one.
     pub async fn keep(&self, actor: &Actor, company: &CompanyId, key: NewGroupKey) -> Result<()> {
         let standing = access::authorize(
@@ -54,7 +56,8 @@ impl RecoveryService {
             Action::KeyRecovery,
         )
         .await?;
-        if self.repository.get(&self.place, company).await?.is_some() {
+        let existing = self.repository.get(&self.place, company).await?;
+        if existing.as_ref().is_some_and(|entity| !entity.rotate) {
             return Err(Error::Conflict(Conflict::RecoveryKeyed));
         }
         let owners: HashSet<String> = self
@@ -73,19 +76,46 @@ impl RecoveryService {
         if !within {
             return Err(Error::Conflict(Conflict::OutsideReach));
         }
+        let vault_key = self.vaults.key(company, standing.key_epoch)?;
+        let Some(retiring) = existing else {
+            return self
+                .repository
+                .keep(
+                    &self.place,
+                    recorded(
+                        actor,
+                        company,
+                        &standing,
+                        "recovery.key",
+                        key.key_id().as_str(),
+                    ),
+                    company,
+                    &key,
+                    vault_key,
+                )
+                .await;
+        };
+        let escrowed = self
+            .repository
+            .escrowed_to(&self.place, company, &retiring.key_id)
+            .await?;
         self.repository
-            .keep(
+            .rekey(
                 &self.place,
                 recorded(
                     actor,
                     company,
                     &standing,
-                    "recovery.key",
+                    "recovery.key.rotate",
                     key.key_id().as_str(),
                 ),
                 company,
+                Retiring {
+                    key_id: &retiring.key_id,
+                    escrowed: &escrowed,
+                },
                 &key,
-                self.vaults.key(company, standing.key_epoch)?,
+                vault_key,
             )
             .await
     }

@@ -3,6 +3,7 @@
 
 mod entity;
 mod escrow;
+mod owners;
 mod repository;
 mod service;
 mod tessaridb;

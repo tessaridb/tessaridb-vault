@@ -13,6 +13,7 @@ import {
   readHandoff,
   readNotices,
   readOwnEscrow,
+  readRecoveryKey,
   readRequests,
   recoveryFailure,
   rewrapBody,
@@ -27,6 +28,14 @@ describe("recovery answers", () => {
     assert.equal(readOwnEscrow({ recovery_key_id: ID }), ID);
     assert.equal(readOwnEscrow({ recovery_key_id: "not hex" }), null);
     assert.equal(readOwnEscrow({}), null);
+  });
+
+  it("reads the recovery key with whether it is due for rotation, and refuses a key without that answer", () => {
+    const listed = { key_id: ID, public: encode(bytes(32, 1)) };
+    assert.deepEqual(readRecoveryKey({ ...listed, rotation_due: true }), { keyId: ID, public: bytes(32, 1), rotationDue: true });
+    assert.equal(readRecoveryKey({ ...listed, rotation_due: false })?.rotationDue, false);
+    assert.equal(readRecoveryKey(listed), null);
+    assert.equal(readRecoveryKey({ ...listed, rotation_due: "yes" }), null);
   });
 
   it("reads the open requests, each with a 32-byte handoff key", () => {

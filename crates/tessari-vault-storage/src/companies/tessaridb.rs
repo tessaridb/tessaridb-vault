@@ -21,6 +21,9 @@ const KEEPS_AN_OWNER: &str = "\
 LET $owners = SELECT count(*) AS n FROM memberships WHERE company = $company AND member_role = 'owner' \
 AND state = 'active'; THROW 'last owner' IF $owners[0].n <= 1;";
 
+/// Run beside [`KEEPS_AN_OWNER`] when an owner stops being one: whatever they opened of the recovery key, it retires.
+const RETIRES_RECOVERY: &str = "UPDATE recovery_keys SET rotate = true WHERE company = $company;";
+
 /// The statement that refuses a write when the target membership is not what was read. Binds `$target`,
 /// `$target_role`, `$target_state`.
 const TARGET_UNCHANGED: &str = "\
@@ -250,9 +253,9 @@ impl CompanyRepository for TessaridbCompanyRepository {
             bind("state", change.state.word()),
         ]);
         let owners = if change.loses_owner {
-            KEEPS_AN_OWNER
+            format!("{KEEPS_AN_OWNER} {RETIRES_RECOVERY}")
         } else {
-            ""
+            String::new()
         };
         let script = format!(
             "BEGIN; {GUARD} {TARGET_UNCHANGED} {owners} \
@@ -284,7 +287,11 @@ impl CompanyRepository for TessaridbCompanyRepository {
             ));
             parameters.push(bind(&name, group.as_str()));
         }
-        let owners = if loses_owner { KEEPS_AN_OWNER } else { "" };
+        let owners = if loses_owner {
+            format!("{KEEPS_AN_OWNER} {RETIRES_RECOVERY}")
+        } else {
+            String::new()
+        };
         // Every key the leaver could hold retires, with every record they wrote or that was shared through them.
         let retire = retiring(&mut parameters, retired, Some(&target.account));
         let script = format!(

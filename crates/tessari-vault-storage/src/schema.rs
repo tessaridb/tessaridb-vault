@@ -87,7 +87,9 @@ recipient string, by_account string, created int); \
 DEFINE INDEX IF NOT EXISTS by_record ON shares FIELDS record; \
 DEFINE INDEX IF NOT EXISTS by_target ON shares FIELDS company, target; \
 DEFINE TABLE IF NOT EXISTS recovery_keys (company string, key_id string, public string, created datetime); \
+DEFINE FIELD IF NOT EXISTS rotate ON recovery_keys TYPE bool DEFAULT false; \
 DEFINE TABLE IF NOT EXISTS escrows (company string, account string, recovery_key_id string, created int); \
+DEFINE INDEX IF NOT EXISTS by_recovery_key ON escrows FIELDS company, recovery_key_id; \
 DEFINE TABLE IF NOT EXISTS recovery_notices (company string, account string, by_account string, kind string, \
 created int); \
 DEFINE INDEX IF NOT EXISTS by_member ON recovery_notices FIELDS company, account; \

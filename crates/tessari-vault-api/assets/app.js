@@ -4905,7 +4905,8 @@ ${END}
   function readRecoveryKey(v) {
     const key = isRecord16(v) && isKeyId(v["key_id"]) ? v["key_id"] : null;
     const listed = isRecord16(v) ? bytesOf(v["public"], KEY_BYTES7) : null;
-    return key === null || listed === null ? null : { keyId: key, public: listed };
+    const due = isRecord16(v) ? v["rotation_due"] : void 0;
+    return key === null || listed === null || typeof due !== "boolean" ? null : { keyId: key, public: listed, rotationDue: due };
   }
   function readWrap(idField) {
     return (v) => {
@@ -5288,41 +5289,53 @@ ${END}
     });
     return el("ul", { class: "shares" }, ...rows);
   }
+  function makeKeyButton(label, done, held2, chain, vouched, members, directory, again) {
+    const said = el("div", { "aria-live": "polite" });
+    const make = el("button", { type: "button", class: "primary" }, label);
+    make.addEventListener("click", () => {
+      make.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Making the recovery key."));
+      const owners = members.flatMap((member) => {
+        const key = member.role === "owner" && member.active ? directory.get(member.account) : void 0;
+        const keyId = key === void 0 ? null : keyIdBytes(key.keyId);
+        return key === void 0 || keyId === null ? [] : [{ account: member.account, keyId, agreementPublic: key.agreementPublic }];
+      });
+      void makeRecoveryKey(held2, chain, vouched, owners).then((failed2) => {
+        make.disabled = false;
+        if (failed2 === null) {
+          again(done);
+          return;
+        }
+        fill(said, refusal(recoveryFailure(failed2)));
+      });
+    });
+    return [make, said];
+  }
   async function ownersPart(held2, chain, vouched, members, directory, again) {
     const byAccount = new Map(members.map((member) => [member.account, member]));
+    const holdsOwnerKey = sameBytes(held2.keys.signingPublic, held2.keys.ownerSigningPublic);
     if (vouched.recoveryKey() === void 0) {
-      if (!sameBytes(held2.keys.signingPublic, held2.keys.ownerSigningPublic)) {
+      if (!holdsOwnerKey) {
         return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, "The company has no recovery key yet. Only the owner who opened the company's vault first can make it, because the company owner key vouches for it."));
       }
-      const said = el("div", { "aria-live": "polite" });
-      const make = el("button", { type: "button", class: "primary" }, "Make the recovery key");
-      make.addEventListener("click", () => {
-        make.disabled = true;
-        fill(said, el("p", { class: "muted", role: "status" }, "Making the recovery key."));
-        const owners = members.flatMap((member) => {
-          const key = member.role === "owner" && member.active ? directory.get(member.account) : void 0;
-          const keyId = key === void 0 ? null : keyIdBytes(key.keyId);
-          return key === void 0 || keyId === null ? [] : [{ account: member.account, keyId, agreementPublic: key.agreementPublic }];
-        });
-        void makeRecoveryKey(held2, chain, vouched, owners).then((failed2) => {
-          make.disabled = false;
-          if (failed2 === null) {
-            again("The recovery key is made. Each member's keys are kept for recovery the next time they unlock, yours included.");
-            return;
-          }
-          fill(said, refusal(recoveryFailure(failed2)));
-        });
-      });
       const lead = "With it, the company's owners can hand a member their keys back when the member forgets their unlock password. Every member's keys are wrapped to it, so owners can reach them, and each member sees every time that happens.";
-      return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), make, said);
+      const made = "The recovery key is made. Each member's keys are kept for recovery the next time they unlock, yours included.";
+      return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), ...makeKeyButton("Make the recovery key", made, held2, chain, vouched, members, directory, again));
     }
-    const [requests, pending] = await Promise.all([
-      call("GET", `${companyPath(held2)}/recovery-requests`, readRequests),
-      call("GET", `${companyPath(held2)}/recovery-key/pending`, readPending)
+    const path2 = companyPath(held2);
+    const [requests, pending, listed] = await Promise.all([
+      call("GET", `${path2}/recovery-requests`, readRequests),
+      call("GET", `${path2}/recovery-key/pending`, readPending),
+      call("GET", `${path2}/recovery-key`, readRecoveryKey)
     ]);
-    const listed = requests.ok ? requestsList(held2, vouched, requests.value, byAccount, directory, again) : refusal(loadFailure(requests));
+    if (listed.ok && listed.value.rotationDue) {
+      const lead = "An owner stopped being one since the recovery key was made, and may still hold a copy of it, so it is being replaced. Until a new one is made, recovery waits.";
+      const body = holdsOwnerKey ? makeKeyButton("Make a new recovery key", "The new recovery key is made. Each member's keys are kept for it the next time they unlock.", held2, chain, vouched, members, directory, again) : [el("p", {}, "The owner who holds the company owner key makes the new one on this page.")];
+      return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), ...body);
+    }
+    const list = requests.ok ? requestsList(held2, vouched, requests.value, byAccount, directory, again) : refusal(loadFailure(requests));
     const waiting2 = pending.ok && pending.value.length > 0 ? waitingOwners(held2, vouched, pending.value, byAccount, again) : null;
-    return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), waiting2, listed);
+    return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), waiting2, list);
   }
   function waitingOwners(held2, vouched, pending, byAccount, again) {
     const names = pending.map((key) => byAccount.get(key.account)?.name ?? "An owner").join(", ");

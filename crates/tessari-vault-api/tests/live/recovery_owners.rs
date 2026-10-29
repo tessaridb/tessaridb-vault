@@ -135,3 +135,128 @@ async fn an_owner_gives_a_later_owner_the_recovery_key_once() {
     assert_eq!(status, StatusCode::CONFLICT, "a second wrap: {again}");
     assert_eq!(again["error_code"], "outside_reach", "{again}");
 }
+
+fn key_to(key_id: &str, owner_key: &str) -> Value {
+    json!({
+        "key_id": key_id,
+        "public": encoded(&[0xe1; 32]),
+        "wraps": [{ "key_id": owner_key, "wrap": encoded(&[0xe2; 82]) }],
+    })
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn an_owner_leaving_retires_the_recovery_key_and_its_escrows() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let member = format!(
+        "/api/companies/{}/members/{}",
+        cast.company_a, cast.admin_a_id
+    );
+    let key_path = path(&cast, "");
+    let keep = |body: Value| world.call(Method::POST, &key_path, Some(&cast.owner_a), Some(body));
+    let read = || async {
+        let (status, key) = world
+            .call(Method::GET, &key_path, Some(&cast.member_a), None)
+            .await;
+        assert_eq!(status, StatusCode::OK, "{key}");
+        key
+    };
+    let (status, body) = keep(key_to(&"e1".repeat(16), &cast.owner_a_key)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) = world
+        .call(
+            Method::PATCH,
+            &member,
+            Some(&cast.owner_a),
+            Some(json!({ "role": "owner" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let escrow = json!({ "recovery_key_id": "e1".repeat(16), "wrap": encoded(&[0xe5; 120]) });
+    let own_escrow = format!("/api/companies/{}/keys/me/escrow", cast.company_a);
+    let (status, body) = world
+        .call(Method::PUT, &own_escrow, Some(&cast.member_a), Some(escrow))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    assert_eq!(read().await["rotation_due"], false);
+
+    // The second owner is made an admin again: whatever they opened of the recovery key, the key now retires.
+    let (status, body) = world
+        .call(
+            Method::PATCH,
+            &member,
+            Some(&cast.owner_a),
+            Some(json!({ "role": "admin" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    assert_eq!(read().await["rotation_due"], true);
+    let (status, refused) = keep(key_to(&"e4".repeat(16), &cast.admin_a_key)).await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "a new key to an admin: {refused}"
+    );
+    assert_eq!(refused["error_code"], "outside_reach");
+
+    let (status, body) = keep(key_to(&"e4".repeat(16), &cast.owner_a_key)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let replaced = read().await;
+    assert_eq!(replaced["key_id"], "e4".repeat(16), "{replaced}");
+    assert_eq!(replaced["rotation_due"], false);
+    let (status, _) = world
+        .call(Method::GET, &own_escrow, Some(&cast.member_a), None)
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "the escrow to the old key stayed"
+    );
+    let (status, _) = world
+        .call(
+            Method::GET,
+            &format!(
+                "/api/companies/{}/keys/{}/escrow",
+                cast.company_a, cast.member_a_id
+            ),
+            Some(&cast.owner_a),
+            None,
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "an owner still reads the old escrow"
+    );
+    let (status, mine) = world
+        .call(
+            Method::GET,
+            &path(&cast, "/mine"),
+            Some(&cast.owner_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{mine}");
+    assert_eq!(mine["key_id"], "e4".repeat(16));
+    let (status, again) = keep(key_to(&"e6".repeat(16), &cast.owner_a_key)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{again}");
+    assert_eq!(again["error_code"], "recovery_keyed");
+
+    // Removing an owner from the company retires it the same way.
+    let (status, body) = world
+        .call(
+            Method::PATCH,
+            &member,
+            Some(&cast.owner_a),
+            Some(json!({ "role": "owner" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    assert_eq!(read().await["rotation_due"], false);
+    let (status, body) = world
+        .call(Method::DELETE, &member, Some(&cast.owner_a), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    assert_eq!(read().await["rotation_due"], true);
+}

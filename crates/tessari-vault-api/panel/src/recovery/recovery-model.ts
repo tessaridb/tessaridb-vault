@@ -23,11 +23,12 @@ function bytesOf(v: unknown, length?: number): Bytes | null {
 /** `GET /api/companies/{company}/keys/me/escrow`: the recovery key the caller's escrow is wrapped to. */
 export const readOwnEscrow = (v: unknown): string | null => (isRecord(v) && isKeyId(v["recovery_key_id"]) ? v["recovery_key_id"] : null);
 
-/** `GET /api/companies/{company}/recovery-key`: the company recovery key as the server lists it. */
-export function readRecoveryKey(v: unknown): { readonly keyId: string; readonly public: Bytes } | null {
+/** `GET /api/companies/{company}/recovery-key`: the company recovery key as the server lists it, and whether an owner left since it was made. */
+export function readRecoveryKey(v: unknown): { readonly keyId: string; readonly public: Bytes; readonly rotationDue: boolean } | null {
   const key = isRecord(v) && isKeyId(v["key_id"]) ? v["key_id"] : null;
   const listed = isRecord(v) ? bytesOf(v["public"], KEY_BYTES) : null;
-  return key === null || listed === null ? null : { keyId: key, public: listed };
+  const due = isRecord(v) ? v["rotation_due"] : undefined;
+  return key === null || listed === null || typeof due !== "boolean" ? null : { keyId: key, public: listed, rotationDue: due };
 }
 
 /** `GET /api/companies/{company}/recovery-key/mine` and `GET /api/companies/{company}/keys/{account}/escrow`: a wrap and the key id it is named by. */

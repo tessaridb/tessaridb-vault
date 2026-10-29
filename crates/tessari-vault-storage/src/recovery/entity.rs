@@ -10,6 +10,8 @@ use crate::{Error, Result};
 pub(crate) struct RecoveryKeyEntity {
     pub(crate) key_id: String,
     pub(crate) public: String,
+    /// Set when an owner stops being one: the key retires once an owner makes the next.
+    pub(crate) rotate: bool,
 }
 
 impl FromRecord for RecoveryKeyEntity {
@@ -17,6 +19,7 @@ impl FromRecord for RecoveryKeyEntity {
         Ok(Self {
             key_id: row.take("key_id")?,
             public: row.take("public")?,
+            rotate: row.take("rotate")?,
         })
     }
 }
@@ -42,6 +45,8 @@ pub struct RecoveryKey {
     pub key_id: KeyId,
     /// X25519 public key.
     pub public: Vec<u8>,
+    /// An owner stopped being one since it was made, so an owner makes the next.
+    pub rotation_due: bool,
 }
 
 impl RecoveryKeyEntity {
@@ -53,6 +58,7 @@ impl RecoveryKeyEntity {
         Ok(RecoveryKey {
             key_id: KeyId::parse(&self.key_id).map_err(|_| fault("key id"))?,
             public: base64url::decode(&self.public).map_err(|_| fault("public key"))?,
+            rotation_due: self.rotate,
         })
     }
 }

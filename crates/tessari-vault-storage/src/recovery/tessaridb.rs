@@ -7,19 +7,20 @@ use tessari_vault_infrastructure::tessaridb::{Answer, Database, Place, Value, Va
 use tessari_vault_types::{AccountId, CompanyId, base64url};
 
 use super::entity::{EscrowEntity, NoticeEntity, RecoveryKeyEntity};
-use super::repository::{Escrowed, RecoveryRepository};
+use super::owners;
+use super::repository::{Escrowed, RecoveryRepository, Retiring};
 use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
-use crate::group_keys::{MemberWrap, NewGroupKey, recipient_wraps, recipients};
+use crate::group_keys::{MemberWrap, NewGroupKey, recipient_wraps};
 use crate::keys::KeyEntity;
 use crate::records::RecordVaults;
 use crate::{Error, Result, answers};
 
 /// The recipient prefix an owner's wrap is kept under.
-const OWNER: &str = "owner:";
+pub(super) const OWNER: &str = "owner:";
 
 /// The recovery key's record in the company's vault.
-const VID: &str = "recovery";
+pub(super) const VID: &str = "recovery";
 
 /// The most notices one member reads.
 const NOTICES_MAX: i64 = 1_000;
@@ -78,30 +79,42 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
     async fn keep(
         &self,
         place: &Place,
-        mut guard: Vec<(String, Value)>,
+        guard: Vec<(String, Value)>,
         company: &CompanyId,
         key: &NewGroupKey,
         vault_key: VaultKey,
     ) -> Result<()> {
-        let vault = RecordVaults::name(company);
-        let (added, wraps) = recipients(&vault, OWNER, key.wraps());
-        guard.extend(wraps);
-        guard.extend([
-            bind("company", company.as_str()),
-            bind("vid", VID),
-            bind("key_id", key.key_id().as_str()),
-            bind("public", base64url::encode(key.public()).as_str()),
-        ]);
-        let script = format!(
-            "BEGIN; {GUARD} THROW 'recovery keyed' IF (GET recovery_keys:$company).key_id != NONE; \
-             CREATE recovery_keys:$company = {{ company: $company, key_id: $key_id, public: $public, \
-             created: time::now() }}; CREATE {vault}:$vid = {{ body: $public }};{added} {RECORD} COMMIT;"
-        );
-        self.database
-            .transact_presenting(place, &script, "", guard, &vault, vault_key)
-            .await
-            .map_err(|error| thrown(error.into()))?;
-        Ok(())
+        owners::keep(&self.database, place, guard, company, key, vault_key).await
+    }
+
+    async fn rekey(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        company: &CompanyId,
+        retiring: Retiring<'_>,
+        key: &NewGroupKey,
+        vault_key: VaultKey,
+    ) -> Result<()> {
+        owners::rekey(
+            &self.database,
+            place,
+            guard,
+            company,
+            retiring,
+            key,
+            vault_key,
+        )
+        .await
+    }
+
+    async fn escrowed_to(
+        &self,
+        place: &Place,
+        company: &CompanyId,
+        key_id: &str,
+    ) -> Result<Vec<String>> {
+        owners::escrowed_to(&self.database, place, company, key_id).await
     }
 
     async fn wraps(
@@ -129,21 +142,12 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
     async fn add_wraps(
         &self,
         place: &Place,
-        mut guard: Vec<(String, Value)>,
+        guard: Vec<(String, Value)>,
         company: &CompanyId,
         wraps: &[MemberWrap],
         vault_key: VaultKey,
     ) -> Result<()> {
-        let vault = RecordVaults::name(company);
-        let (added, parameters) = recipients(&vault, OWNER, wraps);
-        guard.extend(parameters);
-        guard.push(bind("vid", VID));
-        let script = format!("BEGIN; {GUARD}{added} {RECORD} COMMIT;");
-        self.database
-            .transact_presenting(place, &script, "", guard, &vault, vault_key)
-            .await
-            .map_err(|error| thrown(error.into()))?;
-        Ok(())
+        owners::add_wraps(&self.database, place, guard, company, wraps, vault_key).await
     }
 
     async fn own_key(

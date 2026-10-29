@@ -18,7 +18,7 @@ import { heading, refusal } from "../screen.ts";
 import { keyIdBytes } from "../unlock-model.ts";
 import type { Unlocked } from "../vault.ts";
 import { giveRecoveryKey, handOverRequest, makeRecoveryKey } from "./hand-over.ts";
-import { noticeWords, readNotices, readOwnEscrow, readRequests, recoveryFailure, type Notice, type OpenRequest } from "./recovery-model.ts";
+import { noticeWords, readNotices, readOwnEscrow, readRecoveryKey, readRequests, recoveryFailure, type Notice, type OpenRequest } from "./recovery-model.ts";
 
 const when = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 const at = (seconds: number): string => when.format(new Date(seconds * 1000));
@@ -101,42 +101,58 @@ function requestsList(held: Unlocked, vouched: Vouched, requests: readonly OpenR
   return el("ul", { class: "shares" }, ...rows);
 }
 
+/** The act that makes the company's recovery key in this browser, wrapped to every active owner, saying `done` once kept. */
+function makeKeyButton(label: string, done: string, held: Unlocked, chain: Chain, vouched: Vouched, members: readonly ListedMember[], directory: ReadonlyMap<string, DirectoryKey>, again: (words: string) => void): readonly HTMLElement[] {
+  const said = el("div", { "aria-live": "polite" });
+  const make = el("button", { type: "button", class: "primary" }, label);
+  make.addEventListener("click", () => {
+    make.disabled = true;
+    fill(said, el("p", { class: "muted", role: "status" }, "Making the recovery key."));
+    const owners = members.flatMap((member) => {
+      const key = member.role === "owner" && member.active ? directory.get(member.account) : undefined;
+      const keyId = key === undefined ? null : keyIdBytes(key.keyId);
+      return key === undefined || keyId === null ? [] : [{ account: member.account, keyId, agreementPublic: key.agreementPublic }];
+    });
+    void makeRecoveryKey(held, chain, vouched, owners).then((failed: Failure | null) => {
+      make.disabled = false;
+      if (failed === null) {
+        again(done);
+        return;
+      }
+      fill(said, refusal(recoveryFailure(failed)));
+    });
+  });
+  return [make, said];
+}
+
 /** The owner's section: the recovery key, made here when this browser holds the owner key, and the open requests. */
 async function ownersPart(held: Unlocked, chain: Chain, vouched: Vouched, members: readonly ListedMember[], directory: ReadonlyMap<string, DirectoryKey>, again: (words: string) => void): Promise<HTMLElement> {
   const byAccount = new Map(members.map((member) => [member.account, member]));
+  const holdsOwnerKey = sameBytes(held.keys.signingPublic, held.keys.ownerSigningPublic);
   if (vouched.recoveryKey() === undefined) {
-    if (!sameBytes(held.keys.signingPublic, held.keys.ownerSigningPublic)) {
+    if (!holdsOwnerKey) {
       return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, "The company has no recovery key yet. Only the owner who opened the company's vault first can make it, because the company owner key vouches for it."));
     }
-    const said = el("div", { "aria-live": "polite" });
-    const make = el("button", { type: "button", class: "primary" }, "Make the recovery key");
-    make.addEventListener("click", () => {
-      make.disabled = true;
-      fill(said, el("p", { class: "muted", role: "status" }, "Making the recovery key."));
-      const owners = members.flatMap((member) => {
-        const key = member.role === "owner" && member.active ? directory.get(member.account) : undefined;
-        const keyId = key === undefined ? null : keyIdBytes(key.keyId);
-        return key === undefined || keyId === null ? [] : [{ account: member.account, keyId, agreementPublic: key.agreementPublic }];
-      });
-      void makeRecoveryKey(held, chain, vouched, owners).then((failed: Failure | null) => {
-        make.disabled = false;
-        if (failed === null) {
-          again("The recovery key is made. Each member's keys are kept for recovery the next time they unlock, yours included.");
-          return;
-        }
-        fill(said, refusal(recoveryFailure(failed)));
-      });
-    });
     const lead = "With it, the company's owners can hand a member their keys back when the member forgets their unlock password. Every member's keys are wrapped to it, so owners can reach them, and each member sees every time that happens.";
-    return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), make, said);
+    const made = "The recovery key is made. Each member's keys are kept for recovery the next time they unlock, yours included.";
+    return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), ...makeKeyButton("Make the recovery key", made, held, chain, vouched, members, directory, again));
   }
-  const [requests, pending] = await Promise.all([
-    call("GET", `${companyPath(held)}/recovery-requests`, readRequests),
-    call("GET", `${companyPath(held)}/recovery-key/pending`, readPending),
+  const path = companyPath(held);
+  const [requests, pending, listed] = await Promise.all([
+    call("GET", `${path}/recovery-requests`, readRequests),
+    call("GET", `${path}/recovery-key/pending`, readPending),
+    call("GET", `${path}/recovery-key`, readRecoveryKey),
   ]);
-  const listed = requests.ok ? requestsList(held, vouched, requests.value, byAccount, directory, again) : refusal(loadFailure(requests));
+  if (listed.ok && listed.value.rotationDue) {
+    const lead = "An owner stopped being one since the recovery key was made, and may still hold a copy of it, so it is being replaced. Until a new one is made, recovery waits.";
+    const body = holdsOwnerKey
+      ? makeKeyButton("Make a new recovery key", "The new recovery key is made. Each member's keys are kept for it the next time they unlock.", held, chain, vouched, members, directory, again)
+      : [el("p", {}, "The owner who holds the company owner key makes the new one on this page.")];
+    return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), ...body);
+  }
+  const list = requests.ok ? requestsList(held, vouched, requests.value, byAccount, directory, again) : refusal(loadFailure(requests));
   const waiting = pending.ok && pending.value.length > 0 ? waitingOwners(held, vouched, pending.value, byAccount, again) : null;
-  return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), waiting, listed);
+  return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), waiting, list);
 }
 
 /** Owners made after the recovery key, who hold no copy of it yet, and the act that gives them theirs. */
