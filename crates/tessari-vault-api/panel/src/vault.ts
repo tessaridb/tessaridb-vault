@@ -13,6 +13,9 @@ export interface Unlocked {
   /** Whether the person is in other companies too, which "Switch company" leads to. */
   readonly otherCompanies: boolean;
   readonly account: string;
+  /** Who is signed in, shown in the sidebar while the company is unlocked. */
+  readonly name: string;
+  readonly email: string;
   readonly keys: OpenKeySet;
 }
 

@@ -157,7 +157,7 @@ function mark(outcome: Outcome<Routes>): void {
   }
 }
 
-/** The unlocked company's name in the sidebar, and "Switch company" when the person is in others too. */
+/** The unlocked company's name and who is signed in, in the sidebar; "Switch company" when the person is in others too. */
 function showCompany(): void {
   const held = unlocked();
   const name = document.getElementById("company");
@@ -166,6 +166,14 @@ function showCompany(): void {
   if (name !== null && workspace !== null) {
     name.textContent = held?.companyName ?? "";
     workspace.hidden = held === null;
+  }
+  const account = document.getElementById("account");
+  const person = document.getElementById("account-name");
+  const email = document.getElementById("account-email");
+  if (account !== null && person !== null && email !== null) {
+    person.textContent = held?.name ?? "";
+    email.textContent = held?.email ?? "";
+    account.hidden = held === null;
   }
   if (switcher !== null) {
     switcher.hidden = held?.otherCompanies !== true;

@@ -136,7 +136,7 @@ function unlockForm(main: HTMLElement, me: Me, company: Company, stored: StoredK
         fill(said, refusal(CHAIN_FAILURE));
         return;
       }
-      hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, keys });
+      hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, name: me.name, email: me.email, keys });
       done();
     } catch (problem) {
       password.input.value = "";
@@ -205,7 +205,7 @@ function firstUnlockForm(main: HTMLElement, me: Me, company: Company, owner: Byt
         onward.focus();
         return;
       }
-      hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, keys: made.open });
+      hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, name: me.name, email: me.email, keys: made.open });
       done();
     } catch (problemMaking) {
       fill(said, refusal(unlockFailure(problemMaking)));

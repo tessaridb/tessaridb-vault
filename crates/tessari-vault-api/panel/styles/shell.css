@@ -56,7 +56,8 @@
   display: none;
 }
 
-.workspace .caption {
+.workspace .caption,
+.account .caption {
   margin: 0;
   font-size: var(--t-caption);
   line-height: 1.4;
@@ -115,6 +116,36 @@
   margin-block-start: auto;
   display: grid;
   gap: var(--s-1);
+}
+
+/* Who is signed in, above the controls that act on their session. */
+.account {
+  display: grid;
+  gap: var(--s-1);
+  padding: 0 var(--s-3) var(--s-3);
+  margin-block-end: var(--s-2);
+  border-block-end: 1px solid var(--border);
+}
+
+.account[hidden] {
+  display: none;
+}
+
+.account p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.account-name {
+  font-weight: 550;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.account-email {
+  font-size: var(--t-caption);
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
 .side-foot button {

@@ -4114,7 +4114,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
           fill(said, refusal(CHAIN_FAILURE));
           return;
         }
-        hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, keys });
+        hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, name: me.name, email: me.email, keys });
         done();
       } catch (problem2) {
         password.input.value = "";
@@ -4181,7 +4181,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
           onward.focus();
           return;
         }
-        hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, keys: made.open });
+        hold({ company: company.id, companyName: company.name, otherCompanies: choice !== null, account: me.account, name: me.name, email: me.email, keys: made.open });
         done();
       } catch (problemMaking) {
         fill(said, refusal(unlockFailure(problemMaking)));
@@ -4424,6 +4424,14 @@ ${target.detail}`.toLowerCase().includes(wanted));
     if (name !== null && workspace !== null) {
       name.textContent = held2?.companyName ?? "";
       workspace.hidden = held2 === null;
+    }
+    const account = document.getElementById("account");
+    const person = document.getElementById("account-name");
+    const email = document.getElementById("account-email");
+    if (account !== null && person !== null && email !== null) {
+      person.textContent = held2?.name ?? "";
+      email.textContent = held2?.email ?? "";
+      account.hidden = held2 === null;
     }
     if (switcher !== null) {
       switcher.hidden = held2?.otherCompanies !== true;
