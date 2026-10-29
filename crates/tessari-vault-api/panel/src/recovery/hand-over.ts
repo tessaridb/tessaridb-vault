@@ -1,20 +1,21 @@
 // An owner's two acts on the recovery page. Making the recovery key: the statement vouching for it goes first, so a
 // key the chain does not name can never be the company's one recovery key; then the key with its owners' wraps.
-// Handing a member's keys over: the owner's own wrap of the recovery key and the member's escrow, both checked to name
+// Giving the recovery key to owners still waiting: the owner's own wrap opened here, the key wrapped to each owner the
+// chain vouches for and wiped. Handing a member's keys over: the owner's own wrap of the recovery key and the member's escrow, both checked to name
 // the key the owner's chain vouches for, opened here and wrapped to the member's one-time handoff key.
 
 import { call, ignored, type Failure } from "../api.ts";
 import type { Chain } from "../chain-model.ts";
 import { handOver } from "../crypto/recovery.ts";
 import type { Vouched } from "../crypto/statements.ts";
-import { groupKeyBody } from "../groups/group-key.ts";
+import { groupKeyBody, wrapsBody, type PendingKey } from "../groups/group-key.ts";
 import { statementBody } from "../members/members-model.ts";
 import type { DirectoryKey } from "../records/shares-model.ts";
 import { companyPath } from "../records/load.ts";
 import { keyIdBytes } from "../unlock-model.ts";
 import type { Unlocked } from "../vault.ts";
 import { handoffBody, readWrap, type OpenRequest } from "./recovery-model.ts";
-import { newRecoveryKey, type OwnerKey } from "./recovery-key.ts";
+import { newRecoveryKey, wrapsForOwners, type OwnerKey } from "./recovery-key.ts";
 
 const refused = (code: string): Failure => ({ ok: false, status: 0, code, message: "" });
 
@@ -34,6 +35,26 @@ export async function makeRecoveryKey(held: Unlocked, chain: Chain, vouched: Vou
   }
   const kept = await call("POST", `${path}/recovery-key`, ignored, { body: groupKeyBody(made) });
   return kept.ok ? null : kept;
+}
+
+/** Gives the recovery key to `pending` owners; the accounts the chain does not vouch for yet, or what went wrong. */
+export async function giveRecoveryKey(held: Unlocked, vouched: Vouched, pending: readonly PendingKey[]): Promise<{ readonly failed: Failure | null; readonly unvouched: readonly string[] }> {
+  const path = companyPath(held);
+  const mine = await call("GET", `${path}/recovery-key/mine`, readWrap("key_id"));
+  if (!mine.ok) {
+    return { failed: mine.status === 404 ? refused("no_owner_wrap") : mine, unvouched: [] };
+  }
+  let given;
+  try {
+    given = await wrapsForOwners(held.company, held.keys, vouched, mine.value, pending);
+  } catch {
+    return { failed: refused("recovery_moved"), unvouched: [] };
+  }
+  if (given.wraps.length === 0) {
+    return { failed: null, unvouched: given.unvouched };
+  }
+  const sent = await call("POST", `${path}/recovery-key/wraps`, ignored, { body: wrapsBody(given) });
+  return { failed: sent.ok ? null : sent, unvouched: given.unvouched };
 }
 
 /** Hands `request`'s member (whose key set is `memberKey`) their keys; null once handed over, else what went wrong. */

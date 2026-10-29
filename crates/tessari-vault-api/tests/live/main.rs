@@ -29,6 +29,7 @@ mod record_delete;
 mod record_types;
 mod records;
 mod recovery;
+mod recovery_owners;
 mod revocation;
 mod rotation;
 mod rules;
@@ -257,6 +258,11 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         ),
         ("GET", "/api/companies/{company}/recovery-key") => row(None, None, hidden),
         ("GET", "/api/companies/{company}/recovery-key/mine") => row(None, manage, hidden),
+        // An owner lists the owners still waiting for a wrap of the recovery key and gives them one.
+        ("GET", "/api/companies/{company}/recovery-key/pending") => row(None, manage, hidden),
+        ("POST", "/api/companies/{company}/recovery-key/wraps") => {
+            row(Some(json!({ "wraps": [] })), manage, hidden)
+        }
         // A member escrows their own keys and reads which key they escrowed to; only an owner reads an escrow; each
         // member reads the notices about them.
         ("PUT", "/api/companies/{company}/keys/me/escrow") => row(

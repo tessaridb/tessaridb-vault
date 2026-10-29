@@ -10,7 +10,7 @@ use super::entity::{EscrowEntity, NoticeEntity, RecoveryKeyEntity};
 use super::repository::{Escrowed, RecoveryRepository};
 use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
-use crate::group_keys::{NewGroupKey, recipient_wraps, recipients};
+use crate::group_keys::{MemberWrap, NewGroupKey, recipient_wraps, recipients};
 use crate::keys::KeyEntity;
 use crate::records::RecordVaults;
 use crate::{Error, Result, answers};
@@ -107,20 +107,43 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
     async fn wraps(
         &self,
         place: &Place,
-        mut guard: Vec<(String, Value)>,
+        audit: Option<Vec<(String, Value)>>,
         company: &CompanyId,
         vault_key: VaultKey,
     ) -> Result<Vec<(String, Vec<u8>)>> {
         let vault = RecordVaults::name(company);
-        guard.push(bind("vid", VID));
-        let recorded = format!("BEGIN; {GUARD} {RECORD} COMMIT;");
+        let (recorded, mut parameters) = match audit {
+            Some(guard) => (format!("BEGIN; {GUARD} {RECORD} COMMIT;"), guard),
+            None => (String::new(), Vec::new()),
+        };
+        parameters.push(bind("vid", VID));
         let opened = format!("INFO FOR RECIPIENTS OF {vault}:$vid;");
         let answers = self
             .database
-            .transact_presenting(place, &recorded, &opened, guard, &vault, vault_key)
+            .transact_presenting(place, &recorded, &opened, parameters, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         recipient_wraps(answers, OWNER, "recovery key")
+    }
+
+    async fn add_wraps(
+        &self,
+        place: &Place,
+        mut guard: Vec<(String, Value)>,
+        company: &CompanyId,
+        wraps: &[MemberWrap],
+        vault_key: VaultKey,
+    ) -> Result<()> {
+        let vault = RecordVaults::name(company);
+        let (added, parameters) = recipients(&vault, OWNER, wraps);
+        guard.extend(parameters);
+        guard.push(bind("vid", VID));
+        let script = format!("BEGIN; {GUARD}{added} {RECORD} COMMIT;");
+        self.database
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
+            .await
+            .map_err(|error| thrown(error.into()))?;
+        Ok(())
     }
 
     async fn own_key(

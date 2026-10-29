@@ -4,6 +4,8 @@
 
 import { call, type Failure } from "../api.ts";
 import { readChain, type Chain } from "../chain-model.ts";
+import type { PendingKey } from "../groups/group-key.ts";
+import { readPending } from "../groups/groups-model.ts";
 import { sameBytes } from "../crypto/bytes.ts";
 import { handoffCode } from "../crypto/fingerprint.ts";
 import { verifyChain, type Vouched } from "../crypto/statements.ts";
@@ -15,7 +17,7 @@ import { readDirectory, type DirectoryKey } from "../records/shares-model.ts";
 import { heading, refusal } from "../screen.ts";
 import { keyIdBytes } from "../unlock-model.ts";
 import type { Unlocked } from "../vault.ts";
-import { handOverRequest, makeRecoveryKey } from "./hand-over.ts";
+import { giveRecoveryKey, handOverRequest, makeRecoveryKey } from "./hand-over.ts";
 import { noticeWords, readNotices, readOwnEscrow, readRequests, recoveryFailure, type Notice, type OpenRequest } from "./recovery-model.ts";
 
 const when = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -128,9 +130,33 @@ async function ownersPart(held: Unlocked, chain: Chain, vouched: Vouched, member
     const lead = "With it, the company's owners can hand a member their keys back when the member forgets their unlock password. Every member's keys are wrapped to it, so owners can reach them, and each member sees every time that happens.";
     return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), make, said);
   }
-  const requests = await call("GET", `${companyPath(held)}/recovery-requests`, readRequests);
+  const [requests, pending] = await Promise.all([
+    call("GET", `${companyPath(held)}/recovery-requests`, readRequests),
+    call("GET", `${companyPath(held)}/recovery-key/pending`, readPending),
+  ]);
   const listed = requests.ok ? requestsList(held, vouched, requests.value, byAccount, directory, again) : refusal(loadFailure(requests));
-  return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), listed);
+  const waiting = pending.ok && pending.value.length > 0 ? waitingOwners(held, vouched, pending.value, byAccount, again) : null;
+  return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), waiting, listed);
+}
+
+/** Owners made after the recovery key, who hold no copy of it yet, and the act that gives them theirs. */
+function waitingOwners(held: Unlocked, vouched: Vouched, pending: readonly PendingKey[], byAccount: ReadonlyMap<string, ListedMember>, again: (words: string) => void): HTMLElement {
+  const names = pending.map((key) => byAccount.get(key.account)?.name ?? "An owner").join(", ");
+  const said = el("div", { "aria-live": "polite" });
+  const give = el("button", { type: "button" }, "Give them the recovery key");
+  give.addEventListener("click", () => {
+    give.disabled = true;
+    fill(said, el("p", { class: "muted", role: "status" }, "Giving the recovery key."));
+    void giveRecoveryKey(held, vouched, pending).then(({ failed, unvouched }) => {
+      give.disabled = false;
+      if (failed !== null) {
+        fill(said, refusal(recoveryFailure(failed)));
+        return;
+      }
+      again(unvouched.length === 0 ? "The waiting owners have the recovery key now." : "Owners whose keys nobody has vouched for yet still wait. Vouch for them on the Members page, then give them the key.");
+    });
+  });
+  return el("div", {}, el("p", {}, `Waiting for the recovery key: ${names}. They were made owners after it was made, so they can't recover members yet.`), give, said);
 }
 
 /** Draws the recovery page into `main`; `notice` is said at its top, as after a hand-over. */

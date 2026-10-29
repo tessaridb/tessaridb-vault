@@ -10,7 +10,7 @@ use tessari_vault_storage::group_keys::NewGroupKey;
 use tessari_vault_storage::recovery::Notice;
 use tessari_vault_types::base64url;
 
-use super::group_keys::{GroupKeyBody, decoded, key_id, wraps};
+use super::group_keys::{GroupKeyBody, Pending, PendingKey, WrapsBody, decoded, key_id, wraps};
 use super::{account_id, company_id};
 use crate::ApiError;
 use crate::caller::{Body, Caller};
@@ -98,6 +98,33 @@ pub(crate) async fn mine(
         key_id: key_id.to_string(),
         wrap: base64url::encode(&wrap),
     }))
+}
+
+pub(crate) async fn pending(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(company): Path<String>,
+) -> Result<Json<Pending>, ApiError> {
+    let company = company_id(&company)?;
+    let keys = state.storage.recovery.pending(&actor, &company).await?;
+    Ok(Json(Pending {
+        pending: keys.iter().map(PendingKey::from).collect(),
+    }))
+}
+
+pub(crate) async fn add_wraps(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(company): Path<String>,
+    Body(body): Body<WrapsBody>,
+) -> Result<StatusCode, ApiError> {
+    let company = company_id(&company)?;
+    state
+        .storage
+        .recovery
+        .add_wraps(&actor, &company, wraps(body.wraps)?)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub(crate) async fn escrow(

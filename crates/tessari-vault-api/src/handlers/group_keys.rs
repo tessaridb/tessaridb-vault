@@ -32,7 +32,7 @@ pub(crate) struct GroupKeyBody {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WrapsBody {
-    wraps: Vec<WrapBody>,
+    pub(super) wraps: Vec<WrapBody>,
 }
 
 #[derive(Serialize)]
@@ -62,7 +62,7 @@ impl From<&PublicKeys> for PendingKey {
 
 #[derive(Serialize)]
 pub(crate) struct Pending {
-    pending: Vec<PendingKey>,
+    pub(super) pending: Vec<PendingKey>,
 }
 
 pub(super) fn decoded(text: &str) -> Result<Vec<u8>, ApiError> {

@@ -140,7 +140,9 @@ export function recoveryFailure(failure: Failure): string {
     case "forbidden":
       return "Only the company's owners can do this.";
     case "no_owner_wrap":
-      return "You have no copy of the recovery key: it was made before you were an owner. Ask the owner who made it to recover this member.";
+      return "You have no copy of the recovery key yet: it was made before you were an owner. An owner who has one can give you yours on this page.";
+    case "outside_reach":
+      return "The owners waiting for the recovery key changed while this page was open. Reload the page and try again.";
     case "recovery_moved":
       return "The recovery key changed while this page was open. Reload the page and try again.";
     case "unopenable":

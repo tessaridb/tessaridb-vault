@@ -11,7 +11,8 @@ use tessari_vault_types::{CompanyId, KeyId};
 use super::entity::RecoveryKey;
 use super::repository::RecoveryRepository;
 use crate::access::{self, Actor, recorded};
-use crate::group_keys::NewGroupKey;
+use crate::group_keys::{MemberWrap, NewGroupKey};
+use crate::keys::PublicKeys;
 use crate::records::RecordVaults;
 use crate::{Conflict, Error, Result};
 
@@ -89,6 +90,101 @@ impl RecoveryService {
             .await
     }
 
+    /// The active owners' key sets that hold no wrap of the recovery key yet.
+    async fn open(&self, company: &CompanyId, key_epoch: u32) -> Result<Vec<PublicKeys>> {
+        if self.repository.get(&self.place, company).await?.is_none() {
+            return Err(Error::NotFound);
+        }
+        let wrapped: HashSet<String> = self
+            .repository
+            .wraps(
+                &self.place,
+                None,
+                company,
+                self.vaults.key(company, key_epoch)?,
+            )
+            .await?
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect();
+        self.repository
+            .owners(&self.place, company)
+            .await?
+            .into_iter()
+            .filter(|key| !wrapped.contains(&key.key_id))
+            .map(crate::keys::KeyEntity::into_public)
+            .collect()
+    }
+
+    /// The owners' key sets still without a wrap of the recovery key, for an owner who holds one to wrap it to.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Refused`] per the decision (owners only); [`Error::NotFound`] when no owner has made one.
+    pub async fn pending(&self, actor: &Actor, company: &CompanyId) -> Result<Vec<PublicKeys>> {
+        let standing = access::authorize(
+            &self.database,
+            &self.place,
+            actor,
+            company,
+            Action::KeyRecovery,
+        )
+        .await?;
+        self.open(company, standing.key_epoch).await
+    }
+
+    /// Add `wraps` of the recovery key, each to an owner's key set that holds none yet.
+    ///
+    /// # Errors
+    ///
+    /// As [`RecoveryService::pending`], and [`Conflict::OutsideReach`] for no wrap, a wrap to a key set that is not
+    /// a waiting owner's, or two to one.
+    pub async fn add_wraps(
+        &self,
+        actor: &Actor,
+        company: &CompanyId,
+        wraps: Vec<MemberWrap>,
+    ) -> Result<()> {
+        let standing = access::authorize(
+            &self.database,
+            &self.place,
+            actor,
+            company,
+            Action::KeyRecovery,
+        )
+        .await?;
+        let open: HashSet<String> = self
+            .open(company, standing.key_epoch)
+            .await?
+            .into_iter()
+            .map(|key| key.key_id.as_str().to_owned())
+            .collect();
+        let mut seen = HashSet::new();
+        let within = !wraps.is_empty()
+            && wraps.iter().all(|wrap| {
+                let id = wrap.key_id().as_str();
+                open.contains(id) && seen.insert(id)
+            });
+        if !within {
+            return Err(Error::Conflict(Conflict::OutsideReach));
+        }
+        self.repository
+            .add_wraps(
+                &self.place,
+                recorded(
+                    actor,
+                    company,
+                    &standing,
+                    "recovery.key.wrap",
+                    company.as_str(),
+                ),
+                company,
+                &wraps,
+                self.vaults.key(company, standing.key_epoch)?,
+            )
+            .await
+    }
+
     /// The company's recovery key, for any member: what a browser escrows to once the chain vouches for it.
     ///
     /// # Errors
@@ -140,13 +236,13 @@ impl RecoveryService {
             .repository
             .wraps(
                 &self.place,
-                recorded(
+                Some(recorded(
                     actor,
                     company,
                     &standing,
                     "recovery.key.read",
                     key.key_id.as_str(),
-                ),
+                )),
                 company,
                 self.vaults.key(company, standing.key_epoch)?,
             )

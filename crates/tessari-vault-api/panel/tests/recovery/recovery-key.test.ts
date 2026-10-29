@@ -9,7 +9,7 @@ import { handoffCode } from "../../src/crypto/fingerprint.ts";
 import { generatePair, publicBytes, x25519PrivateFromBytes } from "../../src/crypto/keys.ts";
 import { appendStatement, verifyChain, type Signer, type Statement } from "../../src/crypto/statements.ts";
 import { unwrapSecret } from "../../src/crypto/wraps.ts";
-import { newRecoveryKey, type OwnerKey } from "../../src/recovery/recovery-key.ts";
+import { newRecoveryKey, wrapsForOwners, type OwnerKey } from "../../src/recovery/recovery-key.ts";
 
 const COMPANY = "company-1";
 
@@ -62,6 +62,24 @@ describe("the company recovery key", () => {
       const jwk = await crypto.subtle.exportKey("jwk", rescue);
       assert.equal(typeof jwk.x, "string");
     }
+  });
+
+  it("opens from an owner's own wrap and reaches a later owner the chain vouches for, and no other", async () => {
+    const [founder, later, stranger] = await Promise.all([person("acc-1"), person("acc-2"), person("acc-3")]);
+    const chain = await chainOf(founder, [later]);
+    const vouched = await verifyChain(COMPANY, founder.signer.publicBytes, chain);
+    const made = await newRecoveryKey(COMPANY, founder.signer, founder.signer.publicBytes, chain, vouched, [ownerKey(founder)]);
+    const standing = await verifyChain(COMPANY, founder.signer.publicBytes, [...chain, made.statement]);
+    const own = { agreementPrivate: founder.agreement.privateKey, agreementPublic: founder.agreementPublic, keyId: founder.keyId };
+    const mine = { keyId: hex(made.keyId), wrap: made.wraps[0]?.wrap ?? new Uint8Array(0) };
+    const given = await wrapsForOwners(COMPANY, own, standing, mine, [ownerKey(later), ownerKey(stranger)]);
+    assert.deepEqual(given.unvouched, ["acc-3"]);
+    assert.deepEqual(given.wraps.map((each) => hex(each.keyId)), [hex(later.keyId)]);
+    const opened = (who: Person, wrap: Bytes) =>
+      unwrapSecret(who.agreement.privateKey, who.agreementPublic, { company: COMPANY, wrappedKind: "recovery-to-owner", wrappedKeyId: made.keyId, recipientKind: "member", recipientKeyId: who.keyId }, wrap);
+    assert.deepEqual(await opened(later, given.wraps[0]?.wrap ?? new Uint8Array(0)), await opened(founder, mine.wrap));
+    // A wrap naming another key than the one the chain vouches for is refused before anything is opened.
+    await assert.rejects(wrapsForOwners(COMPANY, own, standing, { ...mine, keyId: "ab".repeat(16) }, [ownerKey(later)]), /unknown-key/);
   });
 
   it("is refused when an admin signs it", async () => {

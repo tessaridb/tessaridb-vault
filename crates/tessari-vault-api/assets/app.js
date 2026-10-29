@@ -4976,7 +4976,9 @@ ${END}
       case "forbidden":
         return "Only the company's owners can do this.";
       case "no_owner_wrap":
-        return "You have no copy of the recovery key: it was made before you were an owner. Ask the owner who made it to recover this member.";
+        return "You have no copy of the recovery key yet: it was made before you were an owner. An owner who has one can give you yours on this page.";
+      case "outside_reach":
+        return "The owners waiting for the recovery key changed while this page was open. Reload the page and try again.";
       case "recovery_moved":
         return "The recovery key changed while this page was open. Reload the page and try again.";
       case "unopenable":
@@ -5106,23 +5108,40 @@ ${END}
       const recoveryPublic = await publicBytes(pair.publicKey);
       const statement = await appendStatement(company, chain.at(-1), { kind: "recovery", subject: hex(keyId), agreementPublic: recoveryPublic, signingPublic: new Uint8Array(0) }, signer);
       await verifyChain(company, ownerSigning, [...chain, statement]);
-      const wraps = [];
-      const unvouched = [];
-      for (const owner of owners) {
-        const context2 = { company, wrappedKind: "recovery-to-owner", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: owner.keyId };
-        try {
-          wraps.push({ keyId: owner.keyId, wrap: await wrapToVouched(vouched, { kind: "member", account: owner.account }, owner.agreementPublic, context2, raw) });
-        } catch (problem2) {
-          if (!(problem2 instanceof VaultCryptoError && problem2.reason === "unvouched-recipient")) {
-            throw problem2;
-          }
-          unvouched.push(owner.account);
-        }
-      }
-      return { statement, keyId, public: recoveryPublic, wraps, unvouched };
+      return { statement, keyId, public: recoveryPublic, ...await wrapToOwners(company, keyId, raw, vouched, owners) };
     } finally {
       wipe(raw);
     }
+  }
+  async function wrapsForOwners(company, own, vouched, mine, pending) {
+    const standing = vouched.recoveryKey();
+    const keyId = standing === void 0 || standing.keyId !== mine.keyId ? null : keyIdBytes(standing.keyId);
+    if (keyId === null) {
+      throw new VaultCryptoError("unknown-key");
+    }
+    const context2 = { company, wrappedKind: "recovery-to-owner", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: own.keyId };
+    const raw = await unwrapSecret(own.agreementPrivate, own.agreementPublic, context2, mine.wrap);
+    try {
+      return await wrapToOwners(company, keyId, raw, vouched, pending);
+    } finally {
+      wipe(raw);
+    }
+  }
+  async function wrapToOwners(company, keyId, raw, vouched, owners) {
+    const wraps = [];
+    const unvouched = [];
+    for (const owner of owners) {
+      const context2 = { company, wrappedKind: "recovery-to-owner", wrappedKeyId: keyId, recipientKind: "member", recipientKeyId: owner.keyId };
+      try {
+        wraps.push({ keyId: owner.keyId, wrap: await wrapToVouched(vouched, { kind: "member", account: owner.account }, owner.agreementPublic, context2, raw) });
+      } catch (problem2) {
+        if (!(problem2 instanceof VaultCryptoError && problem2.reason === "unvouched-recipient")) {
+          throw problem2;
+        }
+        unvouched.push(owner.account);
+      }
+    }
+    return { wraps, unvouched };
   }
 
   // src/recovery/hand-over.ts
@@ -5142,6 +5161,24 @@ ${END}
     }
     const kept = await call("POST", `${path2}/recovery-key`, ignored, { body: groupKeyBody(made) });
     return kept.ok ? null : kept;
+  }
+  async function giveRecoveryKey(held2, vouched, pending) {
+    const path2 = companyPath(held2);
+    const mine = await call("GET", `${path2}/recovery-key/mine`, readWrap("key_id"));
+    if (!mine.ok) {
+      return { failed: mine.status === 404 ? refused("no_owner_wrap") : mine, unvouched: [] };
+    }
+    let given;
+    try {
+      given = await wrapsForOwners(held2.company, held2.keys, vouched, mine.value, pending);
+    } catch {
+      return { failed: refused("recovery_moved"), unvouched: [] };
+    }
+    if (given.wraps.length === 0) {
+      return { failed: null, unvouched: given.unvouched };
+    }
+    const sent = await call("POST", `${path2}/recovery-key/wraps`, ignored, { body: wrapsBody(given) });
+    return { failed: sent.ok ? null : sent, unvouched: given.unvouched };
   }
   async function handOverRequest(held2, vouched, request, memberKey2) {
     const recovery = vouched.recoveryKey();
@@ -5279,9 +5316,31 @@ ${END}
       const lead = "With it, the company's owners can hand a member their keys back when the member forgets their unlock password. Every member's keys are wrapped to it, so owners can reach them, and each member sees every time that happens.";
       return section("recovery-key", "Company recovery key", el("p", { class: "muted" }, lead), make, said);
     }
-    const requests = await call("GET", `${companyPath(held2)}/recovery-requests`, readRequests);
+    const [requests, pending] = await Promise.all([
+      call("GET", `${companyPath(held2)}/recovery-requests`, readRequests),
+      call("GET", `${companyPath(held2)}/recovery-key/pending`, readPending)
+    ]);
     const listed = requests.ok ? requestsList(held2, vouched, requests.value, byAccount, directory, again) : refusal(loadFailure(requests));
-    return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), listed);
+    const waiting2 = pending.ok && pending.value.length > 0 ? waitingOwners(held2, vouched, pending.value, byAccount, again) : null;
+    return section("recovery-key", "Recovery requests", el("p", { class: "muted" }, "The company has a recovery key. A request stays open for 3 days."), waiting2, listed);
+  }
+  function waitingOwners(held2, vouched, pending, byAccount, again) {
+    const names = pending.map((key) => byAccount.get(key.account)?.name ?? "An owner").join(", ");
+    const said = el("div", { "aria-live": "polite" });
+    const give = el("button", { type: "button" }, "Give them the recovery key");
+    give.addEventListener("click", () => {
+      give.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Giving the recovery key."));
+      void giveRecoveryKey(held2, vouched, pending).then(({ failed: failed2, unvouched }) => {
+        give.disabled = false;
+        if (failed2 !== null) {
+          fill(said, refusal(recoveryFailure(failed2)));
+          return;
+        }
+        again(unvouched.length === 0 ? "The waiting owners have the recovery key now." : "Owners whose keys nobody has vouched for yet still wait. Vouch for them on the Members page, then give them the key.");
+      });
+    });
+    return el("div", {}, el("p", {}, `Waiting for the recovery key: ${names}. They were made owners after it was made, so they can't recover members yet.`), give, said);
   }
   async function drawRecovery(main2, held2, notice2 = null) {
     const title = heading("Recovery");

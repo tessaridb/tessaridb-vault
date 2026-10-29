@@ -26,6 +26,16 @@ pub(crate) fn routes() -> Vec<Route> {
             get(recovery::mine),
         ),
         route(
+            Method::GET,
+            "/api/companies/{company}/recovery-key/pending",
+            get(recovery::pending),
+        ),
+        route(
+            Method::POST,
+            "/api/companies/{company}/recovery-key/wraps",
+            post(recovery::add_wraps),
+        ),
+        route(
             Method::PUT,
             "/api/companies/{company}/keys/me/escrow",
             put(recovery::escrow),

@@ -6,7 +6,7 @@ use tessari_vault_types::{AccountId, CompanyId};
 
 use super::entity::{EscrowEntity, NoticeEntity, RecoveryKeyEntity};
 use crate::Result;
-use crate::group_keys::NewGroupKey;
+use crate::group_keys::{MemberWrap, NewGroupKey};
 use crate::keys::KeyEntity;
 
 /// A member's private keys wrapped by their browser to the recovery key `recovery_key_id`.
@@ -34,14 +34,25 @@ pub(crate) trait RecoveryRepository: Send + Sync {
         vault_key: VaultKey,
     ) -> Result<()>;
 
-    /// The wraps of the recovery key by the owner key id they are wrapped to; the read is on the trail first.
+    /// The wraps of the recovery key by the owner key id they are wrapped to; with `audit`, the read is on the trail
+    /// first.
     async fn wraps(
+        &self,
+        place: &Place,
+        audit: Option<Vec<(String, Value)>>,
+        company: &CompanyId,
+        vault_key: VaultKey,
+    ) -> Result<Vec<(String, Vec<u8>)>>;
+
+    /// Add `wraps` of the recovery key to owners' key sets, under `guard`.
+    async fn add_wraps(
         &self,
         place: &Place,
         guard: Vec<(String, Value)>,
         company: &CompanyId,
+        wraps: &[MemberWrap],
         vault_key: VaultKey,
-    ) -> Result<Vec<(String, Vec<u8>)>>;
+    ) -> Result<()>;
 
     /// The key id of `account`'s key set in the company, if they keep one.
     async fn own_key(

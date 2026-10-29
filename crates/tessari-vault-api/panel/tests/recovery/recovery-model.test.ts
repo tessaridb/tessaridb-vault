@@ -94,7 +94,7 @@ describe("notice words", () => {
 
 describe("refusals in words", () => {
   it("says what to do for each recovery refusal, and something for one it does not know", () => {
-    const codes = ["no_escrow", "not_handed_over", "recovery_closed", "recovery_keyed", "forbidden", "no_owner_wrap", "recovery_moved", "unopenable", "unvouched-signer", "network", "something_new"];
+    const codes = ["no_escrow", "not_handed_over", "recovery_closed", "recovery_keyed", "forbidden", "no_owner_wrap", "recovery_moved", "unopenable", "unvouched-signer", "outside_reach", "network", "something_new"];
     const words = codes.map((code) => recoveryFailure({ ok: false, status: 409, code, message: "" }));
     assert.equal(new Set(words).size, codes.length);
     assert.ok(words.every((each) => each.length > 0 && !/[a-z]_[a-z]/.test(each)));
