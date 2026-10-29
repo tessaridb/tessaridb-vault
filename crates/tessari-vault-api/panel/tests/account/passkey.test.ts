@@ -1,10 +1,10 @@
-// Adding a passkey, without a DOM: the options the server gives, the request the browser makes from them, and what a
-// refused registration says.
+// Passkeys without a DOM: the options the server gives, the request the browser makes from them, what a refused
+// registration says, and the person's own passkeys as the server lists them.
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { creationOptions, passkeyFailure, readRegistrationOptions } from "../../src/account/passkey.ts";
+import { creationOptions, passkeyFailure, readPasskeys, readRegistrationOptions } from "../../src/account/passkey.ts";
 import { encode } from "../../src/base64url.ts";
 
 const failure = (status: number, code: string) => ({ ok: false as const, status, code, message: "server words" });
@@ -47,5 +47,20 @@ describe("what a refused registration says", () => {
     assert.match(passkeyFailure(failure(0, "cancelled")), /cancelled/);
     assert.match(passkeyFailure(failure(400, "passkey_refused")), /wasn't accepted/);
     assert.match(passkeyFailure(failure(0, "network")), /didn't answer/);
+  });
+});
+
+describe("the person's own passkeys", () => {
+  it("are read only in their shape", () => {
+    const listed = { passkeys: [{ credential: encode(bytes(7)), created: 1_793_000_000, backup_eligible: true }] };
+    assert.deepEqual(readPasskeys(listed), [{ credential: encode(bytes(7)), created: 1_793_000_000, backupEligible: true }]);
+    assert.deepEqual(readPasskeys({ passkeys: [] }), []);
+    for (const wrong of [{}, { passkeys: [{ credential: "", created: 1, backup_eligible: false }] }, { passkeys: [{ credential: encode(bytes(7)), created: 1.5, backup_eligible: false }] }, { passkeys: [{ credential: encode(bytes(7)), created: 1 }] }]) {
+      assert.equal(readPasskeys(wrong), null, JSON.stringify(wrong));
+    }
+  });
+
+  it("say what a removal that did not happen means", () => {
+    assert.match(passkeyFailure(failure(404, "not_found")), /already removed/);
   });
 });

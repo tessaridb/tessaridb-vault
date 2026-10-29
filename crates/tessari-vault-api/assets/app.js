@@ -4572,12 +4572,31 @@ ${END}
       attestation: "none"
     };
   }
+  function readPasskeys(v) {
+    if (!isRecord13(v) || !Array.isArray(v["passkeys"])) {
+      return null;
+    }
+    const keys = v["passkeys"].map((item) => {
+      if (!isRecord13(item)) {
+        return null;
+      }
+      const { credential, created, backup_eligible: backupEligible } = item;
+      if (typeof credential !== "string" || typeof created !== "number" || !Number.isSafeInteger(created) || typeof backupEligible !== "boolean") {
+        return null;
+      }
+      const id = decode(credential);
+      return id === null || id.length === 0 ? null : { credential, created, backupEligible };
+    });
+    return keys.every((key) => key !== null) ? keys : null;
+  }
   function passkeyFailure(failure) {
     switch (failure.code) {
       case "passkey_registered":
         return "That passkey is already registered with your account.";
       case "cancelled":
         return "The passkey prompt was cancelled, so nothing was added.";
+      case "not_found":
+        return "That passkey was already removed. Reload the page to see the ones left.";
       case "passkey_refused":
         return "That passkey wasn't accepted here. Try again, or use another device.";
       case "network":
@@ -4611,28 +4630,64 @@ ${END}
     });
     return kept.ok ? null : kept;
   }
-  async function drawAccount(main2, held2) {
-    const title = heading("Account");
-    const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, `${held2.name} · ${held2.email} · ${held2.companyName}`)));
-    const said = el("div", { "aria-live": "polite" });
-    const passkeys = el("section", { class: "record-section", "aria-labelledby": "passkeys" }, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted", role: "status" }, "Checking what this vault offers."));
-    fill(main2, head, said, passkeys);
-    title.focus();
-    const methods = await call("GET", "/api/sign-in/methods", readMethods);
-    if (!methods.ok || !methods.value.passkey || typeof PublicKeyCredential !== "function") {
-      fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, methods.ok && !methods.value.passkey ? "This vault doesn't offer passkeys." : "This browser can't make passkeys."));
-      return;
-    }
+  var when3 = new Intl.DateTimeFormat(void 0, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  function passkeyRow(key, said, again) {
+    const added = when3.format(new Date(key.created * 1e3));
+    const keep2 = el("button", { type: "button", autofocus: "" }, "Keep it");
+    const go2 = el("button", { type: "button", class: "danger" }, "Remove the passkey");
+    const dialog = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": `remove-${key.credential}` },
+      el("h2", { id: `remove-${key.credential}` }, `Remove the passkey added ${added}?`),
+      el("p", {}, "It stops signing you in at once, on every device that holds it. Your password and code still work."),
+      el("div", { class: "actions" }, keep2, go2)
+    );
+    keep2.addEventListener("click", () => dialog.close());
+    go2.addEventListener("click", () => {
+      dialog.close();
+      fill(said, el("p", { class: "muted", role: "status" }, "Removing the passkey."));
+      void call("DELETE", `/api/me/passkeys/${encodeURIComponent(key.credential)}`, ignored).then((answer) => answer.ok ? again("The passkey is removed.") : fill(said, refusal(passkeyFailure(answer))));
+    });
+    const open3 = el("button", { type: "button" }, "Remove");
+    open3.setAttribute("aria-label", `Remove the passkey added ${added}`);
+    open3.addEventListener("click", () => dialog.showModal());
+    const detail = key.backupEligible ? "Can sync to your other devices" : "Kept on one device";
+    return el("li", { class: "share" }, el("div", {}, el("span", { class: "share-name" }, `Added ${added}`), el("span", { class: "detail" }, detail)), open3, dialog);
+  }
+  function addButton(held2, said, again) {
     const add = el("button", { type: "button" }, "Add a passkey");
     add.addEventListener("click", () => {
       add.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Follow your device's prompt."));
       void addPasskey(held2).then((failed2) => {
         add.disabled = false;
-        fill(said, failed2 === null ? el("p", { class: "muted", role: "status" }, "The passkey is added. Next time, sign in with it.") : refusal(passkeyFailure(failed2)));
+        if (failed2 === null) {
+          again("The passkey is added. Next time, sign in with it.");
+          return;
+        }
+        fill(said, refusal(passkeyFailure(failed2)));
       });
     });
-    fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, "A passkey signs you in with this device's lock instead of your password and a code."), add);
+    return add;
+  }
+  async function drawAccount(main2, held2, notice2 = null) {
+    const title = heading("Account");
+    const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, `${held2.name} · ${held2.email} · ${held2.companyName}`)));
+    const said = el("div", { "aria-live": "polite" }, notice2 === null ? null : el("p", { class: "muted", role: "status" }, notice2));
+    const again = (words) => void drawAccount(main2, held2, words);
+    const passkeys = el("section", { class: "record-section", "aria-labelledby": "passkeys" }, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted", role: "status" }, "Checking what this vault offers."));
+    fill(main2, head, said, passkeys);
+    title.focus();
+    const methods = await call("GET", "/api/sign-in/methods", readMethods);
+    if (!methods.ok || !methods.value.passkey) {
+      fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, methods.ok ? "This vault doesn't offer passkeys." : "The vault didn't say whether it offers passkeys. Reload the page to try again."));
+      return;
+    }
+    const makes = typeof PublicKeyCredential === "function";
+    const add = makes ? addButton(held2, said, again) : el("p", { class: "muted" }, "This browser can't make passkeys.");
+    const listed = await call("GET", "/api/me/passkeys", readPasskeys);
+    const yours = !listed.ok ? refusal(passkeyFailure(listed)) : listed.value.length === 0 ? el("p", { class: "muted" }, "You have no passkeys yet.") : el("ul", { class: "shares" }, ...listed.value.map((key) => passkeyRow(key, said, again)));
+    fill(passkeys, el("h2", { id: "passkeys" }, "Passkeys"), el("p", { class: "muted" }, "A passkey signs you in with this device's lock instead of your password and a code. Remove one you no longer hold, such as a lost device's."), yours, add);
   }
 
   // src/company/company-model.ts
@@ -5031,13 +5086,13 @@ ${END}
       return;
     }
     const names = new Map((members.ok ? members.value : []).map((member) => [member.account, member.name]));
-    const when4 = new Intl.DateTimeFormat(void 0, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const when5 = new Intl.DateTimeFormat(void 0, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
     const gotIt = el("button", { type: "button" }, "Got it");
     banner = el(
       "section",
       { class: "notice-banner", "aria-labelledby": "notices-title" },
       el("h2", { id: "notices-title" }, "Since you last looked"),
-      el("ul", {}, ...fresh.map((notice2) => el("li", {}, `${noticeWords(notice2.kind, names.get(notice2.by) ?? "An owner")}, ${when4.format(new Date(notice2.at * 1e3))}.`))),
+      el("ul", {}, ...fresh.map((notice2) => el("li", {}, `${noticeWords(notice2.kind, names.get(notice2.by) ?? "An owner")}, ${when5.format(new Date(notice2.at * 1e3))}.`))),
       el("p", {}, el("a", { href: recoveryHref }, "See recovery"), " ", gotIt)
     );
     gotIt.addEventListener("click", () => {
@@ -5224,8 +5279,8 @@ ${END}
   }
 
   // src/recovery/recovery-view.ts
-  var when3 = new Intl.DateTimeFormat(void 0, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  var at2 = (seconds) => when3.format(new Date(seconds * 1e3));
+  var when4 = new Intl.DateTimeFormat(void 0, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  var at2 = (seconds) => when4.format(new Date(seconds * 1e3));
   var section = (id, title, ...body) => el("section", { class: "record-section", "aria-labelledby": id }, el("h2", { id }, title), ...body);
   function yourKeys(escrowed, recoveryKeyed, notices, names) {
     const status = escrowed ? "Your keys are kept for recovery. If you forget your unlock password, an owner can hand them back to you." : recoveryKeyed ? "Your keys aren't kept for recovery yet. They will be the next time you unlock." : "Your keys aren't kept for recovery: the company has no recovery key yet.";

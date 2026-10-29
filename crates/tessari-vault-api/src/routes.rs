@@ -124,6 +124,12 @@ pub fn routes() -> Vec<Route> {
             post(passkeys::begin_registration),
         ),
         route(Method::POST, "/api/me/passkeys", post(passkeys::register)),
+        route(Method::GET, "/api/me/passkeys", get(passkeys::list)),
+        route(
+            Method::DELETE,
+            "/api/me/passkeys/{credential}",
+            delete(passkeys::remove),
+        ),
         route(
             Method::POST,
             "/api/sign-in/passkey/begin",

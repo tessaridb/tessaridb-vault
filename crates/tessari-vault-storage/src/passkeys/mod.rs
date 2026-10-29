@@ -7,6 +7,7 @@
 //! registered once; its counter only moves forward, and a counter that did not is refused as a possible clone.
 
 mod ceremony;
+mod manage;
 mod record;
 
 use std::sync::Arc;
@@ -16,10 +17,11 @@ use tessari_vault_infrastructure::config::PasskeyParty;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_types::{AccountId, AccountState, base64url};
 
-use crate::access::bind;
+use crate::access::{Actor, bind};
 use crate::accounts::AccountService;
 use crate::sessions::{SessionService, SessionToken, hex};
 use crate::{Conflict, Error, Result};
+pub use manage::Passkey;
 use record::{Stored, StoredId};
 
 /// An assertion as the browser sends it, every part still undecoded base64url.
@@ -81,15 +83,15 @@ impl PasskeyService {
         self.begin("sign-in", "").await
     }
 
-    /// Register the passkey the response proves, for `account`, which began the ceremony: its credential id, or
-    /// `None` when the response is refused.
+    /// Register the passkey the response proves, for `actor`, who began the ceremony, on the trail of each of their
+    /// companies: its credential id, or `None` when the response is refused.
     ///
     /// # Errors
     ///
     /// [`Conflict::PasskeyRegistered`] when the credential is registered already; otherwise when the store fails.
     pub async fn register(
         &self,
-        account: &AccountId,
+        actor: &Actor,
         party: &PasskeyParty,
         client_data_json: &str,
         attestation_object: &str,
@@ -102,6 +104,7 @@ impl PasskeyService {
         let Some((purpose, holder, challenge)) = self.take(&client_data).await? else {
             return Ok(None);
         };
+        let account = actor.account();
         if purpose != "register" || holder != account.as_str() {
             return Ok(None);
         }
@@ -116,20 +119,21 @@ impl PasskeyService {
             return Ok(None);
         };
         let credential = base64url::encode(&registered.credential_id);
+        let (records, mut parameters) = self.trail(actor, "passkey.add").await?;
+        parameters.extend([
+            bind("account", account.as_str()),
+            bind("credential", credential.as_str()),
+            bind("key", hex(&registered.public_key).as_str()),
+            bind("count", i64::from(registered.sign_count)),
+            bind("backup", registered.backup_eligible),
+        ]);
+        let script = format!(
+            "BEGIN; CREATE passkeys = {{ account: $account, credential: $credential, public_key: $key, \
+             sign_count: $count, backup_eligible: $backup, created: time::now() }}; {records}COMMIT;"
+        );
         let created = self
             .database
-            .run_at(
-                &self.place,
-                "CREATE passkeys = { account: $account, credential: $credential, public_key: $key, \
-                 sign_count: $count, backup_eligible: $backup, created: time::now() };",
-                vec![
-                    bind("account", account.as_str()),
-                    bind("credential", credential.as_str()),
-                    bind("key", hex(&registered.public_key).as_str()),
-                    bind("count", i64::from(registered.sign_count)),
-                    bind("backup", registered.backup_eligible),
-                ],
-            )
+            .transact_at(&self.place, &script, "", parameters)
             .await;
         match created {
             Ok(_) => Ok(Some(credential)),

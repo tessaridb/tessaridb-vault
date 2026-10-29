@@ -45,13 +45,43 @@ export function creationOptions(options: RegistrationOptions, displayName: strin
   };
 }
 
-/** What went wrong and what to do, for a passkey that wasn't added. */
+/** One of the person's own passkeys, as `GET /api/me/passkeys` lists it. */
+export interface ListedPasskey {
+  readonly credential: string;
+  /** Seconds since the epoch. */
+  readonly created: number;
+  /** Whether the authenticator may copy it to the person's other devices. */
+  readonly backupEligible: boolean;
+}
+
+/** `GET /api/me/passkeys`: the person's own passkeys, or null for another shape. */
+export function readPasskeys(v: unknown): readonly ListedPasskey[] | null {
+  if (!isRecord(v) || !Array.isArray(v["passkeys"])) {
+    return null;
+  }
+  const keys = v["passkeys"].map((item: unknown): ListedPasskey | null => {
+    if (!isRecord(item)) {
+      return null;
+    }
+    const { credential, created, backup_eligible: backupEligible } = item;
+    if (typeof credential !== "string" || typeof created !== "number" || !Number.isSafeInteger(created) || typeof backupEligible !== "boolean") {
+      return null;
+    }
+    const id = decode(credential);
+    return id === null || id.length === 0 ? null : { credential, created, backupEligible };
+  });
+  return keys.every((key) => key !== null) ? keys : null;
+}
+
+/** What went wrong and what to do, for a passkey that wasn't added or removed. */
 export function passkeyFailure(failure: Failure): string {
   switch (failure.code) {
     case "passkey_registered":
       return "That passkey is already registered with your account.";
     case "cancelled":
       return "The passkey prompt was cancelled, so nothing was added.";
+    case "not_found":
+      return "That passkey was already removed. Reload the page to see the ones left.";
     case "passkey_refused":
       return "That passkey wasn't accepted here. Try again, or use another device.";
     case "network":

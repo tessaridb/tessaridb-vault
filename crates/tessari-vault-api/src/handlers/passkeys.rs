@@ -2,7 +2,7 @@
 //! is no relying party, and every route answers that there is none.
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use tessari_vault_infrastructure::config::PasskeyParty;
@@ -94,7 +94,7 @@ pub(crate) async fn register(
         .storage
         .passkeys
         .register(
-            actor.account(),
+            &actor,
             party,
             &body.client_data_json,
             &body.attestation_object,
@@ -143,4 +143,47 @@ pub(crate) async fn sign_in(
             session: session.expose().to_owned(),
         }),
     ))
+}
+
+#[derive(Serialize)]
+pub(crate) struct PasskeyItem {
+    credential: String,
+    created: i64,
+    backup_eligible: bool,
+}
+
+#[derive(Serialize)]
+pub(crate) struct Passkeys {
+    passkeys: Vec<PasskeyItem>,
+}
+
+/// The caller's own passkeys.
+pub(crate) async fn list(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+) -> Result<Json<Passkeys>, ApiError> {
+    let passkeys = state.storage.passkeys.list(&actor).await?;
+    Ok(Json(Passkeys {
+        passkeys: passkeys
+            .into_iter()
+            .map(|key| PasskeyItem {
+                credential: key.credential,
+                created: key.created,
+                backup_eligible: key.backup_eligible,
+            })
+            .collect(),
+    }))
+}
+
+/// Remove one of the caller's own passkeys.
+pub(crate) async fn remove(
+    State(state): State<AppState>,
+    Caller(actor): Caller,
+    Path(credential): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    if base64url::decode(&credential).is_err() {
+        return Err(ApiError::NOT_FOUND);
+    }
+    state.storage.passkeys.remove(&actor, &credential).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

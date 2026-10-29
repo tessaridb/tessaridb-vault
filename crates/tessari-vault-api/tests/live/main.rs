@@ -24,6 +24,7 @@ mod keys;
 mod oauth_e2e;
 mod oidc;
 mod page;
+mod passkey_list;
 mod passkeys;
 mod record_delete;
 mod record_types;
@@ -189,6 +190,9 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
         }),
         ("POST", "/api/me/identities/oidc") => row(None, None, None),
         ("POST", "/api/me/passkeys/begin") => row(None, None, None),
+        // A person lists and removes only their own passkeys: another's credential is not found for them.
+        ("GET", "/api/me/passkeys") => row(None, None, None),
+        ("DELETE", "/api/me/passkeys/{credential}") => row(None, None, None),
         ("POST", "/api/me/passkeys") => row(
             Some(json!({ "client_data_json": "e30", "attestation_object": "oA" })),
             None,

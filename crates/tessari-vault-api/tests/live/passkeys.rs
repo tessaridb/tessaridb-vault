@@ -27,7 +27,7 @@ async fn register(world: &World, token: &str, response: Value) -> (StatusCode, V
         .await
 }
 
-async fn begin_sign_in(world: &World) -> String {
+pub(crate) async fn begin_sign_in(world: &World) -> String {
     let (status, body) = world
         .call(Method::POST, "/api/sign-in/passkey/begin", None, None)
         .await;
@@ -35,13 +35,13 @@ async fn begin_sign_in(world: &World) -> String {
     body["challenge"].as_str().expect("a challenge").to_owned()
 }
 
-async fn sign_in(world: &World, assertion: Value) -> (StatusCode, Value) {
+pub(crate) async fn sign_in(world: &World, assertion: Value) -> (StatusCode, Value) {
     world
         .call(Method::POST, "/api/sign-in/passkey", None, Some(assertion))
         .await
 }
 
-fn failed(answer: &(StatusCode, Value)) -> bool {
+pub(crate) fn failed(answer: &(StatusCode, Value)) -> bool {
     answer.0 == StatusCode::UNAUTHORIZED && answer.1["error_code"] == "sign_in_failed"
 }
 
@@ -50,7 +50,7 @@ fn refused(answer: &(StatusCode, Value)) -> bool {
 }
 
 /// A passkey registered for the member.
-async fn registered(world: &World, cast: &Cast, id: &[u8]) -> Authenticator {
+pub(crate) async fn registered(world: &World, cast: &Cast, id: &[u8]) -> Authenticator {
     let key = Authenticator::new(id, PASSKEY_RP_ID);
     let challenge = begin_registration(world, &cast.member_a).await;
     let (status, body) = register(
