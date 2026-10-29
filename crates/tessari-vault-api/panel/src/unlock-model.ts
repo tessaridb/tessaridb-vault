@@ -60,7 +60,7 @@ export const unlockable = (companies: readonly Company[]): readonly Company[] =>
   companies.filter((company) => company.active && company.role !== null);
 
 /** A key id: 32 lowercase hexadecimal characters as its 16 bytes. */
-function keyIdBytes(text: string): Bytes | null {
+export function keyIdBytes(text: string): Bytes | null {
   if (!/^[0-9a-f]{32}$/.test(text)) {
     return null;
   }
