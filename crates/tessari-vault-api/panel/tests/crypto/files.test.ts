@@ -5,8 +5,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { concat, hex, random, type Bytes } from "../../src/crypto/bytes.ts";
-import { FILE_CHUNK_BYTES, FILE_MAX_BYTES, openFile, sealFile, type FileContext } from "../../src/crypto/files.ts";
-import { importRecordKey } from "../../src/crypto/record.ts";
+import { FILE_CHUNK_BYTES, FILE_MAX_BYTES, fileKeyId, importFileKey, newFileKey, openFile, sealFile, type FileContext } from "../../src/crypto/files.ts";
+import { importRecordKey, openRevision, sealRevision } from "../../src/crypto/record.ts";
+import { decodeRecord, encodeRecord, type RecordDocument } from "../../src/records/document.ts";
 import { flipped, noise, refusedWith, toHex } from "./support.ts";
 
 // Header: [version 1][alg 1][key id 16][salt 32][prefix 7]; each chunk is its plaintext plus a 16-byte tag.
@@ -105,5 +106,26 @@ describe("files (algorithm 0x05, STREAM)", () => {
     const { key, context } = await fixture();
     // A zero-filled buffer the size check rejects before any byte of it is read or encrypted.
     await refusedWith(sealFile(key, context, new Uint8Array(FILE_MAX_BYTES + 1)), "too-large");
+  });
+  it("opens a file from the key its record carries, after the record is sealed again under a new revision key", async () => {
+    const own = newFileKey();
+    const data = noise(FILE_CHUNK_BYTES + 3);
+    const place = { company: "company-1", record: "record-1", file: "file-1" };
+    const sealed = await sealFile(await importFileKey(own.key), { ...place, keyId: fileKeyId(own.keyId) }, data);
+    const value = { id: place.file, name: "contract.pdf", size: data.length, mediaType: "application/pdf", ...own };
+    const document: RecordDocument = { v: 1, type: "file", title: "Contract", sections: [{ name: "", fields: [{ label: "File", type: "file", value }] }] };
+    let plaintext = encodeRecord(document);
+    for (const revision of [1, 2]) {
+      const keyId = random(16);
+      const recordKey = await importRecordKey(random(32));
+      const context = { company: place.company, record: place.record, revision, keyId };
+      plaintext = await openRevision(new Map([[hex(keyId), recordKey]]), context, await sealRevision(recordKey, context, plaintext));
+    }
+    const carried = decodeRecord(plaintext).sections[0]?.fields[0];
+    assert.ok(carried?.type === "file" && carried.value !== null);
+    const context = { ...place, keyId: fileKeyId(carried.value.keyId) };
+    const opened = await openFile(new Map([[carried.value.keyId, await importFileKey(carried.value.key)]]), context, sealed);
+    assert.equal(toHex(opened), toHex(data));
+    await refusedWith(openFile(new Map([[carried.value.keyId, await importFileKey(newFileKey().key)]]), context, sealed), "unauthentic");
   });
 });

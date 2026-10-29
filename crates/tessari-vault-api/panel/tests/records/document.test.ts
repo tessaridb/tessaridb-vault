@@ -23,7 +23,7 @@ const SAMPLE: Record<FieldType, Field["value"]> = {
   "month-year": "2028-11",
   boolean: true,
   otp: { secret: "JBSWY3DPEHPK3PXP", algorithm: "SHA1", digits: 6, period: 30 },
-  file: { id: "file-1", name: "contract.pdf", size: 1024, mediaType: "application/pdf" },
+  file: { id: "file-1", name: "contract.pdf", size: 1024, mediaType: "application/pdf", key: "ab".repeat(32), keyId: "cd".repeat(16) },
   "security-question": { question: "First school?", answer: "Hillside" },
   "ssh-key": { privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\nbody", publicKey: "ssh-ed25519 AAAA test", fingerprint: "SHA256:abc" },
 };
@@ -113,6 +113,16 @@ describe("record content", () => {
       assert.throws(() => decodeRecord(utf8(JSON.stringify(withField(type, WRONG[type])))), /malformed/);
     });
   }
+
+  it("keeps a file's own key in its field, and refuses a file without a whole one", () => {
+    const file = { id: "file-1", name: "a.pdf", size: 10, mediaType: "application/pdf" };
+    const kept = decodeRecord(utf8(JSON.stringify(withField("file", { ...file, key: "ab".repeat(32), keyId: "cd".repeat(16) }))));
+    assert.deepEqual(kept.sections[0]?.fields[0]?.value, { ...file, key: "ab".repeat(32), keyId: "cd".repeat(16) });
+    assert.throws(() => decodeRecord(utf8(JSON.stringify(withField("file", file)))), /malformed/);
+    assert.throws(() => decodeRecord(utf8(JSON.stringify(withField("file", { ...file, key: "ab".repeat(31), keyId: "cd".repeat(16) })))), /malformed/);
+    assert.throws(() => decodeRecord(utf8(JSON.stringify(withField("file", { ...file, key: "AB".repeat(32), keyId: "cd".repeat(16) })))), /malformed/);
+    assert.throws(() => decodeRecord(utf8(JSON.stringify(withField("file", { ...file, key: "ab".repeat(32), keyId: "cd".repeat(15) })))), /malformed/);
+  });
 
   it("refuses an unknown field type, an unknown version and a record that is not JSON", () => {
     assert.throws(() => decodeRecord(utf8(JSON.stringify(withField("password", "x")))), /malformed/);

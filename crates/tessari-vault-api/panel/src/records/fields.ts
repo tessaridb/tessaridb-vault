@@ -33,11 +33,18 @@ export interface OtpValue {
   period: number;
 }
 
+/**
+ * A file on the record: the server's id for its sealed bytes, what it is, and its own key. The key travels inside the
+ * record's sealed body, so every revision carries it to every reader and the file is sealed once, whatever the
+ * record's revision key; `key` is 32 bytes and `keyId`, which the file's header names, 16, both in lower-case hex.
+ */
 export interface FileValue {
   id: string;
   name: string;
   size: number;
   mediaType: string;
+  key: string;
+  keyId: string;
 }
 
 export interface SecurityQuestionValue {
@@ -125,13 +132,22 @@ function readOtp(raw: unknown): OtpValue {
   return { secret, algorithm, digits, period };
 }
 
+const hexOf = (raw: unknown, bytes: number): string => (typeof raw === "string" && new RegExp(`^[0-9a-f]{${2 * bytes}}$`).test(raw) ? raw : fail());
+
 function readFile(raw: unknown): FileValue {
-  const value = exactly(raw, ["id", "name", "size", "mediaType"]);
+  const value = exactly(raw, ["id", "name", "size", "mediaType", "key", "keyId"]);
   const size = value["size"];
   if (typeof size !== "number" || !Number.isInteger(size) || size < 0 || size > FILE_MAX_BYTES) {
     return fail();
   }
-  return { id: readText(value["id"]), name: readText(value["name"]), size, mediaType: readText(value["mediaType"]) };
+  return {
+    id: readText(value["id"]),
+    name: readText(value["name"]),
+    size,
+    mediaType: readText(value["mediaType"]),
+    key: hexOf(value["key"], 32),
+    keyId: hexOf(value["keyId"], 16),
+  };
 }
 
 function orNull<T>(raw: unknown, read: (raw: unknown) => T): T | null {

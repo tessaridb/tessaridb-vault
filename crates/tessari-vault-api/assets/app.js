@@ -1518,13 +1518,21 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
     return { secret, algorithm, digits, period };
   }
+  var hexOf = (raw, bytes) => typeof raw === "string" && new RegExp(`^[0-9a-f]{${2 * bytes}}$`).test(raw) ? raw : fail();
   function readFile(raw) {
-    const value = exactly(raw, ["id", "name", "size", "mediaType"]);
+    const value = exactly(raw, ["id", "name", "size", "mediaType", "key", "keyId"]);
     const size = value["size"];
     if (typeof size !== "number" || !Number.isInteger(size) || size < 0 || size > FILE_MAX_BYTES) {
       return fail();
     }
-    return { id: readText(value["id"]), name: readText(value["name"]), size, mediaType: readText(value["mediaType"]) };
+    return {
+      id: readText(value["id"]),
+      name: readText(value["name"]),
+      size,
+      mediaType: readText(value["mediaType"]),
+      key: hexOf(value["key"], 32),
+      keyId: hexOf(value["keyId"], 16)
+    };
   }
   function orNull(raw, read) {
     return raw === null ? null : read(raw);

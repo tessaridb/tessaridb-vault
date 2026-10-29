@@ -1,9 +1,11 @@
 // Files (algorithm 0x05): `[version][0x05][key id 16][salt 32][prefix 7]` then 64 KiB chunks, each AES-256-GCM under
-// FK = HKDF(RK, salt, "tessaridb-vault/v1/file") with nonce = prefix ‖ u32 chunk number ‖ u8 last-chunk flag (the
-// STREAM construction). A chunk moved, dropped or added changes a nonce and fails its tag; a file cut at a chunk
-// boundary fails because its new last chunk was sealed as not-last. One FK per file, at most 4 096 chunks.
+// HKDF(FK, salt, "tessaridb-vault/v1/file") with nonce = prefix ‖ u32 chunk number ‖ u8 last-chunk flag (the STREAM
+// construction). A chunk moved, dropped or added changes a nonce and fails its tag; a file cut at a chunk boundary
+// fails because its new last chunk was sealed as not-last. FK is the file's own random key, at most 4 096 chunks under
+// it; the file field keeps FK and its id inside the record's sealed body, so each new revision, sealed under a new
+// record key, carries the same FK to every reader and the file itself is never sealed again.
 
-import { Reader, concat, field, hex, integer, random, sameBytes, utf8, type Bytes } from "./bytes.ts";
+import { Reader, concat, field, hex, integer, random, sameBytes, utf8, wipe, type Bytes } from "./bytes.ts";
 import { VaultCryptoError } from "./errors.ts";
 import { ALGORITHM, FORMAT_VERSION, LABEL } from "./labels.ts";
 
@@ -17,6 +19,36 @@ const PREFIX_BYTES = 7;
 const TAG_BYTES = 16;
 const SEALED_CHUNK_BYTES = FILE_CHUNK_BYTES + TAG_BYTES;
 const MAX_CHUNKS = FILE_MAX_BYTES / FILE_CHUNK_BYTES;
+
+const FILE_KEY_BYTES = 32;
+
+const toHex = (bytes: Uint8Array): string => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+function fromHex(text: string, length: number): Bytes {
+  if (!new RegExp(`^[0-9a-f]{${2 * length}}$`).test(text)) {
+    throw new VaultCryptoError("malformed");
+  }
+  return Uint8Array.from(text.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+}
+
+/** A new file's own key and the id its header names, in the lower-case hex a file field keeps them in. */
+export function newFileKey(): { readonly key: string; readonly keyId: string } {
+  const key = random(FILE_KEY_BYTES);
+  const made = { key: toHex(key), keyId: toHex(random(KEY_ID_BYTES)) };
+  wipe(key);
+  return made;
+}
+
+/** A file field's key, ready to seal or open its file; the decoded bytes are wiped once imported. */
+export async function importFileKey(key: string): Promise<CryptoKey> {
+  const raw = fromHex(key, FILE_KEY_BYTES);
+  const imported = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveKey"]);
+  wipe(raw);
+  return imported;
+}
+
+/** A file field's key id, as the file's context and header carry it. */
+export const fileKeyId = (keyId: string): Bytes => fromHex(keyId, KEY_ID_BYTES);
 
 /** Which file this is, from the server's rows: never from the file's own header. */
 export interface FileContext {
@@ -42,10 +74,10 @@ function nonce(prefix: Bytes, chunk: number, last: boolean): Bytes {
   return concat(prefix, integer(chunk, 4), Uint8Array.of(last ? 1 : 0));
 }
 
-async function fileKey(recordKey: CryptoKey, salt: Bytes, usage: "encrypt" | "decrypt"): Promise<CryptoKey> {
+async function chunkKey(fileKey: CryptoKey, salt: Bytes, usage: "encrypt" | "decrypt"): Promise<CryptoKey> {
   return crypto.subtle.deriveKey(
     { name: "HKDF", hash: "SHA-256", salt, info: utf8(LABEL.file) },
-    recordKey,
+    fileKey,
     { name: "AES-GCM", length: 256 },
     false,
     [usage],
@@ -53,7 +85,7 @@ async function fileKey(recordKey: CryptoKey, salt: Bytes, usage: "encrypt" | "de
 }
 
 /** Seal a whole file; refused above the ceiling before any byte of it is read. */
-export async function sealFile(recordKey: CryptoKey, context: FileContext, data: Bytes): Promise<Bytes> {
+export async function sealFile(fileKey: CryptoKey, context: FileContext, data: Bytes): Promise<Bytes> {
   if (data.length > FILE_MAX_BYTES) {
     throw new VaultCryptoError("too-large");
   }
@@ -62,7 +94,7 @@ export async function sealFile(recordKey: CryptoKey, context: FileContext, data:
   }
   const salt = random(SALT_BYTES);
   const prefix = random(PREFIX_BYTES);
-  const key = await fileKey(recordKey, salt, "encrypt");
+  const key = await chunkKey(fileKey, salt, "encrypt");
   const additionalData = associatedData(context, salt, prefix);
   const count = Math.max(1, Math.ceil(data.length / FILE_CHUNK_BYTES));
   const sealed: Bytes[] = [Uint8Array.of(FORMAT_VERSION, ALGORITHM.file), context.keyId, salt, prefix];
@@ -74,7 +106,7 @@ export async function sealFile(recordKey: CryptoKey, context: FileContext, data:
   return concat(...sealed);
 }
 
-/** Open a whole file with the record key the context names; any tampered, missing or extra chunk refuses it. */
+/** Open a whole file with the file key the context names; any tampered, missing or extra chunk refuses it. */
 export async function openFile(keys: ReadonlyMap<string, CryptoKey>, context: FileContext, sealed: Bytes): Promise<Bytes> {
   const reader = new Reader(sealed);
   if (reader.integer(1) !== FORMAT_VERSION) {
@@ -95,11 +127,11 @@ export async function openFile(keys: ReadonlyMap<string, CryptoKey>, context: Fi
   if (!sameBytes(keyId, context.keyId)) {
     throw new VaultCryptoError("key-mismatch");
   }
-  const recordKey = keys.get(hex(context.keyId));
-  if (recordKey === undefined) {
+  const fileKey = keys.get(hex(context.keyId));
+  if (fileKey === undefined) {
     throw new VaultCryptoError("unknown-key");
   }
-  const key = await fileKey(recordKey, salt, "decrypt");
+  const key = await chunkKey(fileKey, salt, "decrypt");
   const additionalData = associatedData(context, salt, prefix);
   const plain: Bytes[] = [];
   for (let chunk = 0; chunk < count; chunk += 1) {
