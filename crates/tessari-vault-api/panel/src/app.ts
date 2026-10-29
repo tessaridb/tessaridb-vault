@@ -93,7 +93,7 @@ function draw(outcome: Outcome<Routes>, view: HTMLElement, router: Router<Routes
       const held = unlocked();
       if (held !== null) {
         const opened = (record: string): void => go(router.href("record", { record }));
-        drawNew(view, held, outcome.match.query.type, router.href("records", {}), opened, (type) => router.href("newRecord", {}, { type }));
+        drawNew(view, held, outcome.match.query.type, router.href("records", {}), router.href("newRecord", {}), opened, (type) => router.href("newRecord", {}, { type }));
       }
       break;
     }
@@ -101,7 +101,7 @@ function draw(outcome: Outcome<Routes>, view: HTMLElement, router: Router<Routes
       const held = unlocked();
       if (held !== null) {
         const record = outcome.match.params.record;
-        void drawEdit(view, held, record, router.href("record", { record }), (saved) => go(router.href("record", { record: saved })));
+        void drawEdit(view, held, record, router.href("records", {}), router.href("record", { record }), (saved) => go(router.href("record", { record: saved })));
       }
       break;
     }

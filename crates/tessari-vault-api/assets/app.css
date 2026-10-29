@@ -955,9 +955,53 @@ button.chip[aria-pressed="true"] {
   margin-block: 0;
 }
 
-.back {
-  display: inline-block;
-  margin-block-end: var(--s-3);
+/* The trail above a record page's heading. The separator is a drawn chevron rather than a character, so a screen
+   reader hears only the steps; it turns with the reading direction. */
+.crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-data);
+  color: var(--text-muted);
+}
+
+.crumbs li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.crumbs li + li::before {
+  content: "";
+  inline-size: 0.4em;
+  block-size: 0.4em;
+  border-block-start: 1.5px solid currentColor;
+  border-inline-end: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.crumbs li:dir(rtl) + li::before {
+  transform: rotate(-45deg);
+}
+
+.crumbs a {
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  text-decoration: underline;
+}
+
+.crumbs [aria-current] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
 }
 
 .record-section {

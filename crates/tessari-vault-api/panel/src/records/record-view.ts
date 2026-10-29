@@ -5,8 +5,9 @@ import { call } from "../api.ts";
 import { el, fill } from "../dom.ts";
 import { icon } from "../icons.ts";
 import { readOpened } from "../records-model.ts";
-import { heading, refusal } from "../screen.ts";
+import { breadcrumbs, heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
+import { recordCrumbs } from "./crumbs.ts";
 import { fieldView, type Stops } from "./field-view.ts";
 import { deleteControls } from "./delete-dialog.ts";
 import { CHAIN_REFUSED, loadFailure } from "./list-view.ts";
@@ -16,7 +17,7 @@ import { shareControls } from "./share-dialog.ts";
 import { sharedWithSection } from "./shared-with-view.ts";
 import { loadSharing } from "./sharing.ts";
 
-/** Draws record `id` into `main`; `back` is the list's link. */
+/** Draws record `id` into `main`; `back` is the list's link, the first step of the trail. */
 export async function drawRecord(
   main: HTMLElement,
   held: Unlocked,
@@ -27,9 +28,9 @@ export async function drawRecord(
   editHref: string,
   gone: () => void,
 ): Promise<void> {
-  const toList = el("a", { href: back, class: "back" }, "All records");
+  const unnamed = breadcrumbs(recordCrumbs(back, null));
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening the record."));
-  fill(main, toList, el("div", { class: "page-head" }, heading("Record")), said);
+  fill(main, unnamed, el("div", { class: "page-head" }, heading("Record")), said);
   const [chain, opened] = await Promise.all([
     vouchedChain(held),
     call("GET", `${companyPath(held)}/records/${encodeURIComponent(id)}`, readOpened),
@@ -45,7 +46,7 @@ export async function drawRecord(
   const opener = new Opener(held, chain.vouched);
   const [item, sharing] = await Promise.all([opener.open(opened.value), loadSharing(held, id)]);
   if (!("document" in item)) {
-    fill(main, toList, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
+    fill(main, unnamed, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
     return;
   }
   const { document } = item;
@@ -72,6 +73,6 @@ export async function drawRecord(
         : [el("section", { class: "record-section" }, el("h2", {}, "Shared with"), refusal(sharing.words))];
   const edit = el("a", { class: "button icon-action quiet", href: editHref, "aria-label": `Edit ${named}`, "data-tip": "Edit" }, icon("edit"));
   const actions = el("div", { class: "actions" }, edit, share ?? null, remove ?? null);
-  fill(main, toList, el("div", { class: "page-head" }, head, actions), ...sections, ...shared, dialog ?? null, shareDialog ?? null);
+  fill(main, breadcrumbs(recordCrumbs(back, document.title)), el("div", { class: "page-head" }, head, actions), ...sections, ...shared, dialog ?? null, shareDialog ?? null);
   title.focus();
 }

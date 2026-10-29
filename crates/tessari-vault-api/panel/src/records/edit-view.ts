@@ -7,8 +7,9 @@ import { el, fill } from "../dom.ts";
 import { joinCustom, splitCustom } from "./custom-fields.ts";
 import { customEditor } from "./custom-fields-view.ts";
 import { readOpened, readRow, type RecordRow } from "../records-model.ts";
-import { heading, refusal } from "../screen.ts";
+import { breadcrumbs, heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
+import { editCrumbs, newCrumbs, type Crumb } from "./crumbs.ts";
 import type { RecordDocument } from "./document.ts";
 import { edited, fieldAt } from "./editing.ts";
 import type { Field } from "./fields.ts";
@@ -79,7 +80,7 @@ function saveFailure(code: string, fallback: string): string {
 }
 
 /** The form for `document`; `save` seals and sends it and answers a refusal in words, or null when it is kept. */
-function form(main: HTMLElement, title: string, document: RecordDocument, back: { readonly href: string; readonly label: string }, save: (made: RecordDocument) => Promise<string | null>): void {
+function form(main: HTMLElement, title: string, document: RecordDocument, trail: readonly Crumb[], save: (made: RecordDocument) => Promise<string | null>): void {
   const name = el("input", { id: "record-title", type: "text", autocomplete: "off", value: document.title });
   const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
   nameHint.hidden = true;
@@ -133,19 +134,19 @@ function form(main: HTMLElement, title: string, document: RecordDocument, back: 
     });
   });
   const head = el("div", { class: "page-head" }, el("div", {}, heading(title), el("p", { class: "lede" }, typeName(document.type))));
-  fill(main, el("a", { href: back.href, class: "back" }, back.label), head, body);
+  fill(main, breadcrumbs(trail), head, body);
   name.focus();
 }
 
-/** A new record of built-in `type`, or the choice of type when none is named. */
-export function drawNew(main: HTMLElement, held: Unlocked, type: string | null, back: string, opened: (record: string) => void, newOf: (type: string) => string): void {
+/** A new record of built-in `type`, or the choice of type when none is named; `chooser` is the choice's own link. */
+export function drawNew(main: HTMLElement, held: Unlocked, type: string | null, back: string, chooser: string, opened: (record: string) => void, newOf: (type: string) => string): void {
   const template = BUILT_IN_TYPES.find((each) => each.id === type);
   if (template === undefined) {
     const choices = el("ul", { class: "records", "aria-label": "Record types" }, ...BUILT_IN_TYPES.map((each) => el("li", { class: "record" }, el("a", { class: "record-title", href: newOf(each.id) }, each.name))));
-    fill(main, el("a", { href: back, class: "back" }, "All records"), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
+    fill(main, breadcrumbs(newCrumbs(back, chooser, null)), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
     return;
   }
-  form(main, "New record", recordFromTemplate(template, ""), { href: back, label: "All records" }, async (made) => {
+  form(main, "New record", recordFromTemplate(template, ""), newCrumbs(back, chooser, template.name), async (made) => {
     const record = await newRecord(held.company, held.keys, made);
     const answer = await call("POST", `${companyPath(held)}/records`, readRow, { body: record.body });
     if (!answer.ok) {
@@ -156,25 +157,26 @@ export function drawNew(main: HTMLElement, held: Unlocked, type: string | null, 
   });
 }
 
-/** The opened record `id` in a form; the save is the next revision. */
-export async function drawEdit(main: HTMLElement, held: Unlocked, id: string, back: string, opened: (record: string) => void): Promise<void> {
-  fill(main, el("div", { class: "page-head" }, heading("Edit record")), el("p", { class: "muted", role: "status" }, "Opening the record."));
+/** The opened record `id` in a form; the save is the next revision. `records` and `back` are the list's and the record's links. */
+export async function drawEdit(main: HTMLElement, held: Unlocked, id: string, records: string, back: string, opened: (record: string) => void): Promise<void> {
+  const unnamed = breadcrumbs(editCrumbs(records, back, null));
+  fill(main, unnamed, el("div", { class: "page-head" }, heading("Edit record")), el("p", { class: "muted", role: "status" }, "Opening the record."));
   const [chain, answer] = await Promise.all([vouchedChain(held), call("GET", `${companyPath(held)}/records/${encodeURIComponent(id)}`, readOpened)]);
   if (!chain.ok) {
-    fill(main, el("div", { class: "page-head" }, heading("Edit record")), refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
+    fill(main, unnamed, el("div", { class: "page-head" }, heading("Edit record")), refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
     return;
   }
   if (!answer.ok) {
-    fill(main, el("div", { class: "page-head" }, heading("Edit record")), refusal(loadFailure(answer)));
+    fill(main, unnamed, el("div", { class: "page-head" }, heading("Edit record")), refusal(loadFailure(answer)));
     return;
   }
   const item = await new Opener(held, chain.vouched).open(answer.value);
   if (!("document" in item)) {
-    fill(main, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
+    fill(main, unnamed, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
     return;
   }
   const row: RecordRow = item.row;
-  form(main, "Edit record", item.document, { href: back, label: "Back to the record" }, async (made) => {
+  form(main, "Edit record", item.document, editCrumbs(records, back, item.document.title), async (made) => {
     const sharing = await sharedWith(held, id);
     if (!sharing.ok) {
       return sharing.words;

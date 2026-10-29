@@ -799,6 +799,28 @@
   // src/screen.ts
   var heading = (title) => el("h1", { tabindex: "-1", class: "view-title" }, title);
   var refusal = (words) => el("p", { class: "message bad", role: "alert" }, words);
+  var breadcrumbs = (trail) => el(
+    "nav",
+    { class: "crumbs", "aria-label": "Breadcrumb" },
+    el("ol", {}, ...trail.map((crumb) => el("li", {}, crumb.href === null ? el("span", { "aria-current": "page" }, crumb.label) : el("a", { href: crumb.href }, crumb.label))))
+  );
+
+  // src/records/crumbs.ts
+  var RECORDS = "Records";
+  var named = (title) => title === null ? "Record" : title === "" ? "Untitled" : title;
+  var recordCrumbs = (records, title) => [
+    { label: RECORDS, href: records },
+    { label: named(title), href: null }
+  ];
+  var editCrumbs = (records, record, title) => [
+    { label: RECORDS, href: records },
+    { label: named(title), href: record },
+    { label: "Edit", href: null }
+  ];
+  function newCrumbs(records, chooser, typeName2) {
+    const top = { label: RECORDS, href: records };
+    return typeName2 === null ? [top, { label: "New record", href: null }] : [top, { label: "New record", href: chooser }, { label: typeName2, href: null }];
+  }
 
   // src/crypto/labels.ts
   var PREFIX = "tessaridb-vault/v1/";
@@ -1028,8 +1050,8 @@
   }
   function edited(document2, title, values) {
     const problems = /* @__PURE__ */ new Map();
-    const named = title.trim();
-    if (named === "") {
+    const named2 = title.trim();
+    if (named2 === "") {
       problems.set("title", "Give the record a title, so you can find it again.");
     }
     const sections = document2.sections.map((section, sectionIndex) => ({
@@ -1045,7 +1067,7 @@
         }
       })
     }));
-    return problems.size === 0 ? { ok: true, document: { ...document2, title: named, sections } } : { ok: false, problems };
+    return problems.size === 0 ? { ok: true, document: { ...document2, title: named2, sections } } : { ok: false, problems };
   }
 
   // src/records/types.ts
@@ -2295,7 +2317,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         return fallback;
     }
   }
-  function form(main2, title, document2, back, save) {
+  function form(main2, title, document2, trail, save) {
     const name = el("input", { id: "record-title", type: "text", autocomplete: "off", value: document2.title });
     const nameHint = el("p", { id: "record-title-hint", class: "message bad" });
     nameHint.hidden = true;
@@ -2349,17 +2371,17 @@ ${target.detail}`.toLowerCase().includes(wanted));
       });
     });
     const head = el("div", { class: "page-head" }, el("div", {}, heading(title), el("p", { class: "lede" }, typeName(document2.type))));
-    fill(main2, el("a", { href: back.href, class: "back" }, back.label), head, body);
+    fill(main2, breadcrumbs(trail), head, body);
     name.focus();
   }
-  function drawNew(main2, held2, type, back, opened, newOf) {
+  function drawNew(main2, held2, type, back, chooser, opened, newOf) {
     const template = BUILT_IN_TYPES.find((each) => each.id === type);
     if (template === void 0) {
       const choices = el("ul", { class: "records", "aria-label": "Record types" }, ...BUILT_IN_TYPES.map((each) => el("li", { class: "record" }, el("a", { class: "record-title", href: newOf(each.id) }, each.name))));
-      fill(main2, el("a", { href: back, class: "back" }, "All records"), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
+      fill(main2, breadcrumbs(newCrumbs(back, chooser, null)), el("div", { class: "page-head" }, heading("New record")), el("p", {}, "Choose what kind of record to make."), choices);
       return;
     }
-    form(main2, "New record", recordFromTemplate(template, ""), { href: back, label: "All records" }, async (made) => {
+    form(main2, "New record", recordFromTemplate(template, ""), newCrumbs(back, chooser, template.name), async (made) => {
       const record = await newRecord(held2.company, held2.keys, made);
       const answer = await call("POST", `${companyPath(held2)}/records`, readRow, { body: record.body });
       if (!answer.ok) {
@@ -2369,24 +2391,25 @@ ${target.detail}`.toLowerCase().includes(wanted));
       return null;
     });
   }
-  async function drawEdit(main2, held2, id, back, opened) {
-    fill(main2, el("div", { class: "page-head" }, heading("Edit record")), el("p", { class: "muted", role: "status" }, "Opening the record."));
+  async function drawEdit(main2, held2, id, records, back, opened) {
+    const unnamed = breadcrumbs(editCrumbs(records, back, null));
+    fill(main2, unnamed, el("div", { class: "page-head" }, heading("Edit record")), el("p", { class: "muted", role: "status" }, "Opening the record."));
     const [chain, answer] = await Promise.all([vouchedChain(held2), call("GET", `${companyPath(held2)}/records/${encodeURIComponent(id)}`, readOpened)]);
     if (!chain.ok) {
-      fill(main2, el("div", { class: "page-head" }, heading("Edit record")), refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
+      fill(main2, unnamed, el("div", { class: "page-head" }, heading("Edit record")), refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
       return;
     }
     if (!answer.ok) {
-      fill(main2, el("div", { class: "page-head" }, heading("Edit record")), refusal(loadFailure(answer)));
+      fill(main2, unnamed, el("div", { class: "page-head" }, heading("Edit record")), refusal(loadFailure(answer)));
       return;
     }
     const item = await new Opener(held2, chain.vouched).open(answer.value);
     if (!("document" in item)) {
-      fill(main2, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
+      fill(main2, unnamed, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
       return;
     }
     const row2 = item.row;
-    form(main2, "Edit record", item.document, { href: back, label: "Back to the record" }, async (made) => {
+    form(main2, "Edit record", item.document, editCrumbs(records, back, item.document.title), async (made) => {
       const sharing = await sharedWith(held2, id);
       if (!sharing.ok) {
         return sharing.words;
@@ -2786,9 +2809,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
 
   // src/records/record-view.ts
   async function drawRecord(main2, held2, id, copy2, stops2, back, editHref, gone) {
-    const toList = el("a", { href: back, class: "back" }, "All records");
+    const unnamed = breadcrumbs(recordCrumbs(back, null));
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening the record."));
-    fill(main2, toList, el("div", { class: "page-head" }, heading("Record")), said);
+    fill(main2, unnamed, el("div", { class: "page-head" }, heading("Record")), said);
     const [chain, opened] = await Promise.all([
       vouchedChain(held2),
       call("GET", `${companyPath(held2)}/records/${encodeURIComponent(id)}`, readOpened)
@@ -2804,7 +2827,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     const opener = new Opener(held2, chain.vouched);
     const [item, sharing] = await Promise.all([opener.open(opened.value), loadSharing(held2, id)]);
     if (!("document" in item)) {
-      fill(main2, toList, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
+      fill(main2, unnamed, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
       return;
     }
     const { document: document2 } = item;
@@ -2818,15 +2841,15 @@ ${target.detail}`.toLowerCase().includes(wanted));
       )
     );
     const head = el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type)));
-    const named = document2.title === "" ? "Untitled" : document2.title;
-    const [remove, dialog] = deleteControls(held2, id, named, gone);
+    const named2 = document2.title === "" ? "Untitled" : document2.title;
+    const [remove, dialog] = deleteControls(held2, id, named2, gone);
     const again = () => void drawRecord(main2, held2, id, copy2, stops2, back, editHref, gone);
-    const context2 = { held: held2, vouched: chain.vouched, opener, opened: opened.value, title: named, done: again };
+    const context2 = { held: held2, vouched: chain.vouched, opener, opened: opened.value, title: named2, done: again };
     const [share2, shareDialog] = sharing?.ok === true ? shareControls(context2, sharing.targets) : [];
     const shared = sharing === null ? [] : sharing.ok ? sharedWithSection(held2, id, sharing.rows, again) : [el("section", { class: "record-section" }, el("h2", {}, "Shared with"), refusal(sharing.words))];
-    const edit = el("a", { class: "button icon-action quiet", href: editHref, "aria-label": `Edit ${named}`, "data-tip": "Edit" }, icon("edit"));
+    const edit = el("a", { class: "button icon-action quiet", href: editHref, "aria-label": `Edit ${named2}`, "data-tip": "Edit" }, icon("edit"));
     const actions = el("div", { class: "actions" }, edit, share2 ?? null, remove ?? null);
-    fill(main2, toList, el("div", { class: "page-head" }, head, actions), ...sections, ...shared, dialog ?? null, shareDialog ?? null);
+    fill(main2, breadcrumbs(recordCrumbs(back, document2.title)), el("div", { class: "page-head" }, head, actions), ...sections, ...shared, dialog ?? null, shareDialog ?? null);
     title.focus();
   }
 
@@ -3795,7 +3818,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         const held2 = unlocked();
         if (held2 !== null) {
           const opened = (record) => go(router.href("record", { record }));
-          drawNew(view2, held2, outcome.match.query.type, router.href("records", {}), opened, (type) => router.href("newRecord", {}, { type }));
+          drawNew(view2, held2, outcome.match.query.type, router.href("records", {}), router.href("newRecord", {}), opened, (type) => router.href("newRecord", {}, { type }));
         }
         break;
       }
@@ -3803,7 +3826,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         const held2 = unlocked();
         if (held2 !== null) {
           const record = outcome.match.params.record;
-          void drawEdit(view2, held2, record, router.href("record", { record }), (saved) => go(router.href("record", { record: saved })));
+          void drawEdit(view2, held2, record, router.href("records", {}), router.href("record", { record }), (saved) => go(router.href("record", { record: saved })));
         }
         break;
       }
