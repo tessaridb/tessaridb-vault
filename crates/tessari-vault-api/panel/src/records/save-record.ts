@@ -26,8 +26,11 @@ export interface ShareRecipient {
 
 type Body = Readonly<Record<string, unknown>>;
 
-/** Revision `revision` of record `id` sealed under a new key, signed, and wrapped to the author and to `others`. */
-async function sealed(company: string, keys: OpenKeySet, id: string, revision: number, document: RecordDocument, vouched: Vouched | null, others: readonly ShareRecipient[]) {
+/**
+ * Revision `revision` of record `id` sealed under a new key, signed at chain position `chainSeq` (the seq of the last
+ * statement of the chain the author verified), and wrapped to the author and to `others`.
+ */
+async function sealed(company: string, keys: OpenKeySet, id: string, revision: number, chainSeq: number, document: RecordDocument, vouched: Vouched | null, others: readonly ShareRecipient[]) {
   const keyId = random(ID_BYTES);
   const raw = random(RECORD_KEY_BYTES);
   const context = (recipientKind: "member" | "group", recipientKeyId: Bytes) =>
@@ -49,14 +52,14 @@ async function sealed(company: string, keys: OpenKeySet, id: string, revision: n
   }
   const place = { company, record: id, revision };
   const body = await sealRevision(await importRecordKey(raw), { ...place, keyId }, encodeRecord(document));
-  const signature = await signRevision(keys.signingPrivate, place, body);
-  return { key_id: hex(keyId), body: encode(body), signature: encode(signature), author_key: hex(keys.keyId), wrap: encode(wrap), wraps };
+  const signature = await signRevision(keys.signingPrivate, { ...place, chainSeq }, body);
+  return { key_id: hex(keyId), body: encode(body), signature: encode(signature), author_key: hex(keys.keyId), chain_seq: chainSeq, wrap: encode(wrap), wraps };
 }
 
-/** A new record of `document`'s type: its id, and the body `POST /api/companies/{company}/records` takes. */
-export async function newRecord(company: string, keys: OpenKeySet, document: RecordDocument): Promise<{ readonly id: string; readonly body: Body }> {
+/** A new record of `document`'s type, signed at `chainSeq`: its id, and the body `POST /api/companies/{company}/records` takes. */
+export async function newRecord(company: string, keys: OpenKeySet, chainSeq: number, document: RecordDocument): Promise<{ readonly id: string; readonly body: Body }> {
   const id = hex(random(ID_BYTES));
-  const { wraps: _none, ...parts } = await sealed(company, keys, id, 1, document, null, []);
+  const { wraps: _none, ...parts } = await sealed(company, keys, id, 1, chainSeq, document, null, []);
   return { id, body: { id, record_type: document.type, ...parts } };
 }
 
@@ -69,5 +72,5 @@ export async function revisedRecord(
   document: RecordDocument,
   others: readonly ShareRecipient[],
 ): Promise<Body> {
-  return { revision: row.revision, ...(await sealed(company, keys, row.id, row.revision + 1, document, vouched, others)) };
+  return { revision: row.revision, ...(await sealed(company, keys, row.id, row.revision + 1, vouched.length, document, vouched, others)) };
 }

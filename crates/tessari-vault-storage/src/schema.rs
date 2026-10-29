@@ -61,6 +61,7 @@ DEFINE INDEX IF NOT EXISTS by_author ON records FIELDS company, author; \
 DEFINE TABLE IF NOT EXISTS revisions (record string, revision int, author string, author_key string, signature string, \
 size int, created int); \
 DEFINE INDEX IF NOT EXISTS by_record ON revisions FIELDS record; \
+DEFINE FIELD IF NOT EXISTS chain_seq ON revisions TYPE int DEFAULT 0; \
 DEFINE TABLE IF NOT EXISTS record_types (type_id string, company string, allowed_roles array, definition string, \
 created int); \
 DEFINE INDEX IF NOT EXISTS by_id ON record_types FIELDS type_id UNIQUE; \

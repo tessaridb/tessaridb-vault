@@ -490,6 +490,8 @@ pub fn sealed_record_by(author_key: &str) -> Value {
         "key_id": "11".repeat(16),
         "body": encode(b"sealed"),
         "signature": crate::records::signature(7),
+        // No chain in this world: position 0, which the server takes and no browser verifies.
+        "chain_seq": 0,
         "author_key": author_key,
         "wrap": encode(&[9; 82]),
     })

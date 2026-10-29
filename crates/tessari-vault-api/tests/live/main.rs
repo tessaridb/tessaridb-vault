@@ -11,6 +11,7 @@ mod audit_reads;
 mod authenticator;
 mod binary;
 mod canaries;
+mod chain_position;
 mod company_drop;
 mod concurrency;
 mod enrolment;

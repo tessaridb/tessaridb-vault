@@ -58,16 +58,42 @@ export interface RecoveryKey {
   agreementPublic: Bytes;
 }
 
+/** A signing key a `member` statement vouched for, from its statement's seq until the next one for that member. */
+interface Held {
+  readonly signing: Bytes;
+  readonly from: number;
+  until: number | undefined;
+}
+
 /** The keys a verified chain vouches for, by account or group id, and the company recovery key. */
 export class Vouched {
   readonly #members: ReadonlyMap<string, MemberKeys>;
   readonly #groups: ReadonlyMap<string, Bytes>;
   readonly #recovery: RecoveryKey | undefined;
+  readonly #history: ReadonlyMap<string, readonly Held[]>;
+  /** The seq of the chain's last statement: the position a revision sealed now is signed at. */
+  readonly length: number;
 
-  constructor(members: ReadonlyMap<string, MemberKeys>, groups: ReadonlyMap<string, Bytes>, recovery?: RecoveryKey) {
+  constructor(
+    members: ReadonlyMap<string, MemberKeys>,
+    groups: ReadonlyMap<string, Bytes>,
+    recovery?: RecoveryKey,
+    history: ReadonlyMap<string, readonly Held[]> = new Map(),
+    length = 0,
+  ) {
     this.#members = members;
     this.#groups = groups;
     this.#recovery = recovery;
+    this.#history = history;
+    this.length = length;
+  }
+
+  /** The signing key vouched for `account` at chain position `seq`, or nothing when the reader's chain cannot say. */
+  signingKeyAt(account: string, seq: number): Bytes | undefined {
+    if (!Number.isSafeInteger(seq) || seq < 1 || seq > this.length) {
+      return undefined;
+    }
+    return this.#history.get(account)?.find((held) => held.from <= seq && (held.until === undefined || seq < held.until))?.signing;
   }
 
   recoveryKey(): RecoveryKey | undefined {
@@ -173,6 +199,7 @@ export async function verifyChain(company: string, ownerSigningPublic: Bytes, ch
     throw new VaultCryptoError("chain-broken");
   }
   const members = new Map<string, MemberKeys>();
+  const history = new Map<string, Held[]>();
   const groups = new Map<string, Bytes>();
   // The signing keys of members made admin and not revoked since, by hex; OSK is checked on its own.
   const adminKeys = new Set<string>();
@@ -203,10 +230,18 @@ export async function verifyChain(company: string, ownerSigningPublic: Bytes, ch
       throw new VaultCryptoError("unvouched-signer");
     }
     switch (decoded.kind) {
-      case "member":
+      case "member": {
         forget(decoded.subject);
         members.set(decoded.subject, { agreement: decoded.agreementPublic, signing: decoded.signingPublic });
+        const held = history.get(decoded.subject) ?? [];
+        const open = held.at(-1);
+        if (open !== undefined && open.until === undefined) {
+          open.until = decoded.seq;
+        }
+        held.push({ signing: decoded.signingPublic, from: decoded.seq, until: undefined });
+        history.set(decoded.subject, held);
         break;
+      }
       case "admin": {
         const keys = members.get(decoded.subject);
         if (keys === undefined) {
@@ -229,9 +264,11 @@ export async function verifyChain(company: string, ownerSigningPublic: Bytes, ch
         if (decoded.subject === ownerAccount || (!forget(decoded.subject) && !groups.delete(decoded.subject))) {
           throw new VaultCryptoError("chain-broken");
         }
+        // A revoke takes back everything the subject held, so none of their revisions verifies at any position.
+        history.delete(decoded.subject);
         break;
     }
     expectedPrev = await digest(statement);
   }
-  return new Vouched(members, groups, recovery);
+  return new Vouched(members, groups, recovery, history, chain.length);
 }

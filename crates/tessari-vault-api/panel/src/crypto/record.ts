@@ -121,6 +121,8 @@ export interface RevisionContext {
   company: string;
   record: string;
   revision: number;
+  /** The seq of the last statement of the chain the author verified when signing (ADR: revisions bound to it). */
+  chainSeq: number;
 }
 
 function signedRevision(context: RevisionContext, body: Bytes): Bytes {
@@ -129,6 +131,7 @@ function signedRevision(context: RevisionContext, body: Bytes): Bytes {
     field(utf8(context.company)),
     field(utf8(context.record)),
     field(integer(context.revision, 8)),
+    field(integer(context.chainSeq, 8)),
     field(body),
   );
 }
@@ -138,7 +141,10 @@ export async function signRevision(signingKey: CryptoKey, context: RevisionConte
   return sign(signingKey, signedRevision(context, body));
 }
 
-/** Accept a revision only from an author the verified chain vouches for, signed over exactly this place and body. */
+/**
+ * Accept a revision only from an author the verified chain vouched for at the position the revision was signed at,
+ * signed over exactly this place, position and body.
+ */
 export async function verifyRevision(
   vouched: Vouched,
   author: string,
@@ -146,7 +152,7 @@ export async function verifyRevision(
   body: Bytes,
   signature: Bytes,
 ): Promise<void> {
-  const signingKey = vouched.signingKeyOf(author);
+  const signingKey = vouched.signingKeyAt(author, context.chainSeq);
   if (signingKey === undefined) {
     throw new VaultCryptoError("unvouched-signer");
   }

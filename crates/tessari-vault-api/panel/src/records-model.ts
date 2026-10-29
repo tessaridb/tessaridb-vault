@@ -53,6 +53,8 @@ export interface OpenedRecord {
   readonly authorKey: string;
   /** The account that wrote the latest revision, whose key signed it. */
   readonly revisedBy: string;
+  /** The chain position the latest revision was signed at, which says which of its author's keys signed it. */
+  readonly chainSeq: number;
   readonly recipient: Recipient;
   readonly wrap: Bytes;
   /** The ids of the person's own groups the record is shared with. */
@@ -69,8 +71,9 @@ export function readOpened(v: unknown): OpenedRecord | null {
   const authorKey = v["author_key"];
   const through = v["through"];
   const revisedBy = v["revised_by"];
-  return row !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey) && isId(revisedBy) && Array.isArray(through) && through.every(isId)
-    ? { row, body, signature, authorKey, revisedBy, recipient, wrap, through }
+  const chainSeq = v["chain_seq"];
+  return row !== null && recipient !== null && body != null && signature != null && wrap != null && isId(authorKey) && isId(revisedBy) && isWhole(chainSeq) && Array.isArray(through) && through.every(isId)
+    ? { row, body, signature, authorKey, revisedBy, chainSeq, recipient, wrap, through }
     : null;
 }
 

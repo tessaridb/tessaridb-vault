@@ -66,7 +66,8 @@ function recovery(keyId: string, agreementPublic: Bytes): StatementFields {
   return { kind: "recovery", subject: keyId, agreementPublic, signingPublic: new Uint8Array(0) };
 }
 
-const REVISION: RevisionContext = { company: COMPANY, record: "record-1", revision: 3 };
+/** Revision 3 of a record, signed when the chain the author verified ended at statement 6 (the world's last). */
+const REVISION: RevisionContext = { company: COMPANY, record: "record-1", revision: 3, chainSeq: 6 };
 const BODY = utf8("sealed body bytes");
 
 describe("the vouching chain", () => {
@@ -187,6 +188,27 @@ describe("revision signatures (algorithm 0x04)", () => {
     await refusedWith(verifyRevision(vouched, "alice", REVISION, BODY, signature), "unvouched-signer");
   });
 
+  it("accepts a revision its author signed before replacing their key, under the key vouched then", async () => {
+    const { owner, alice, chain } = await world();
+    const before = await signRevision(alice.signer.privateKey, REVISION, BODY);
+    const renewed = await person("alice");
+    chain.push(await appendStatement(COMPANY, chain.at(-1), member(renewed), owner.signer));
+    const vouched = await verifyChain(COMPANY, owner.signer.publicBytes, chain);
+    await verifyRevision(vouched, "alice", REVISION, BODY, before);
+    const after = { ...REVISION, revision: 4, chainSeq: 7 };
+    await verifyRevision(vouched, "alice", after, BODY, await signRevision(renewed.signer.privateKey, after, BODY));
+    await refusedWith(verifyRevision(vouched, "alice", after, BODY, await signRevision(alice.signer.privateKey, after, BODY)), "bad-signature");
+  });
+
+  it("refuses a revision claiming a chain position the reader has not verified", async () => {
+    const { owner, alice, chain } = await world();
+    const vouched = await verifyChain(COMPANY, owner.signer.publicBytes, chain);
+    const ahead = { ...REVISION, chainSeq: 7 };
+    await refusedWith(verifyRevision(vouched, "alice", ahead, BODY, await signRevision(alice.signer.privateKey, ahead, BODY)), "unvouched-signer");
+    const early = { ...REVISION, chainSeq: 1 };
+    await refusedWith(verifyRevision(vouched, "alice", early, BODY, await signRevision(alice.signer.privateKey, early, BODY)), "unvouched-signer");
+  });
+
   it("refuses a revision claimed for another author, body, record, revision or company", async () => {
     const { owner, alice, chain } = await world();
     const vouched = await verifyChain(COMPANY, owner.signer.publicBytes, chain);
@@ -197,6 +219,7 @@ describe("revision signatures (algorithm 0x04)", () => {
       { ...REVISION, record: "record-2" },
       { ...REVISION, revision: 4 },
       { ...REVISION, company: "company-2" },
+      { ...REVISION, chainSeq: 5 },
     ]) {
       await refusedWith(verifyRevision(vouched, "alice", moved, BODY, signature), "bad-signature");
     }

@@ -52,6 +52,8 @@ pub(crate) struct Opened {
     body: String,
     signature: String,
     author_key: String,
+    /// The position of the company's key chain the latest revision was signed at.
+    chain_seq: i64,
     recipient: String,
     wrap: String,
     through: Vec<String>,
@@ -66,6 +68,7 @@ impl From<&OpenedRecord> for Opened {
             body: base64url::encode(sealed.body()),
             signature: base64url::encode(sealed.signature()),
             author_key: sealed.author_key().to_string(),
+            chain_seq: sealed.chain_seq(),
             recipient: opened.recipient.clone(),
             wrap: base64url::encode(sealed.wrap()),
             through: opened.through.clone(),
@@ -85,6 +88,8 @@ pub(crate) struct NewRecord {
     body: String,
     signature: String,
     author_key: String,
+    /// The position of the company's key chain the revision was signed at.
+    chain_seq: i64,
     wrap: String,
 }
 
@@ -96,6 +101,8 @@ pub(crate) struct NewRevision {
     body: String,
     signature: String,
     author_key: String,
+    /// The position of the company's key chain the revision was signed at.
+    chain_seq: i64,
     wrap: String,
     /// The record key wrapped to every other recipient the record keeps.
     #[serde(default)]
@@ -137,6 +144,7 @@ fn sealed(
     body: &str,
     signature: &str,
     author_key: &str,
+    chain_seq: i64,
     wrap: &str,
 ) -> Result<(KeyId, Sealed), ApiError> {
     let key_id = KeyId::parse(key_id).map_err(|_| ApiError::INVALID)?;
@@ -145,6 +153,7 @@ fn sealed(
         decoded(body)?,
         decoded(signature)?,
         author_key,
+        chain_seq,
         decoded(wrap)?,
     )
     .map_err(|_| ApiError::INVALID)?;
@@ -240,6 +249,7 @@ pub(crate) async fn create(
         &body.body,
         &body.signature,
         &body.author_key,
+        body.chain_seq,
         &body.wrap,
     )?;
     let record = state
@@ -278,6 +288,7 @@ pub(crate) async fn revise(
         &body.body,
         &body.signature,
         &body.author_key,
+        body.chain_seq,
         &body.wrap,
     )?;
     let wraps = body

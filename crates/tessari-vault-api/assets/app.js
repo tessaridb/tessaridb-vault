@@ -610,7 +610,8 @@ ${target.detail}`.toLowerCase().includes(wanted));
     const authorKey = v["author_key"];
     const through = v["through"];
     const revisedBy = v["revised_by"];
-    return row2 !== null && recipient !== null && body != null && signature != null && wrap != null && isId2(authorKey) && isId2(revisedBy) && Array.isArray(through) && through.every(isId2) ? { row: row2, body, signature, authorKey, revisedBy, recipient, wrap, through } : null;
+    const chainSeq = v["chain_seq"];
+    return row2 !== null && recipient !== null && body != null && signature != null && wrap != null && isId2(authorKey) && isId2(revisedBy) && isWhole(chainSeq) && Array.isArray(through) && through.every(isId2) ? { row: row2, body, signature, authorKey, revisedBy, chainSeq, recipient, wrap, through } : null;
   }
   function readOpenedPage(v) {
     if (!isRecord4(v) || !Array.isArray(v["records"])) {
@@ -1055,10 +1056,22 @@ ${target.detail}`.toLowerCase().includes(wanted));
     #members;
     #groups;
     #recovery;
-    constructor(members, groups, recovery) {
+    #history;
+    /** The seq of the chain's last statement: the position a revision sealed now is signed at. */
+    length;
+    constructor(members, groups, recovery, history2 = /* @__PURE__ */ new Map(), length = 0) {
       this.#members = members;
       this.#groups = groups;
       this.#recovery = recovery;
+      this.#history = history2;
+      this.length = length;
+    }
+    /** The signing key vouched for `account` at chain position `seq`, or nothing when the reader's chain cannot say. */
+    signingKeyAt(account, seq) {
+      if (!Number.isSafeInteger(seq) || seq < 1 || seq > this.length) {
+        return void 0;
+      }
+      return this.#history.get(account)?.find((held2) => held2.from <= seq && (held2.until === void 0 || seq < held2.until))?.signing;
     }
     recoveryKey() {
       return this.#recovery;
@@ -1147,6 +1160,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       throw new VaultCryptoError("chain-broken");
     }
     const members = /* @__PURE__ */ new Map();
+    const history2 = /* @__PURE__ */ new Map();
     const groups = /* @__PURE__ */ new Map();
     const adminKeys = /* @__PURE__ */ new Set();
     const forget2 = (subject) => {
@@ -1176,10 +1190,18 @@ ${target.detail}`.toLowerCase().includes(wanted));
         throw new VaultCryptoError("unvouched-signer");
       }
       switch (decoded.kind) {
-        case "member":
+        case "member": {
           forget2(decoded.subject);
           members.set(decoded.subject, { agreement: decoded.agreementPublic, signing: decoded.signingPublic });
+          const held2 = history2.get(decoded.subject) ?? [];
+          const open3 = held2.at(-1);
+          if (open3 !== void 0 && open3.until === void 0) {
+            open3.until = decoded.seq;
+          }
+          held2.push({ signing: decoded.signingPublic, from: decoded.seq, until: void 0 });
+          history2.set(decoded.subject, held2);
           break;
+        }
         case "admin": {
           const keys = members.get(decoded.subject);
           if (keys === void 0) {
@@ -1201,11 +1223,12 @@ ${target.detail}`.toLowerCase().includes(wanted));
           if (decoded.subject === ownerAccount || !forget2(decoded.subject) && !groups.delete(decoded.subject)) {
             throw new VaultCryptoError("chain-broken");
           }
+          history2.delete(decoded.subject);
           break;
       }
       expectedPrev = await digest(statement);
     }
-    return new Vouched(members, groups, recovery);
+    return new Vouched(members, groups, recovery, history2, chain.length);
   }
 
   // src/crypto/record.ts
@@ -1297,6 +1320,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       field2(utf8(context2.company)),
       field2(utf8(context2.record)),
       field2(integer(context2.revision, 8)),
+      field2(integer(context2.chainSeq, 8)),
       field2(body)
     );
   }
@@ -1304,7 +1328,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     return sign(signingKey, signedRevision(context2, body));
   }
   async function verifyRevision(vouched, author, context2, body, signature) {
-    const signingKey = vouched.signingKeyOf(author);
+    const signingKey = vouched.signingKeyAt(author, context2.chainSeq);
     if (signingKey === void 0) {
       throw new VaultCryptoError("unvouched-signer");
     }
@@ -1793,7 +1817,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     if (keyId === null || opened.recipient.kind !== recipient.kind || opened.recipient.keyId !== hex(recipient.keyId)) {
       throw new VaultCryptoError("key-mismatch");
     }
-    await verifyRevision(vouched, opened.revisedBy, { company, record: row2.id, revision: row2.revision }, opened.body, opened.signature);
+    await verifyRevision(vouched, opened.revisedBy, { company, record: row2.id, revision: row2.revision, chainSeq: opened.chainSeq }, opened.body, opened.signature);
     const raw = await unwrapSecret(
       recipient.agreementPrivate,
       recipient.agreementPublic,
@@ -2544,7 +2568,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   // src/records/save-record.ts
   var ID_BYTES = 16;
   var RECORD_KEY_BYTES = 32;
-  async function sealed(company, keys, id, revision, document2, vouched, others) {
+  async function sealed(company, keys, id, revision, chainSeq, document2, vouched, others) {
     const keyId = random(ID_BYTES);
     const raw = random(RECORD_KEY_BYTES);
     const context2 = (recipientKind, recipientKeyId) => ({ company, wrappedKind: "record", wrappedKeyId: keyId, recipientKind, recipientKeyId });
@@ -2565,16 +2589,16 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
     const place = { company, record: id, revision };
     const body = await sealRevision(await importRecordKey(raw), { ...place, keyId }, encodeRecord(document2));
-    const signature = await signRevision(keys.signingPrivate, place, body);
-    return { key_id: hex(keyId), body: encode(body), signature: encode(signature), author_key: hex(keys.keyId), wrap: encode(wrap), wraps };
+    const signature = await signRevision(keys.signingPrivate, { ...place, chainSeq }, body);
+    return { key_id: hex(keyId), body: encode(body), signature: encode(signature), author_key: hex(keys.keyId), chain_seq: chainSeq, wrap: encode(wrap), wraps };
   }
-  async function newRecord(company, keys, document2) {
+  async function newRecord(company, keys, chainSeq, document2) {
     const id = hex(random(ID_BYTES));
-    const { wraps: _none, ...parts } = await sealed(company, keys, id, 1, document2, null, []);
+    const { wraps: _none, ...parts } = await sealed(company, keys, id, 1, chainSeq, document2, null, []);
     return { id, body: { id, record_type: document2.type, ...parts } };
   }
   async function revisedRecord(company, keys, vouched, row2, document2, others) {
-    return { revision: row2.revision, ...await sealed(company, keys, row2.id, row2.revision + 1, document2, vouched, others) };
+    return { revision: row2.revision, ...await sealed(company, keys, row2.id, row2.revision + 1, vouched.length, document2, vouched, others) };
   }
 
   // src/records/share-recipients.ts
@@ -3031,6 +3055,8 @@ ${END}
         return "This record changed since you opened it. Open it again to see the newer version, then make your change.";
       case "stale_shares":
         return "This record's sharing changed while it was open. Open it again, then make your change.";
+      case "stale_chain":
+        return "Your company's keys changed since this page opened. Reload the page, then save again.";
       default:
         return fallback;
     }
@@ -3101,14 +3127,18 @@ ${END}
     }
     const trail = newCrumbs(back, chooser, template.name);
     fill(main2, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), el("p", { class: "muted", role: "status" }, "Opening the form."));
-    const audience = await loadAudience(held2);
+    const [audience, chain] = await Promise.all([loadAudience(held2), vouchedChain(held2)]);
     if (!audience.ok) {
       fill(main2, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), refusal(audience.words));
       return;
     }
+    if (!chain.ok) {
+      fill(main2, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
+      return;
+    }
     const picker = audiencePicker(audience.choices);
     form(main2, "New record", recordFromTemplate(template, ""), trail, picker.section, null, async (made) => {
-      const record = await newRecord(held2.company, held2.keys, made);
+      const record = await newRecord(held2.company, held2.keys, chain.vouched.length, made);
       const answer = await call("POST", `${companyPath(held2)}/records`, readRow, { body: record.body });
       if (!answer.ok) {
         return saveFailure(answer.code, loadFailure(answer));

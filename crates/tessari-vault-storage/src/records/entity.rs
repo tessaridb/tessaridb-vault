@@ -98,12 +98,14 @@ impl RecordEntity {
 pub struct SealedError;
 
 /// One revision's sealed parts, as the browser made them: the body sealed under the record key, the author's
-/// signature over it, and the record key wrapped to the author's agreement key. None of it is readable here.
+/// signature over it at a position of the company's key chain, and the record key wrapped to the author's agreement
+/// key. None of it is readable here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sealed {
     pub(crate) body: Vec<u8>,
     pub(crate) signature: Vec<u8>,
     pub(crate) author_key: KeyId,
+    pub(crate) chain_seq: i64,
     pub(crate) wrap: Vec<u8>,
 }
 
@@ -112,15 +114,17 @@ impl Sealed {
     ///
     /// # Errors
     ///
-    /// [`SealedError`] for an empty or oversized body, a signature that is not 66 bytes, or an empty or oversized
-    /// wrap.
+    /// [`SealedError`] for an empty or oversized body, a signature that is not 66 bytes, a negative chain position, or
+    /// an empty or oversized wrap.
     pub fn new(
         body: Vec<u8>,
         signature: Vec<u8>,
         author_key: KeyId,
+        chain_seq: i64,
         wrap: Vec<u8>,
     ) -> std::result::Result<Self, SealedError> {
         let fits = !body.is_empty()
+            && chain_seq >= 0
             && body.len() <= MAX_RECORD_BODY_BYTES
             && signature.len() == RECORD_SIGNATURE_BYTES
             && !wrap.is_empty()
@@ -130,6 +134,7 @@ impl Sealed {
                 body,
                 signature,
                 author_key,
+                chain_seq,
                 wrap,
             })
         } else {
@@ -153,6 +158,12 @@ impl Sealed {
     #[must_use]
     pub const fn author_key(&self) -> &KeyId {
         &self.author_key
+    }
+
+    /// The position of the company's key chain the author signed at: the key vouched there is the one that signed.
+    #[must_use]
+    pub const fn chain_seq(&self) -> i64 {
+        self.chain_seq
     }
 
     /// The record key, wrapped to the author's agreement key.
@@ -183,6 +194,7 @@ pub(crate) struct OpenedRevision {
     pub(crate) body: Vec<u8>,
     pub(crate) signature: Vec<u8>,
     pub(crate) author_key: KeyId,
+    pub(crate) chain_seq: i64,
     /// The account that wrote the revision, whose key signed it.
     pub(crate) author: String,
     pub(crate) recipients: HashMap<String, Vec<u8>>,

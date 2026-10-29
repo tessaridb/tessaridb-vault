@@ -93,6 +93,7 @@ fn new_record(body: &[u8]) -> serde_json::Value {
         "body": encoded(body),
         "signature": signature(7),
         "author_key": "22".repeat(16),
+        "chain_seq": 0,
         "wrap": encoded(&[9; 82]),
     })
 }
@@ -104,6 +105,7 @@ pub(crate) fn revision(expected: i64, body: &[u8]) -> serde_json::Value {
         "body": encoded(body),
         "signature": signature(8),
         "author_key": "22".repeat(16),
+        "chain_seq": 0,
         "wrap": encoded(&[10; 82]),
     })
 }

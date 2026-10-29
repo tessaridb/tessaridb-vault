@@ -93,6 +93,8 @@ function saveFailure(code: string, fallback: string): string {
       return "This record changed since you opened it. Open it again to see the newer version, then make your change.";
     case "stale_shares":
       return "This record's sharing changed while it was open. Open it again, then make your change.";
+    case "stale_chain":
+      return "Your company's keys changed since this page opened. Reload the page, then save again.";
     default:
       return fallback;
   }
@@ -170,14 +172,18 @@ export async function drawNew(main: HTMLElement, held: Unlocked, type: string | 
   }
   const trail = newCrumbs(back, chooser, template.name);
   fill(main, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), el("p", { class: "muted", role: "status" }, "Opening the form."));
-  const audience = await loadAudience(held);
+  const [audience, chain] = await Promise.all([loadAudience(held), vouchedChain(held)]);
   if (!audience.ok) {
     fill(main, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), refusal(audience.words));
     return;
   }
+  if (!chain.ok) {
+    fill(main, breadcrumbs(trail), el("div", { class: "page-head" }, heading("New record")), refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
+    return;
+  }
   const picker = audiencePicker(audience.choices);
   form(main, "New record", recordFromTemplate(template, ""), trail, picker.section, null, async (made) => {
-    const record = await newRecord(held.company, held.keys, made);
+    const record = await newRecord(held.company, held.keys, chain.vouched.length, made);
     const answer = await call("POST", `${companyPath(held)}/records`, readRow, { body: record.body });
     if (!answer.ok) {
       return saveFailure(answer.code, loadFailure(answer));

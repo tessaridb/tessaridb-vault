@@ -26,6 +26,7 @@ const opened = {
   wrap: encode(Uint8Array.of(6)),
   through: [ID("b")],
   revised_by: ID("3"),
+  chain_seq: 5,
 };
 
 describe("the records readers", () => {
@@ -50,6 +51,8 @@ describe("the records readers", () => {
     assert.deepEqual(read.through, [ID("b")]);
     assert.equal(read.revisedBy, ID("3"));
     assert.equal(readOpened({ ...opened, revised_by: "someone" }), null);
+    assert.equal(readOpened({ ...opened, chain_seq: -1 }), null, "a revision is signed at a position of the chain");
+    assert.equal(readOpened({ ...opened, chain_seq: undefined }), null);
     assert.equal(readOpened({ ...opened, through: ["team"] }), null);
     assert.equal(readOpened({ ...opened, through: undefined }), null);
     assert.equal(readOpened({ ...opened, wrap: "not base64url!" }), null);

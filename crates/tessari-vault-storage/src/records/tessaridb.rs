@@ -25,14 +25,17 @@ pub(crate) const COMPANYS_RECORD: &str =
 pub(crate) const SHARES_UNCHANGED: &str =
     "THROW 'stale shares' IF (GET records:$record).share_version != $share_version;";
 
-/// Refuses unless `$author_key` is the key set `$author` keeps in `$company`, so a revision names no key but theirs.
-const OWN_KEY: &str = "THROW 'unknown key' IF (GET member_keys:$own_keys).key_id != $author_key;";
+/// Refuses unless `$author_key` is the key set `$author` keeps in `$company`, so a revision names no key but theirs,
+/// and unless the revision was signed at the company chain's current length (0 before its genesis, a position no browser
+/// verifies), so no revision is stored back-dated to a position before its author's key was replaced.
+const OWN_KEY: &str = "THROW 'unknown key' IF (GET member_keys:$own_keys).key_id != $author_key; \
+     THROW 'stale chain' IF ((GET chains:$company).length ?? 0) != $chain_seq;";
 
 /// The statements that store one revision: its row, its sealed body, and the author's wrapped key beside it.
 fn revision_statements(vault: &str) -> String {
     format!(
         "CREATE revisions:$vid = {{ record: $record, revision: $revision, author: $author, author_key: $author_key, \
-         signature: $signature, size: $size, created: $now }}; \
+         chain_seq: $chain_seq, signature: $signature, size: $size, created: $now }}; \
          CREATE {vault}:$vid = {{ body: $body }}; \
          ADD RECIPIENT $recipient TO {vault}:$vid KEY $wrap;"
     )
@@ -100,6 +103,7 @@ impl TessaridbRecordRepository {
                 membership_id(write.company, write.author).as_str(),
             ),
             bind("author_key", sealed.author_key.as_str()),
+            bind("chain_seq", sealed.chain_seq),
             bind("signature", base64url::encode(&sealed.signature).as_str()),
             bind("size", size),
             bind("now", write.now),

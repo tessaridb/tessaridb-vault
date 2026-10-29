@@ -80,7 +80,8 @@ async function sealed(author: Person, reader: RecipientKey, change: { author?: s
   );
   const recordKey = await importRecordKey(raw);
   const body = await sealRevision(recordKey, { company: COMPANY, record: RECORD, revision: 2, keyId }, encodeRecord(DOCUMENT));
-  const signature = await signRevision(author.signer.privateKey, { company: COMPANY, record: RECORD, revision: 2 }, body);
+  // Signed at position 4, the world chain's last statement before any `extra`: every member there is vouched by then.
+  const signature = await signRevision(author.signer.privateKey, { company: COMPANY, record: RECORD, revision: 2, chainSeq: 4 }, body);
   const row = {
     id: RECORD,
     recordType: "login",
@@ -92,7 +93,7 @@ async function sealed(author: Person, reader: RecipientKey, change: { author?: s
     rotationDue: false,
   };
   const revisedBy = change.revisedBy ?? row.author;
-  return { row, body, signature, authorKey: "bb".repeat(16), revisedBy, recipient: { kind: reader.kind, keyId: hex(reader.keyId) }, wrap, through: [] };
+  return { row, body, signature, authorKey: "bb".repeat(16), revisedBy, chainSeq: 4, recipient: { kind: reader.kind, keyId: hex(reader.keyId) }, wrap, through: [] };
 }
 
 describe("opening a record", () => {

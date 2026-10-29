@@ -19,8 +19,10 @@ const keyId = crypto.getRandomValues(new Uint8Array(16));
 const record = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex");
 const context = { company, record, revision: 1 };
 const body = await sealRevision(await importRecordKey(rawKey), { ...context, keyId }, utf8(plaintext));
+// The canary's company has no key chain: position 0, which the server takes and no browser verifies.
+const chainSeq = 0;
 const signing = await generatePair("Ed25519");
-const signature = await signRevision(signing.privateKey, context, body);
+const signature = await signRevision(signing.privateKey, { ...context, chainSeq }, body);
 const agreement = await generatePair("X25519");
 const wrap = await wrapSecret(
   await publicBytes(agreement.publicKey),
@@ -36,6 +38,7 @@ process.stdout.write(
     body: base64url(body),
     signature: base64url(signature),
     author_key: authorKey,
+    chain_seq: chainSeq,
     wrap: base64url(wrap),
   }),
 );

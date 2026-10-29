@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use tessari_vault_infrastructure::tessaridb::{Answer, Value};
+use tessari_vault_infrastructure::tessaridb::{Answer, Number, Value};
 use tessari_vault_types::{KeyId, base64url};
 
 use super::entity::{OpenedRevision, Sealed};
@@ -26,8 +26,14 @@ impl OpenedRevision {
                 unreadable("a wrap reaching the caller")
             });
         };
-        let sealed = Sealed::new(self.body, self.signature, self.author_key, wrap)
-            .map_err(|_| unreadable("the sealed parts"))?;
+        let sealed = Sealed::new(
+            self.body,
+            self.signature,
+            self.author_key,
+            self.chain_seq,
+            wrap,
+        )
+        .map_err(|_| unreadable("the sealed parts"))?;
         Ok((recipient, sealed))
     }
 }
@@ -55,6 +61,17 @@ fn text<'a>(object: &'a Value, field: &str) -> Result<&'a str> {
     match object {
         Value::Object(fields) => match fields.get(field) {
             Some(Value::String(text)) => Ok(text),
+            _ => Err(unreadable(field)),
+        },
+        _ => Err(unreadable(field)),
+    }
+}
+
+/// The whole-number field `field` of an object.
+fn whole(object: &Value, field: &str) -> Result<i64> {
+    match object {
+        Value::Object(fields) => match fields.get(field) {
+            Some(Value::Number(Number::Integer(number))) => Ok(*number),
             _ => Err(unreadable(field)),
         },
         _ => Err(unreadable(field)),
@@ -89,6 +106,7 @@ pub(crate) fn opened_from(mut answers: Vec<Answer>) -> Result<OpenedRevision> {
             .map_err(|_| unreadable("signature"))?,
         author_key: KeyId::parse(text(&row, "author_key")?)
             .map_err(|_| unreadable("author key"))?,
+        chain_seq: whole(&row, "chain_seq")?,
         author: text(&row, "author")?.to_owned(),
         recipients,
     })
