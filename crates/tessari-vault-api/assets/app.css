@@ -463,6 +463,15 @@ main:focus,
   margin: 0;
 }
 
+/* On a wide screen the menu button is not needed and the menu's wrapper does not exist for layout. */
+.menu-toggle {
+  display: none;
+}
+
+.side-menu {
+  display: contents;
+}
+
 @media (max-width: 48rem) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
@@ -470,55 +479,79 @@ main:focus,
     background: none;
   }
 
+  /* A phone gets one bar: the company it is working in, readable at a glance, and the menu button beside it. */
   .side {
-    position: static;
     block-size: auto;
-    padding: var(--s-3) var(--s-4);
+    padding: var(--s-2) var(--s-4);
+    padding-inline-end: max(var(--s-4), env(safe-area-inset-right));
+    padding-inline-start: max(var(--s-4), env(safe-area-inset-left));
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--s-2) var(--s-4);
+    gap: var(--s-2);
     background: var(--side);
     border-block-end: 1px solid var(--border);
   }
 
-  .side nav {
-    display: flex;
-    flex-wrap: wrap;
-  }
-
   .identity {
-    gap: var(--s-1);
+    flex: 1 1 0;
+    min-inline-size: 0;
+    gap: 0;
     padding-block-end: 0;
     border-block-end: 0;
   }
 
+  /* Once a company is open its name is the bar's title, and the product's name steps back. */
+  .identity:has(.workspace:not([hidden])) {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--s-2);
+  }
+
+  .identity:has(.workspace:not([hidden])) .brand > span,
   .workspace .caption {
     display: none;
   }
 
-  /* The bar is one row on a phone, so its controls show their icons; the label stays for assistive technology. */
-  .side-foot button {
-    inline-size: var(--control-height);
-    padding: 0;
-    justify-content: center;
+  .workspace {
+    padding-inline: 0;
   }
 
-  .side-foot button > span {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
+  .workspace .company {
     overflow: hidden;
-    clip-path: inset(50%);
+    text-overflow: ellipsis;
     white-space: nowrap;
+    font-weight: 650;
+  }
+
+  .menu-toggle {
+    display: inline-flex;
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
+
+  .side-menu {
+    display: none;
+    flex-basis: 100%;
+    flex-direction: column;
+    gap: var(--s-3);
+    padding-block: var(--s-2) var(--s-3);
+  }
+
+  .side[data-open] .side-menu {
+    display: flex;
+  }
+
+  .side-menu nav a,
+  .side-foot button {
+    min-block-size: 44px;
   }
 
   .side-foot {
     margin-block-start: 0;
-    margin-inline-start: auto;
-    display: flex;
+    padding-block-start: var(--s-3);
+    border-block-start: 1px solid var(--border);
   }
-
 }
 
 /* ─────────────────────────────────────────────────────────── page header ── */

@@ -21,6 +21,7 @@ import { unlock } from "./unlock.ts";
 import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked } from "./vault.ts";
 import { installTips } from "./icon-action.ts";
 import { decorateShell, setIcon } from "./shell-icons.ts";
+import { installMenu } from "./menu.ts";
 import { freshPane } from "./pane.ts";
 
 const history = browserHistory(window);
@@ -231,6 +232,7 @@ function locking(): void {
 const view = document.getElementById("view");
 if (view !== null) {
   decorateShell();
+  installMenu(window);
   installTips();
   themed();
   signOutButton();

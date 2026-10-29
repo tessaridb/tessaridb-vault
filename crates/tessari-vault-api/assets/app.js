@@ -646,6 +646,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     groups: [box(9, 3, 6, 5, 1.5), box(3, 16, 6, 5, 1.5), box(15, 16, 6, 5, 1.5), "M12 8v4", "M6 16v-4h12v4"],
     sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
     moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
+    menu: ["M4 7h16", "M4 12h16", "M4 17h16"],
     lock: [box(5, 11, 14, 10, 2), "M8 11V7.5a4 4 0 0 1 8 0V11"],
     "sign-out": ["M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4", "M15 8l4 4-4 4", "M19 12H9"],
     switch: ["M7 4L3 8l4 4", "M3 8h14", "M17 12l4 4-4 4", "M21 16H7"],
@@ -4245,6 +4246,36 @@ ${target.detail}`.toLowerCase().includes(wanted));
     }
   }
 
+  // src/menu.ts
+  var nextMenu = (open3, event) => event === "toggle" ? !open3 : false;
+  function installMenu(window2) {
+    const document2 = window2.document;
+    const button = document2.getElementById("menu-toggle");
+    const side = document2.querySelector(".side");
+    if (button === null || side === null) {
+      return;
+    }
+    let open3 = false;
+    const apply = (event) => {
+      open3 = nextMenu(open3, event);
+      side.toggleAttribute("data-open", open3);
+      button.setAttribute("aria-expanded", String(open3));
+    };
+    button.addEventListener("click", () => apply("toggle"));
+    window2.addEventListener("hashchange", () => apply("navigate"));
+    document2.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && open3) {
+        apply("escape");
+        button.focus();
+      }
+    });
+    document2.addEventListener("click", (event) => {
+      if (open3 && event.target instanceof Node && !side.contains(event.target)) {
+        apply("outside");
+      }
+    });
+  }
+
   // src/pane.ts
   function freshPane(view2, make) {
     const pane = make();
@@ -4436,6 +4467,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   var view = document.getElementById("view");
   if (view !== null) {
     decorateShell();
+    installMenu(window);
     installTips();
     themed();
     signOutButton();
