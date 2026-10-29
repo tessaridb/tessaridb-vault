@@ -15,35 +15,42 @@ use axum::response::{IntoResponse, Response};
 use crate::ApiError;
 use crate::caller::Unsigned;
 
-/// What the page may load and do: its own script, style and images; requests to this origin only; no form submitted
-/// anywhere, no `<base>` rewriting, no framing.
-const POLICY: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; \
+/// What the page may load and do: its own script, style and images, and its own WebAssembly module compiled
+/// (`'wasm-unsafe-eval'` permits compiling WebAssembly and nothing else, so no string becomes script); requests to this
+/// origin only; no form submitted anywhere, no `<base>` rewriting, no framing.
+const POLICY: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; \
+                      connect-src 'self'; \
                       form-action 'none'; frame-ancestors 'none'; base-uri 'none'";
 
 /// One asset: the path it is served at, its type, its bytes.
-type Asset = (&'static str, &'static str, &'static str);
+type Asset = (&'static str, &'static str, &'static [u8]);
 
 /// The page's assets, each served at its own route in the table.
-pub(crate) const ASSETS: [Asset; 4] = [
+pub(crate) const ASSETS: [Asset; 5] = [
     (
         "/",
         "text/html; charset=utf-8",
-        include_str!("../../assets/index.html"),
+        include_bytes!("../../assets/index.html"),
     ),
     (
         "/app.js",
         "text/javascript; charset=utf-8",
-        include_str!("../../assets/app.js"),
+        include_bytes!("../../assets/app.js"),
     ),
     (
         "/app.css",
         "text/css; charset=utf-8",
-        include_str!("../../assets/app.css"),
+        include_bytes!("../../assets/app.css"),
     ),
     (
         "/favicon.svg",
         "image/svg+xml",
-        include_str!("../../assets/favicon.svg"),
+        include_bytes!("../../assets/favicon.svg"),
+    ),
+    (
+        "/vault-crypto.wasm",
+        "application/wasm",
+        include_bytes!("../../assets/vault-crypto.wasm"),
     ),
 ];
 

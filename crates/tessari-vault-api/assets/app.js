@@ -70,15 +70,31 @@
 
   // src/guards.ts
   var SIGN_IN = "/sign-in";
-  function needsSession(signedIn2, current) {
-    return () => signedIn2() ? { kind: "allow" } : { kind: "redirect", to: `#${SIGN_IN}?next=${encodeURIComponent(current().replace(/^#/, ""))}` };
+  var UNLOCK = "/unlock";
+  function gated(gate, open2, current) {
+    return () => open2() ? { kind: "allow" } : { kind: "redirect", to: `#${gate}?next=${encodeURIComponent(current().replace(/^#/, ""))}` };
   }
-  function afterSignIn(next) {
-    if (next === null || !next.startsWith("/") || next.startsWith("//") || next.startsWith(SIGN_IN)) {
+  var needsSession = (signedIn2, current) => gated(SIGN_IN, signedIn2, current);
+  var needsUnlock = (unlocked2, current) => gated(UNLOCK, unlocked2, current);
+  function every(...guards) {
+    return () => {
+      for (const guard of guards) {
+        const verdict = guard();
+        if (verdict.kind !== "allow") {
+          return verdict;
+        }
+      }
+      return { kind: "allow" };
+    };
+  }
+  function inPage(next, gates) {
+    if (next === null || !next.startsWith("/") || next.startsWith("//") || gates.some((gate) => next.startsWith(gate))) {
       return "#/";
     }
     return `#${next}`;
   }
+  var afterSignIn = (next) => inPage(next, [SIGN_IN]);
+  var afterUnlock = (next) => inPage(next, [SIGN_IN, UNLOCK]);
 
   // src/router/history.ts
   function browserHistory(window2) {
@@ -481,14 +497,654 @@
     return signInFailure(answer);
   }
 
+  // src/crypto/errors.ts
+  var VaultCryptoError = class extends Error {
+    reason;
+    constructor(reason) {
+      super(`refused: ${reason}`);
+      this.name = "VaultCryptoError";
+      this.reason = reason;
+    }
+  };
+
+  // src/crypto/bytes.ts
+  var ENCODER = new TextEncoder();
+  function utf8(text2) {
+    return ENCODER.encode(text2);
+  }
+  function concat(...parts) {
+    const out = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+    let offset = 0;
+    for (const part of parts) {
+      out.set(part, offset);
+      offset += part.length;
+    }
+    return out;
+  }
+  function integer(value, width) {
+    if (!Number.isSafeInteger(value) || value < 0 || width < 8 && value >= 2 ** (8 * width)) {
+      throw new VaultCryptoError("malformed");
+    }
+    const out = new Uint8Array(width);
+    let rest = BigInt(value);
+    for (let index = width - 1; index >= 0; index -= 1) {
+      out[index] = Number(rest & 0xffn);
+      rest >>= 8n;
+    }
+    return out;
+  }
+  function field2(bytes) {
+    return concat(integer(bytes.length, 4), bytes);
+  }
+  function random(length) {
+    return crypto.getRandomValues(new Uint8Array(length));
+  }
+  function sameBytes(left, right) {
+    if (left.length !== right.length) {
+      return false;
+    }
+    let difference = 0;
+    for (let index = 0; index < left.length; index += 1) {
+      difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
+    }
+    return difference === 0;
+  }
+  function wipe(...buffers) {
+    for (const buffer of buffers) {
+      buffer.fill(0);
+    }
+  }
+  var Reader = class {
+    #bytes;
+    #offset = 0;
+    constructor(bytes) {
+      this.#bytes = bytes;
+    }
+    take(length) {
+      if (length > this.#bytes.length - this.#offset) {
+        throw new VaultCryptoError("malformed");
+      }
+      const out = this.#bytes.slice(this.#offset, this.#offset + length);
+      this.#offset += length;
+      return out;
+    }
+    integer(width) {
+      let value = 0n;
+      for (const byte of this.take(width)) {
+        value = value << 8n | BigInt(byte);
+      }
+      if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new VaultCryptoError("malformed");
+      }
+      return Number(value);
+    }
+    field() {
+      return this.take(this.integer(4));
+    }
+    rest() {
+      return this.take(this.#bytes.length - this.#offset);
+    }
+    end() {
+      if (this.#offset !== this.#bytes.length) {
+        throw new VaultCryptoError("malformed");
+      }
+    }
+  };
+  function hex(bytes) {
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  // src/crypto/keys.ts
+  var PKCS8_PREFIX_X25519 = Uint8Array.of(48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 110, 4, 34, 4, 32);
+  var PKCS8_PREFIX_ED25519 = Uint8Array.of(48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 112, 4, 34, 4, 32);
+  async function publicBytes(publicKey) {
+    return new Uint8Array(await crypto.subtle.exportKey("raw", publicKey));
+  }
+  async function generatePair(algorithm, extractable = true) {
+    const usages = algorithm === "X25519" ? ["deriveBits"] : ["sign", "verify"];
+    const generated = await crypto.subtle.generateKey({ name: algorithm }, extractable, usages);
+    if (!("privateKey" in generated)) {
+      throw new VaultCryptoError("malformed");
+    }
+    return generated;
+  }
+
+  // src/crypto/labels.ts
+  var PREFIX = "tessaridb-vault/v1/";
+  var LABEL = {
+    /** HKDF info for the unlock wrap key derived from the master key. */
+    unlockWrap: `${PREFIX}unlock-wrap`,
+    /** HKDF info for a revision's content key derived from its record key. */
+    recordContent: `${PREFIX}record-content`,
+    /** Associated-data prefix of a record body. */
+    record: `${PREFIX}record`,
+    /** HKDF info for a file's key derived from its record key. */
+    file: `${PREFIX}file`,
+    /** Associated-data prefix of every chunk of a file. */
+    fileChunk: `${PREFIX}file-chunk`,
+    /** Associated-data prefix of a membership private key wrapped under the unlock key. */
+    memberKey: `${PREFIX}member-key`,
+    /** HPKE `info` prefix of a key wrap. */
+    wrap: `${PREFIX}wrap`,
+    /** Ed25519 domain prefix of a vouching statement. */
+    statement: `${PREFIX}statement`,
+    /** Ed25519 domain prefix of a revision signature. */
+    revision: `${PREFIX}revision`
+  };
+  var FORMAT_VERSION = 1;
+  var ALGORITHM = {
+    recordBody: 1,
+    keyWrap: 2,
+    memberKey: 3,
+    signature: 4,
+    file: 5
+  };
+
+  // src/crypto/unlock.ts
+  var MAX_WRAPS = 2 ** 20;
+  var SALT_BYTES = 16;
+  var MASTER_KEY_BYTES = 32;
+  var KEY_ID_BYTES = 16;
+  var NONCE_BYTES = 12;
+  var DERIVED = 0;
+  function exportsOf(instance) {
+    const { memory, vault_alloc: alloc, vault_free: free, vault_derive: derive } = instance.exports;
+    if (!(memory instanceof WebAssembly.Memory) || typeof alloc !== "function" || typeof free !== "function" || typeof derive !== "function") {
+      throw new VaultCryptoError("kdf-refused");
+    }
+    return {
+      memory,
+      alloc: (length) => Number(alloc(length)),
+      free: (pointer, length) => {
+        free(pointer, length);
+      },
+      derive: (...args) => Number(derive(...args))
+    };
+  }
+  async function deriveMasterKey(module2, password, salt, params) {
+    if (salt.length !== SALT_BYTES) {
+      throw new VaultCryptoError("malformed");
+    }
+    const wasm = exportsOf(await WebAssembly.instantiate(module2, {}));
+    const passwordBytes = utf8(password);
+    const passwordLength = Math.max(passwordBytes.length, 1);
+    const passwordAt = wasm.alloc(passwordLength);
+    const saltAt = wasm.alloc(SALT_BYTES);
+    const outAt = wasm.alloc(MASTER_KEY_BYTES);
+    try {
+      const memory = new Uint8Array(wasm.memory.buffer);
+      memory.set(passwordBytes, passwordAt);
+      memory.set(salt, saltAt);
+      const status = wasm.derive(
+        passwordAt,
+        passwordBytes.length,
+        saltAt,
+        params.memoryKib,
+        params.passes,
+        params.lanes,
+        outAt
+      );
+      if (status !== DERIVED) {
+        throw new VaultCryptoError("kdf-refused");
+      }
+      return new Uint8Array(wasm.memory.buffer).slice(outAt, outAt + MASTER_KEY_BYTES);
+    } finally {
+      wipe(passwordBytes);
+      wasm.free(passwordAt, passwordLength);
+      wasm.free(saltAt, SALT_BYTES);
+      wasm.free(outAt, MASTER_KEY_BYTES);
+    }
+  }
+  function associatedData(context2) {
+    if (context2.keyId.length !== KEY_ID_BYTES) {
+      throw new VaultCryptoError("malformed");
+    }
+    return concat(
+      utf8(LABEL.memberKey),
+      field2(utf8(context2.account)),
+      field2(utf8(context2.company)),
+      field2(utf8(context2.kind)),
+      field2(context2.keyId)
+    );
+  }
+  var UnlockKey = class _UnlockKey {
+    #key;
+    #wrapsMade;
+    constructor(key, wrapsMade) {
+      this.#key = key;
+      this.#wrapsMade = wrapsMade;
+    }
+    /** UK = HKDF(MK, "tessaridb-vault/v1/unlock-wrap"); MK is wiped. `wrapsMade` is the stored count. */
+    static async fromMasterKey(masterKey, wrapsMade) {
+      if (masterKey.length !== MASTER_KEY_BYTES || !Number.isSafeInteger(wrapsMade) || wrapsMade < 0) {
+        wipe(masterKey);
+        throw new VaultCryptoError("malformed");
+      }
+      if (wrapsMade > MAX_WRAPS) {
+        wipe(masterKey);
+        throw new VaultCryptoError("wrap-bound");
+      }
+      const material = await crypto.subtle.importKey("raw", masterKey, "HKDF", false, ["deriveKey"]);
+      wipe(masterKey);
+      const key = await crypto.subtle.deriveKey(
+        { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: utf8(LABEL.unlockWrap) },
+        material,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["wrapKey", "unwrapKey"]
+      );
+      return new _UnlockKey(key, wrapsMade);
+    }
+    get wrapsMade() {
+      return this.#wrapsMade;
+    }
+    /** Wrap a freshly generated, still extractable private key; refused once 2^20 wraps were made. */
+    async wrap(privateKey, context2) {
+      if (this.#wrapsMade >= MAX_WRAPS) {
+        throw new VaultCryptoError("wrap-bound");
+      }
+      this.#wrapsMade += 1;
+      const nonce = random(NONCE_BYTES);
+      const sealed = await crypto.subtle.wrapKey("pkcs8", privateKey, this.#key, {
+        name: "AES-GCM",
+        iv: nonce,
+        additionalData: associatedData(context2)
+      });
+      return concat(Uint8Array.of(FORMAT_VERSION, ALGORITHM.memberKey), context2.keyId, nonce, new Uint8Array(sealed));
+    }
+    /** Unwrap into a non-extractable key: X25519 for agreement, Ed25519 for signing. */
+    async unwrap(context2, wrapped) {
+      const reader = new Reader(wrapped);
+      if (reader.integer(1) !== FORMAT_VERSION) {
+        throw new VaultCryptoError("unknown-version");
+      }
+      if (reader.integer(1) !== ALGORITHM.memberKey) {
+        throw new VaultCryptoError("unknown-algorithm");
+      }
+      const keyId = reader.take(KEY_ID_BYTES);
+      const nonce = reader.take(NONCE_BYTES);
+      const sealed = reader.rest();
+      if (!sameBytes(keyId, context2.keyId)) {
+        throw new VaultCryptoError("key-mismatch");
+      }
+      const agreement = context2.kind === "agreement";
+      try {
+        return await crypto.subtle.unwrapKey(
+          "pkcs8",
+          sealed,
+          this.#key,
+          { name: "AES-GCM", iv: nonce, additionalData: associatedData(context2) },
+          { name: agreement ? "X25519" : "Ed25519" },
+          false,
+          agreement ? ["deriveBits"] : ["sign"]
+        );
+      } catch {
+        throw new VaultCryptoError("unauthentic");
+      }
+    }
+  };
+
+  // src/crypto/key-set.ts
+  var NEW_KDF = { memoryKib: 65536, passes: 3, lanes: 4 };
+  var SALT_BYTES2 = 16;
+  var KEY_ID_BYTES2 = 16;
+  var context = (account, company, kind, keyId) => ({
+    account,
+    company,
+    kind,
+    keyId
+  });
+  async function unlockKey(module2, password, salt, kdf, wrapsMade) {
+    return UnlockKey.fromMasterKey(await deriveMasterKey(module2, password, salt, kdf), wrapsMade);
+  }
+  function parse(stored) {
+    const reader = new Reader(stored.wrapped);
+    if (reader.integer(1) !== FORMAT_VERSION) {
+      throw new VaultCryptoError("unknown-version");
+    }
+    const wrapsMade = reader.integer(4);
+    const agreementWrap = reader.field();
+    const signingWrap = reader.field();
+    reader.end();
+    return { wrapsMade, agreementWrap, signingWrap };
+  }
+  async function openWith(key, account, company, stored) {
+    const { agreementWrap, signingWrap } = parse(stored);
+    return {
+      keyId: stored.keyId,
+      agreementPrivate: await key.unwrap(context(account, company, "agreement", stored.keyId), agreementWrap),
+      signingPrivate: await key.unwrap(context(account, company, "signing", stored.keyId), signingWrap),
+      agreementPublic: stored.agreementPublic,
+      signingPublic: stored.signingPublic
+    };
+  }
+  async function openKeySet(module2, password, account, company, stored) {
+    const { wrapsMade } = parse(stored);
+    return openWith(await unlockKey(module2, password, stored.salt, stored.kdf, wrapsMade), account, company, stored);
+  }
+  async function createKeySet(module2, password, account, company) {
+    const salt = random(SALT_BYTES2);
+    const keyId = random(KEY_ID_BYTES2);
+    const key = await unlockKey(module2, password, salt, NEW_KDF, 0);
+    const agreement = await generatePair("X25519");
+    const signing = await generatePair("Ed25519");
+    const agreementWrap = await key.wrap(agreement.privateKey, context(account, company, "agreement", keyId));
+    const signingWrap = await key.wrap(signing.privateKey, context(account, company, "signing", keyId));
+    const stored = {
+      keyId,
+      agreementPublic: await publicBytes(agreement.publicKey),
+      signingPublic: await publicBytes(signing.publicKey),
+      wrapped: concat(Uint8Array.of(FORMAT_VERSION), integer(key.wrapsMade, 4), field2(agreementWrap), field2(signingWrap)),
+      salt,
+      kdf: NEW_KDF
+    };
+    return { stored, open: await openWith(key, account, company, stored) };
+  }
+
+  // src/unlock-model.ts
+  var isRecord3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isText = (v) => typeof v === "string" && v !== "";
+  var isCount = (v) => typeof v === "number" && Number.isSafeInteger(v) && v > 0;
+  function readMe(v) {
+    if (!isRecord3(v) || !isRecord3(v["account"]) || typeof v["platform_admin"] !== "boolean") {
+      return null;
+    }
+    const { id, name, email } = v["account"];
+    return isText(id) && isText(name) && isText(email) ? { account: id, name, email, platformAdmin: v["platform_admin"] } : null;
+  }
+  var isRole = (v) => v === "owner" || v === "admin" || v === "member";
+  function readCompanies(v) {
+    if (!isRecord3(v) || !Array.isArray(v["companies"])) {
+      return null;
+    }
+    const companies = [];
+    for (const item of v["companies"]) {
+      if (!isRecord3(item) || !isText(item["id"]) || !isText(item["name"]) || !isText(item["state"])) {
+        return null;
+      }
+      const role = item["role"];
+      if (role !== null && !isRole(role)) {
+        return null;
+      }
+      companies.push({ id: item["id"], name: item["name"], active: item["state"] === "active", role });
+    }
+    return companies;
+  }
+  var unlockable = (companies) => companies.filter((company) => company.active && company.role !== null);
+  function keyIdBytes(text2) {
+    if (!/^[0-9a-f]{32}$/.test(text2)) {
+      return null;
+    }
+    return Uint8Array.from(text2.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+  }
+  function readOwnKeys(v) {
+    if (!isRecord3(v) || !isRecord3(v["kdf"]) || !isText(v["key_id"])) {
+      return null;
+    }
+    const { salt, memory_kib: memoryKib, passes, lanes } = v["kdf"];
+    if (!isText(salt) || !isCount(memoryKib) || !isCount(passes) || !isCount(lanes)) {
+      return null;
+    }
+    const keyId = keyIdBytes(v["key_id"]);
+    const parts = [v["agreement_public"], v["signing_public"], v["wrapped"], salt].map((part) => isText(part) ? decode(part) : null);
+    const [agreementPublic, signingPublic, wrapped, saltBytes] = parts;
+    if (keyId === null || agreementPublic == null || signingPublic == null || wrapped == null || saltBytes == null) {
+      return null;
+    }
+    return { keyId, agreementPublic, signingPublic, wrapped, salt: saltBytes, kdf: { memoryKib, passes, lanes } };
+  }
+  var keySetBody = (stored) => ({
+    key_id: hex(stored.keyId),
+    agreement_public: encode(stored.agreementPublic),
+    signing_public: encode(stored.signingPublic),
+    wrapped: encode(stored.wrapped),
+    kdf: { salt: encode(stored.salt), memory_kib: stored.kdf.memoryKib, passes: stored.kdf.passes, lanes: stored.kdf.lanes }
+  });
+  var UNLOCK_MINIMUM = 12;
+  function newPasswordProblem(password, repeated, signInEmail) {
+    if ([...password].length < UNLOCK_MINIMUM) {
+      return `Use at least ${UNLOCK_MINIMUM} characters. A phrase of a few words is easiest to remember.`;
+    }
+    if (password !== repeated) {
+      return "The two passwords don't match. Type the same one twice.";
+    }
+    if (password.toLowerCase() === signInEmail.toLowerCase()) {
+      return "Don't use your email address as your unlock password.";
+    }
+    return null;
+  }
+  var readKept = (sent) => (v) => isRecord3(v) && v["key_id"] === hex(sent) ? hex(sent) : null;
+
+  // src/vault.ts
+  var IDLE_MINUTES = 15;
+  var held = null;
+  var listeners = /* @__PURE__ */ new Set();
+  var arm = null;
+  var unlocked = () => held;
+  function hold(opened) {
+    held = opened;
+    arm?.();
+  }
+  function lock() {
+    if (held === null) {
+      return;
+    }
+    held = null;
+    for (const listener of listeners) {
+      listener();
+    }
+  }
+  function onLock(listener) {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }
+  function lockWhenIdle(target, minutes, clock, events = ["pointerdown", "keydown", "wheel", "touchstart"]) {
+    let timer = null;
+    const restart = () => {
+      if (timer !== null) {
+        clock.clear(timer);
+      }
+      timer = held === null ? null : clock.set(lock, minutes * 6e4);
+    };
+    for (const name of events) {
+      target.addEventListener(name, restart, { passive: true });
+    }
+    arm = restart;
+    restart();
+    return () => {
+      arm = null;
+      if (timer !== null) {
+        clock.clear(timer);
+      }
+      for (const name of events) {
+        target.removeEventListener(name, restart);
+      }
+    };
+  }
+
+  // src/unlock.ts
+  var module = null;
+  function cryptoModule() {
+    module ??= WebAssembly.compileStreaming(fetch("/vault-crypto.wasm"));
+    return module;
+  }
+  var signOutHere = () => {
+  };
+  function card2(title, lead, ...body) {
+    const leave = el("button", { type: "button", class: "quiet" }, "Sign out");
+    leave.addEventListener("click", () => signOutHere());
+    return el(
+      "div",
+      { class: "gate" },
+      el(
+        "form",
+        { class: "card", novalidate: "" },
+        el("img", { class: "logo", src: "/favicon.svg", alt: "", width: "48", height: "48" }),
+        heading(title),
+        el("p", { class: "muted" }, lead),
+        ...body,
+        leave
+      )
+    );
+  }
+  function unlockFailure(problem) {
+    if (problem instanceof VaultCryptoError && problem.reason === "unauthentic") {
+      return "That unlock password doesn't open your keys. Check it and try again; it is not your sign-in password.";
+    }
+    if (problem instanceof VaultCryptoError && problem.reason === "kdf-refused") {
+      return "Your keys were made with settings this page can't run. Tell your admin.";
+    }
+    return "This page couldn't open your keys. Reload the page and try again.";
+  }
+  var loadFailure = (failure) => failure.code === "network" ? "The vault didn't answer. Check your connection, then try again." : "The vault couldn't load your keys. Try again in a minute.";
+  function companyChoice(companies) {
+    const first = companies[0];
+    if (first === void 0) {
+      throw new RangeError("no company to choose");
+    }
+    if (companies.length === 1) {
+      return { row: null, chosen: () => first };
+    }
+    const inputs = companies.map((company, at) => {
+      const input = el("input", { type: "radio", name: "company", id: `company-${at}`, value: company.id });
+      input.checked = at === 0;
+      return input;
+    });
+    const row = el(
+      "fieldset",
+      { class: "field choices" },
+      el("legend", {}, "Company"),
+      ...inputs.flatMap((input, at) => [el("div", { class: "choice" }, input, el("label", { for: input.id }, companies[at]?.name ?? ""))])
+    );
+    return { row, chosen: () => companies.find((company) => company.id === inputs.find((input) => input.checked)?.value) ?? first };
+  }
+  function unlockForm(main, me, company, stored, choice, done) {
+    const password = field("unlock-password", "Unlock password", { type: "password", autocomplete: "current-password", required: "" });
+    const submit = el("button", { type: "submit", class: "primary" }, "Unlock");
+    const said = el("div", { "aria-live": "polite" });
+    const view2 = card2("Unlock your vault", `Your records in ${company.name} open here, in this browser.`, choice, password.row, submit, said);
+    view2.querySelector("form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      submit.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Opening your keys. This takes a second."));
+      try {
+        const keys = await openKeySet(await cryptoModule(), password.input.value, me.account, company.id, stored);
+        password.input.value = "";
+        hold({ company: company.id, account: me.account, keys });
+        done();
+      } catch (problem) {
+        password.input.value = "";
+        password.input.setAttribute("aria-invalid", "true");
+        fill(said, refusal(unlockFailure(problem)));
+        password.input.focus();
+      } finally {
+        submit.disabled = false;
+      }
+    });
+    fill(main, view2);
+    password.input.focus();
+  }
+  function firstUnlockForm(main, me, company, choice, done) {
+    const password = field(
+      "new-unlock-password",
+      "New unlock password",
+      { type: "password", autocomplete: "new-password", required: "" },
+      "At least 12 characters. Not your sign-in password: the vault can't reset this one."
+    );
+    const repeated = field("repeat-unlock-password", "Type it again", { type: "password", autocomplete: "new-password", required: "" });
+    const submit = el("button", { type: "submit", class: "primary" }, "Set unlock password");
+    const said = el("div", { "aria-live": "polite" });
+    const view2 = card2(
+      "Set your unlock password",
+      `Your records in ${company.name} are encrypted with keys this browser makes now. The unlock password opens them.`,
+      choice,
+      password.row,
+      repeated.row,
+      submit,
+      said
+    );
+    view2.querySelector("form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const problem = newPasswordProblem(password.input.value, repeated.input.value, me.email);
+      if (problem !== null) {
+        fill(said, refusal(problem));
+        password.input.focus();
+        return;
+      }
+      submit.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Making your keys. This takes a few seconds."));
+      try {
+        const made = await createKeySet(await cryptoModule(), password.input.value, me.account, company.id);
+        const answer = await call("PUT", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readKept(made.stored.keyId), {
+          body: keySetBody(made.stored)
+        });
+        if (!answer.ok) {
+          fill(said, refusal(loadFailure(answer)));
+          return;
+        }
+        password.input.value = "";
+        repeated.input.value = "";
+        hold({ company: company.id, account: me.account, keys: made.open });
+        done();
+      } catch (problemMaking) {
+        fill(said, refusal(unlockFailure(problemMaking)));
+      } finally {
+        submit.disabled = false;
+      }
+    });
+    fill(main, view2);
+    password.input.focus();
+  }
+  async function unlock(main, done, signOut2) {
+    signOutHere = signOut2;
+    fill(main, card2("Unlock your vault", "Loading your companies."));
+    const [me, companies] = await Promise.all([call("GET", "/api/me", readMe), call("GET", "/api/companies", readCompanies)]);
+    if (!me.ok) {
+      fill(main, card2("Unlock your vault", "", refusal(loadFailure(me))));
+      return;
+    }
+    if (!companies.ok) {
+      fill(main, card2("Unlock your vault", "", refusal(loadFailure(companies))));
+      return;
+    }
+    const open2 = unlockable(companies.value);
+    if (open2.length === 0) {
+      fill(
+        main,
+        card2(
+          "No company yet",
+          me.value.platformAdmin ? "You're a platform admin and not a member of any company, so there are no records to unlock." : "You aren't a member of an active company yet. Ask your company's admin to add you."
+        )
+      );
+      return;
+    }
+    const choice = companyChoice(open2);
+    const draw2 = async () => {
+      const company = choice.chosen();
+      const keys = await call("GET", `/api/companies/${encodeURIComponent(company.id)}/keys/me`, readOwnKeys);
+      if (keys.ok) {
+        unlockForm(main, me.value, company, keys.value, choice.row, done);
+      } else if (keys.status === 404) {
+        firstUnlockForm(main, me.value, company, choice.row, done);
+      } else {
+        fill(main, card2("Unlock your vault", "", choice.row, refusal(loadFailure(keys))));
+      }
+    };
+    choice.row?.addEventListener("change", () => void draw2());
+    await draw2();
+  }
+
   // src/app.ts
   var history = browserHistory(window);
   var notice = null;
   var signedIn = () => bearer() !== null;
+  var isUnlocked = () => unlocked() !== null;
   var session = needsSession(signedIn, () => history.current());
+  var open = every(session, needsUnlock(isUnlocked, () => history.current()));
   var routes = defineRoutes({
-    records: { path: "/", guard: session },
-    signIn: { path: "/sign-in", query: { next: text } }
+    records: { path: "/", guard: open },
+    signIn: { path: "/sign-in", query: { next: text } },
+    unlock: { path: "/unlock", query: { next: text }, guard: session }
   });
   function heading2(view2, title, lead) {
     const h1 = document.createElement("h1");
@@ -501,7 +1157,7 @@
     window.location.hash = href;
   };
   function draw(outcome, view2) {
-    document.body.classList.toggle("signed-out", !signedIn());
+    document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
     if (outcome.kind !== "matched") {
       heading2(view2, "Not found", "This address names no page of the vault.");
       return;
@@ -518,6 +1174,15 @@
         const next = outcome.match.query.next;
         signIn(view2, () => go(afterSignIn(next)), notice);
         notice = null;
+        break;
+      }
+      case "unlock": {
+        const next = outcome.match.query.next;
+        if (isUnlocked()) {
+          go(afterUnlock(next));
+          return;
+        }
+        void unlock(view2, () => go(afterUnlock(next)), () => void signOut());
         break;
       }
     }
@@ -551,17 +1216,29 @@
       label();
     });
   }
+  async function signOut() {
+    lock();
+    await call("DELETE", "/api/session", ignored);
+    forget();
+    go("#/sign-in");
+  }
   function signOutButton() {
-    document.getElementById("sign-out")?.addEventListener("click", async () => {
-      await call("DELETE", "/api/session", ignored);
-      forget();
-      go("#/sign-in");
+    document.getElementById("sign-out")?.addEventListener("click", () => void signOut());
+  }
+  function locking() {
+    document.getElementById("lock")?.addEventListener("click", lock);
+    lockWhenIdle(window, IDLE_MINUTES, { set: (run, ms) => window.setTimeout(run, ms), clear: (handle) => window.clearTimeout(Number(handle)) });
+    onLock(() => {
+      if (signedIn()) {
+        go(`#/unlock?next=${encodeURIComponent(history.current().replace(/^#/, ""))}`);
+      }
     });
   }
   var view = document.getElementById("view");
   if (view !== null) {
     themed();
     signOutButton();
+    locking();
     void providerReturned().then((refused) => {
       notice = refused;
       new Router(routes, history).start((outcome) => {

@@ -1,6 +1,6 @@
 // Renders the web application's source into the committed assets under ../assets/.
 //
-// Building or running the server never comes through here: the output is committed and embedded by include_str!, so
+// Building or running the server never comes through here: the output is committed and embedded by include_bytes!, so
 // `cargo build`, `docker build` and a release need no Node. The build is deterministic (run it twice and the second
 // run changes no byte), which is what `verify.sh` checks. EVERY file under ../assets/ is written by this script.
 
@@ -59,3 +59,10 @@ const MARK = new URL("../../../assets/logo/tessaridb-vault-mark.svg", import.met
 local("the product mark", await readFile(MARK, "utf8"));
 await copyFile(MARK, new URL("favicon.svg", ASSETS));
 console.log("favicon.svg  copied from assets/logo/tessaridb-vault-mark.svg");
+
+// The vault's own WebAssembly module (Argon2id for the unlock password), built by `prebuild` from tessari-vault-crypto.
+const CRYPTO = new URL("../../../target/wasm32-unknown-unknown/release/tessari_vault_crypto.wasm", import.meta.url);
+const module = await readFile(CRYPTO);
+await WebAssembly.compile(module);
+await copyFile(CRYPTO, new URL("vault-crypto.wasm", ASSETS));
+console.log(`vault-crypto.wasm ${module.length} bytes, compiles`);

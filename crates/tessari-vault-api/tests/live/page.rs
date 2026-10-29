@@ -39,6 +39,11 @@ async fn the_page_and_its_assets_are_served_from_the_binary_under_a_closed_polic
         ("/app.js", "app.js", "text/javascript; charset=utf-8"),
         ("/app.css", "app.css", "text/css; charset=utf-8"),
         ("/favicon.svg", "favicon.svg", "image/svg+xml"),
+        (
+            "/vault-crypto.wasm",
+            "vault-crypto.wasm",
+            "application/wasm",
+        ),
     ] {
         let (status, headers, bytes) = get(&world, path).await;
         assert_eq!(status, StatusCode::OK, "{path}");
@@ -47,7 +52,7 @@ async fn the_page_and_its_assets_are_served_from_the_binary_under_a_closed_polic
         let policy = headers["content-security-policy"].to_str().expect("text");
         for directive in [
             "default-src 'none'",
-            "script-src 'self'",
+            "script-src 'self' 'wasm-unsafe-eval'",
             "connect-src 'self'",
             "frame-ancestors 'none'",
         ] {

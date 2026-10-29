@@ -36,7 +36,7 @@ use tessari_vault_api::routes;
 use world::{Cast, World};
 
 /// Routes that refuse nobody by design, each with the reason; every other route has a probe.
-const EXEMPT: [(Method, &str, &str); 6] = [
+const EXEMPT: [(Method, &str, &str); 7] = [
     (
         Method::GET,
         "/api/sign-in/methods",
@@ -55,6 +55,11 @@ const EXEMPT: [(Method, &str, &str); 6] = [
     (Method::GET, "/app.js", "the page's script: no data"),
     (Method::GET, "/app.css", "the page's style: no data"),
     (Method::GET, "/favicon.svg", "the product mark: no data"),
+    (
+        Method::GET,
+        "/vault-crypto.wasm",
+        "the page's crypto module: no data",
+    ),
 ];
 
 /// Who a probe is sent as.

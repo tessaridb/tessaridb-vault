@@ -227,3 +227,36 @@ body.signed-out .shell {
     border: 1px solid CanvasText;
   }
 }
+
+/* A choice of a few companies: radios with their labels, one per row, inside a fieldset whose legend names them. */
+fieldset.choices {
+  border: none;
+  margin: 0 0 var(--s-5);
+  padding: 0;
+  text-align: start;
+}
+
+fieldset.choices legend {
+  font-weight: 600;
+  font-size: var(--t-data);
+  margin-block-end: var(--s-2);
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-block-size: var(--control-height);
+}
+
+.choice input {
+  accent-color: var(--accent);
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  min-block-size: 0;
+}
+
+.choice label {
+  font-weight: 500;
+  font-size: var(--t-body);
+}

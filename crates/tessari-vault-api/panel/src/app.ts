@@ -3,22 +3,27 @@
 // parsed as markup.
 
 import { call, ignored } from "./api.ts";
-import { afterSignIn, needsSession } from "./guards.ts";
+import { afterSignIn, afterUnlock, every, needsSession, needsUnlock } from "./guards.ts";
 import { browserHistory } from "./router/history.ts";
 import { Router, defineRoutes, type Outcome } from "./router/router.ts";
 import { text } from "./router/query.ts";
 import { bearer, forget } from "./session.ts";
 import { providerReturned, signIn } from "./sign-in.ts";
+import { unlock } from "./unlock.ts";
+import { IDLE_MINUTES, lock, lockWhenIdle, onLock, unlocked } from "./vault.ts";
 
 const history = browserHistory(window);
 /** What the identity provider's return refused, said once on the sign-in page. */
 let notice: string | null = null;
 const signedIn = (): boolean => bearer() !== null;
+const isUnlocked = (): boolean => unlocked() !== null;
 const session = needsSession(signedIn, () => history.current());
+const open = every(session, needsUnlock(isUnlocked, () => history.current()));
 
 const routes = defineRoutes({
-  records: { path: "/", guard: session },
+  records: { path: "/", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
+  unlock: { path: "/unlock", query: { next: text }, guard: session },
 });
 
 type Routes = typeof routes;
@@ -37,7 +42,8 @@ const go = (href: string): void => {
 };
 
 function draw(outcome: Outcome<Routes>, view: HTMLElement): void {
-  document.body.classList.toggle("signed-out", !signedIn());
+  // Before signing in and while locked there is nothing to navigate: the card is the page.
+  document.body.classList.toggle("signed-out", !signedIn() || !isUnlocked());
   if (outcome.kind !== "matched") {
     heading(view, "Not found", "This address names no page of the vault.");
     return;
@@ -54,6 +60,15 @@ function draw(outcome: Outcome<Routes>, view: HTMLElement): void {
       const next = outcome.match.query.next;
       signIn(view, () => go(afterSignIn(next)), notice);
       notice = null;
+      break;
+    }
+    case "unlock": {
+      const next = outcome.match.query.next;
+      if (isUnlocked()) {
+        go(afterUnlock(next));
+        return;
+      }
+      void unlock(view, () => go(afterUnlock(next)), () => void signOut());
       break;
     }
   }
@@ -91,12 +106,26 @@ function themed(): void {
   });
 }
 
-/** Signing out ends the session on the server, then here, whatever the server answered. */
+/** Signing out locks the vault and ends the session on the server, then here, whatever the server answered. */
+async function signOut(): Promise<void> {
+  lock();
+  await call("DELETE", "/api/session", ignored);
+  forget();
+  go("#/sign-in");
+}
+
 function signOutButton(): void {
-  document.getElementById("sign-out")?.addEventListener("click", async () => {
-    await call("DELETE", "/api/session", ignored);
-    forget();
-    go("#/sign-in");
+  document.getElementById("sign-out")?.addEventListener("click", () => void signOut());
+}
+
+/** Locking, by the button or after a stretch with no input, takes the person to unlock and back to where they were. */
+function locking(): void {
+  document.getElementById("lock")?.addEventListener("click", lock);
+  lockWhenIdle(window, IDLE_MINUTES, { set: (run, ms) => window.setTimeout(run, ms), clear: (handle) => window.clearTimeout(Number(handle)) });
+  onLock(() => {
+    if (signedIn()) {
+      go(`#/unlock?next=${encodeURIComponent(history.current().replace(/^#/, ""))}`);
+    }
   });
 }
 
@@ -104,6 +133,7 @@ const view = document.getElementById("view");
 if (view !== null) {
   themed();
   signOutButton();
+  locking();
   // An identity provider's return is finished before any route is drawn, so the sign-in page never flashes first.
   void providerReturned().then((refused) => {
     notice = refused;
