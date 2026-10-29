@@ -5162,6 +5162,19 @@ ${END}
     return pane;
   }
 
+  // src/nav-section.ts
+  var SECTIONS = /* @__PURE__ */ new Map([
+    ["records", "records"],
+    ["record", "records"],
+    ["newRecord", "records"],
+    ["editRecord", "records"],
+    ["groups", "groups"],
+    ["group", "groups"],
+    ["members", "members"],
+    ["member", "members"]
+  ]);
+  var sectionOf = (name) => SECTIONS.get(name) ?? "";
+
   // src/app.ts
   var history = browserHistory(window);
   var notice = null;
@@ -5299,10 +5312,11 @@ ${END}
     }
   }
   function mark(outcome) {
-    const section = outcome.kind === "matched" ? outcome.match.name : "";
+    const name = outcome.kind === "matched" ? outcome.match.name : "";
+    const section = sectionOf(name);
     for (const link of document.querySelectorAll("nav a[data-section]")) {
       if (link.dataset.section === section) {
-        link.setAttribute("aria-current", "page");
+        link.setAttribute("aria-current", name === section ? "page" : "true");
       } else {
         link.removeAttribute("aria-current");
       }

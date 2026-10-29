@@ -107,7 +107,7 @@
   background: var(--surface-sunken);
 }
 
-.side nav a[aria-current="page"] {
+.side nav a[aria-current] {
   color: var(--accent-text);
   background: var(--accent-wash);
 }

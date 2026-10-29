@@ -26,6 +26,7 @@ import { installTips } from "./icon-action.ts";
 import { decorateShell, setIcon } from "./shell-icons.ts";
 import { installMenu } from "./menu.ts";
 import { freshPane } from "./pane.ts";
+import { sectionOf } from "./nav-section.ts";
 
 const history = browserHistory(window);
 /** What the identity provider's return refused, said once on the sign-in page. */
@@ -177,10 +178,12 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
 }
 
 function mark(outcome: Outcome<Routes>): void {
-  const section = outcome.kind === "matched" ? outcome.match.name : "";
+  const name = outcome.kind === "matched" ? outcome.match.name : "";
+  const section = sectionOf(name);
   for (const link of document.querySelectorAll<HTMLAnchorElement>("nav a[data-section]")) {
     if (link.dataset.section === section) {
-      link.setAttribute("aria-current", "page");
+      // The list itself is the page; a record, group or member under it is only in its section.
+      link.setAttribute("aria-current", name === section ? "page" : "true");
     } else {
       link.removeAttribute("aria-current");
     }
