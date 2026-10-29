@@ -35,7 +35,7 @@ async fn names(
     parameters: Vec<(String, Value)>,
 ) -> Result<HashSet<String>> {
     let rows: Vec<Named> =
-        answers::records(database.run_at(place, script, parameters).await?, "name")?;
+        answers::records(database.read_at(place, script, parameters).await?, "name")?;
     Ok(rows.into_iter().map(|row| row.name).collect())
 }
 
@@ -57,7 +57,7 @@ pub(super) async fn reach(
 ) -> Result<Option<Vec<KeyEntity>>> {
     let heads: Option<GroupHead> = answers::single(
         database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT company, kind FROM groups:$group;",
                 vec![bind("group", group.as_str())],
@@ -101,7 +101,7 @@ pub(super) async fn reach(
     };
     let keys: Vec<KeyEntity> = answers::records(
         database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM member_keys WHERE company = $company LIMIT $limit USING INDEX by_company;",
                 vec![

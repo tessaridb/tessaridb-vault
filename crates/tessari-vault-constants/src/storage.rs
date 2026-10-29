@@ -18,7 +18,7 @@ pub const STORE_SIGNIN_CONCURRENCY: usize = 4;
 pub const STORE_SIGNIN_ATTEMPTS: u32 = 6;
 
 /// How many times a transaction the store answered `retry` is sent again.
-pub const STORE_RETRY_ATTEMPTS: u32 = 4;
+pub const STORE_RETRY_ATTEMPTS: u32 = 8;
 
 /// The length of a session token, in bytes before encoding (256 bits).
 pub const SESSION_TOKEN_BYTES: usize = 32;

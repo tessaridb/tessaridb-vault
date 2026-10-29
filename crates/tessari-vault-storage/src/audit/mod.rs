@@ -123,7 +123,7 @@ impl AuditService {
         .await?;
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "SELECT seq, at, actor, action, target, reason FROM audit_events \
                  WHERE company = $company AND seq < $before ORDER BY seq DESC LIMIT $page;",
@@ -154,7 +154,7 @@ impl AuditService {
         .await?;
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "SELECT seq, at, company, actor, action, target, reason, line, prev, digest FROM audit_events \
                  WHERE company = $company ORDER BY seq;",
@@ -190,7 +190,7 @@ impl AuditService {
         }
         let head = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "GET audit_heads:$company;",
                 vec![bind("company", company.as_str())],

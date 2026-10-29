@@ -274,29 +274,7 @@ impl World {
         headers: &[(&str, String)],
         body: Option<Value>,
     ) -> (StatusCode, HeaderMap, Value) {
-        let mut request = Request::builder().method(method).uri(path);
-        for (name, value) in headers {
-            request = request.header(*name, value);
-        }
-        let request = match body {
-            Some(body) => request
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string())),
-            None => request.body(Body::empty()),
-        }
-        .expect("a request");
-        let response = self.app.clone().oneshot(request).await.expect("an answer");
-        let status = response.status();
-        let answered = response.headers().clone();
-        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
-            .await
-            .expect("a body");
-        let value = if bytes.is_empty() {
-            Value::Null
-        } else {
-            serde_json::from_slice(&bytes).expect("a JSON body")
-        };
-        (status, answered, value)
+        send(self.app.clone(), method, path, headers, body).await
     }
 
     /// Raw octets to `path`, as the browser uploads one part of a file.
@@ -374,6 +352,54 @@ pub(crate) async fn company(
 /// A record's sealed parts as member A's browser sends them; the bytes mean nothing here.
 pub fn sealed_record() -> Value {
     sealed_record_by(&"22".repeat(16))
+}
+
+/// Call `app` as [`World::call`] does, for a task that owns its own copy of the router.
+pub async fn call_app(
+    app: Router,
+    method: Method,
+    path: &str,
+    token: Option<&str>,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let headers: Vec<(&str, String)> = token
+        .map(|token| ("authorization", format!("Bearer {token}")))
+        .into_iter()
+        .collect();
+    let (status, _, value) = send(app, method, path, &headers, body).await;
+    (status, value)
+}
+
+async fn send(
+    app: Router,
+    method: Method,
+    path: &str,
+    headers: &[(&str, String)],
+    body: Option<Value>,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut request = Request::builder().method(method).uri(path);
+    for (name, value) in headers {
+        request = request.header(*name, value);
+    }
+    let request = match body {
+        Some(body) => request
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string())),
+        None => request.body(Body::empty()),
+    }
+    .expect("a request");
+    let response = app.oneshot(request).await.expect("an answer");
+    let status = response.status();
+    let answered = response.headers().clone();
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .expect("a body");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("a JSON body")
+    };
+    (status, answered, value)
 }
 
 /// The same, signed under the registered key `author_key`.

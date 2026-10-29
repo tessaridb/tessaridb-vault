@@ -54,7 +54,7 @@ impl PasskeyService {
         let key = key_of(&challenge);
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "GET passkey_ceremonies:$key;",
                 vec![bind("key", key.as_str())],
@@ -68,10 +68,11 @@ impl PasskeyService {
         };
         let taken = self
             .database
-            .run_at(
+            .transact_at(
                 &self.place,
                 "BEGIN; LET $held = GET passkey_ceremonies:$key; THROW 'not found' IF $held = NONE; \
                  DELETE passkey_ceremonies:$key; COMMIT;",
+                "",
                 vec![bind("key", key.as_str())],
             )
             .await

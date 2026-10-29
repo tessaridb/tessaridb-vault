@@ -151,7 +151,7 @@ impl Database {
             .await
     }
 
-    async fn exchange(&self, request: &Request, preamble: usize) -> Result<Vec<Answer>> {
+    pub(super) async fn exchange(&self, request: &Request, preamble: usize) -> Result<Vec<Answer>> {
         let (_slot, client, answers) = self.converse(request).await?;
         self.release(client);
         Ok(answers.into_iter().skip(preamble).collect())

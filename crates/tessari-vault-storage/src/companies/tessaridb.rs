@@ -100,7 +100,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
              state: 'active', created: time::now() }}; {NEW_MEMBERSHIP} {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, parameters)
+            .transact_at(place, &script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -109,7 +109,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
     async fn all(&self, place: &Place) -> Result<Vec<CompanyEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM groups WHERE kind = 'company' USING INDEX by_kind;",
                 Vec::new(),
@@ -129,7 +129,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
         }
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM groups WHERE group_id IN $ids AND kind = 'company' AND (state = 'active' OR $any_state);",
                 vec![
@@ -148,7 +148,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
     ) -> Result<Vec<MembershipEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM memberships WHERE account = $account USING INDEX by_account;",
                 vec![bind("account", account.as_str())],
@@ -174,7 +174,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
              UPDATE groups:$company SET state = $state; {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, parameters)
+            .transact_at(place, &script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -183,7 +183,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
     async fn members(&self, place: &Place, company: &CompanyId) -> Result<Vec<MembershipEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM memberships WHERE company = $company USING INDEX by_company;",
                 vec![bind("company", company.as_str())],
@@ -200,7 +200,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
     ) -> Result<Option<MembershipEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM memberships:$membership;",
                 vec![bind("membership", membership_id(company, account).as_str())],
@@ -229,7 +229,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
              {account} {NEW_MEMBERSHIP} {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, parameters)
+            .transact_at(place, &script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -257,7 +257,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
              UPDATE memberships:$target SET member_role = $role, state = $state; {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, parameters)
+            .transact_at(place, &script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -289,7 +289,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
             "BEGIN; {GUARD} {TARGET_UNCHANGED} {owners} {edges} DELETE memberships:$target; {retire} {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, parameters)
+            .transact_at(place, &script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -302,7 +302,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
     ) -> Result<Vec<(String, String, String)>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT group_id, company, parent FROM accounts:$account->in_group->groups;",
                 vec![bind("account", account.as_str())],

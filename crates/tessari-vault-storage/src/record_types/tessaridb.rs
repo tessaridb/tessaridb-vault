@@ -30,7 +30,7 @@ impl RecordTypeRepository for TessaridbRecordTypeRepository {
     async fn list(&self, place: &Place, company: &CompanyId) -> Result<Vec<RecordTypeEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM record_types WHERE company = $company USING INDEX by_company;",
                 vec![bind("company", company.as_str())],
@@ -80,7 +80,7 @@ impl RecordTypeRepository for TessaridbRecordTypeRepository {
              definition: $definition, created: $now }}; {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, parameters)
+            .transact_at(place, &script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())

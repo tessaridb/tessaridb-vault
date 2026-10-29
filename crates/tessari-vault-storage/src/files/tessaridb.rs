@@ -106,7 +106,7 @@ impl FileRepository for TessaridbFiles {
              size: $size, kept: $kept, written: 0, created: $now }}; {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, guard)
+            .transact_at(place, &script, "", guard)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -151,10 +151,10 @@ impl FileRepository for TessaridbFiles {
         let written = match part.kept {
             Kept::Vault => {
                 self.database
-                    .run_presenting(place, &script, guard, &vault, vault_key)
+                    .transact_presenting(place, &script, "", guard, &vault, vault_key)
                     .await
             }
-            Kept::Bucket => self.database.run_at(place, &script, guard).await,
+            Kept::Bucket => self.database.transact_at(place, &script, "", guard).await,
         };
         written.map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -175,10 +175,10 @@ impl FileRepository for TessaridbFiles {
         match kept {
             Kept::Vault => {
                 let vault = RecordVaults::name(at.company);
-                let script = format!("{recorded} REVEAL body FROM {vault}:$vid;");
+                let opened = format!("REVEAL body FROM {vault}:$vid;");
                 let answers = self
                     .database
-                    .run_presenting(place, &script, guard, &vault, vault_key)
+                    .transact_presenting(place, &recorded, &opened, guard, &vault, vault_key)
                     .await
                     .map_err(|error| thrown(error.into()))?;
                 let whole = revealed(answers)?;
@@ -188,14 +188,14 @@ impl FileRepository for TessaridbFiles {
                 // Only the parts the range touches are read, each whole, and the range is cut from them here.
                 let first = part_index(offset)?;
                 let last = part_index(offset.saturating_add(limit).saturating_sub(1))?;
-                let mut script = recorded;
+                let mut reads = String::new();
                 for index in first..=last {
                     guard.push(bind(&format!("p{index}"), part_path(at, index).as_str()));
-                    script.push_str(&format!(" READ record_files:$p{index};"));
+                    reads.push_str(&format!(" READ record_files:$p{index};"));
                 }
                 let answers = self
                     .database
-                    .run_at(place, &script, guard)
+                    .transact_at(place, &recorded, &reads, guard)
                     .await
                     .map_err(|error| thrown(error.into()))?;
                 let parts = usize::try_from(last.saturating_sub(first))

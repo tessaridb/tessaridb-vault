@@ -32,7 +32,7 @@ impl TessaridbGroupRepository {
         parameters: Vec<(String, Value)>,
     ) -> Result<()> {
         self.database
-            .run_at(place, script, parameters)
+            .transact_at(place, script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -44,7 +44,7 @@ impl GroupRepository for TessaridbGroupRepository {
     async fn list(&self, place: &Place, company: &CompanyId) -> Result<Vec<GroupEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM groups WHERE company = $company AND kind != 'company' USING INDEX by_company;",
                 vec![bind("company", company.as_str())],
@@ -61,7 +61,7 @@ impl GroupRepository for TessaridbGroupRepository {
     ) -> Result<Option<GroupEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 // By address, as records are read.
                 "SELECT * FROM (SELECT * FROM groups:$group LIMIT 2) WHERE company = $company AND kind != 'company';",
@@ -74,7 +74,7 @@ impl GroupRepository for TessaridbGroupRepository {
     async fn members(&self, place: &Place, group: &GroupId) -> Result<Vec<MemberRow>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT account_id FROM groups:$group<-in_group<-accounts;",
                 vec![bind("group", group.as_str())],
@@ -234,7 +234,14 @@ impl GroupRepository for TessaridbGroupRepository {
         match leaving.revocation {
             Some(revocation) => {
                 self.database
-                    .run_presenting(place, &script, parameters, &vault, revocation.vault_key)
+                    .transact_presenting(
+                        place,
+                        &script,
+                        "",
+                        parameters,
+                        &vault,
+                        revocation.vault_key,
+                    )
                     .await
                     .map_err(|error| thrown(error.into()))?;
                 Ok(())

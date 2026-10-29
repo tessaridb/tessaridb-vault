@@ -108,7 +108,7 @@ impl TessaridbRecordRepository {
             bind("wrap", sealed.wrap.clone()),
         ]);
         self.database
-            .run_presenting(place, script, parameters, &vault, write.vault_key)
+            .transact_presenting(place, script, "", parameters, &vault, write.vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -125,7 +125,7 @@ impl RecordRepository for TessaridbRecordRepository {
     ) -> Result<Vec<RecordEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM records WHERE company = $company AND author = $author LIMIT $limit \
                  USING INDEX by_author;",
@@ -147,7 +147,7 @@ impl RecordRepository for TessaridbRecordRepository {
     ) -> Result<Option<RecordEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 // By address, which no index can stand in for; an address holds one record, so a ceiling of two
                 // is never reached.
@@ -172,7 +172,7 @@ impl RecordRepository for TessaridbRecordRepository {
         }
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM records WHERE record_id IN $ids AND company = $company LIMIT $limit;",
                 vec![
@@ -258,15 +258,14 @@ impl RecordRepository for TessaridbRecordRepository {
             bind("share_version", entity.share_version),
         ]);
         // The read is on the trail before anything is opened: the transaction recording it commits first.
-        let script = format!(
-            "BEGIN; {GUARD} {COMPANYS_RECORD} {SHARES_UNCHANGED} {RECORD} COMMIT; \
-             REVEAL body FROM {vault}:$vid; \
-             INFO FOR RECIPIENTS OF {vault}:$vid; \
-             RETURN (GET revisions:$vid);"
+        let recorded =
+            format!("BEGIN; {GUARD} {COMPANYS_RECORD} {SHARES_UNCHANGED} {RECORD} COMMIT;");
+        let opened = format!(
+            "REVEAL body FROM {vault}:$vid; INFO FOR RECIPIENTS OF {vault}:$vid; RETURN (GET revisions:$vid);"
         );
         let answers = self
             .database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &recorded, &opened, guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         opened_from(answers)

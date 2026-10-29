@@ -133,7 +133,7 @@ impl EnrolmentService {
         // moved it meanwhile, so two racing issues cannot both leave a live link. No real key is the word `none`.
         let earlier = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "GET enrolments:$pointer;",
                 vec![bind("pointer", pointer.as_str())],
@@ -161,7 +161,7 @@ impl EnrolmentService {
              {record} COMMIT;"
         );
         self.database
-            .run_at(&self.place, &script, parameters)
+            .transact_at(&self.place, &script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(EnrolmentToken(token))
@@ -188,12 +188,13 @@ impl EnrolmentService {
         let sealed = hex(&self.seal.seal(account.as_str(), &factor, &seed)?);
         let rewritten = self
             .database
-            .run_at(
+            .transact_at(
                 &self.place,
                 "BEGIN; LET $held = GET enrolments:$key; \
                  THROW 'not found' IF $held = NONE OR $held.account != $account; \
                  SET enrolments:$key = { account: $account, factor: $factor, seed: $sealed } \
                  EXPIRE TTL enrolments:$key; COMMIT;",
+                "",
                 vec![
                     bind("key", key.as_str()),
                     bind("account", account.as_str()),
@@ -224,7 +225,7 @@ impl EnrolmentService {
         };
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "GET enrolments:$key;",
                 vec![bind("key", key.as_str())],
@@ -261,7 +262,7 @@ impl EnrolmentService {
         let pointer = format!("of-{}", account.as_str());
         let written = self
             .database
-            .run_at(
+            .transact_at(
                 &self.place,
                 "BEGIN; LET $held = GET enrolments:$key; \
                  THROW 'not found' IF $held = NONE OR $held.factor != $factor; \
@@ -270,6 +271,7 @@ impl EnrolmentService {
                  CREATE credentials:$account = { account_id: $account, verifier: $verifier, totp: $sealed, \
                  totp_factor: $factor, totp_last_step: $step, created: time::now() }; \
                  DELETE enrolments:$key; DELETE enrolments:$pointer; COMMIT;",
+                "",
                 vec![
                     bind("key", key.as_str()),
                     bind("factor", factor.as_str()),
@@ -292,7 +294,7 @@ impl EnrolmentService {
     async fn account_of(&self, key: &str) -> Result<Option<AccountId>> {
         let answers = self
             .database
-            .run_at(&self.place, "GET enrolments:$key;", vec![bind("key", key)])
+            .read_at(&self.place, "GET enrolments:$key;", vec![bind("key", key)])
             .await?;
         Ok(field(answers.into_iter().next(), "account").and_then(|id| AccountId::parse(&id).ok()))
     }

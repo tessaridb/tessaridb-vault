@@ -63,7 +63,7 @@ impl ShareRepository for TessaridbShareRepository {
     async fn direct_groups(&self, place: &Place, account: &AccountId) -> Result<Vec<DirectGroup>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT group_id, company, parent FROM accounts:$account->in_group->groups;",
                 vec![bind("account", account.as_str())],
@@ -75,7 +75,7 @@ impl ShareRepository for TessaridbShareRepository {
     async fn of_record(&self, place: &Place, record: &str) -> Result<Vec<ShareEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT target, access, recipient FROM shares WHERE record = $record LIMIT $limit \
                  USING INDEX by_record;",
@@ -93,7 +93,7 @@ impl ShareRepository for TessaridbShareRepository {
     ) -> Result<Vec<String>> {
         let rows: Vec<Named> = answers::records(
             self.database
-                .run_at(
+                .read_at(
                     place,
                     "SELECT record AS name FROM shares WHERE company = $company AND target = $target \
                      LIMIT $limit USING INDEX by_target;",
@@ -117,7 +117,7 @@ impl ShareRepository for TessaridbShareRepository {
     ) -> Result<Option<String>> {
         let rows: Vec<Named> = answers::records(
             self.database
-                .run_at(
+                .read_at(
                     place,
                     "SELECT key_id AS name FROM member_keys:$keys;",
                     vec![bind("keys", membership_id(company, account).as_str())],
@@ -190,7 +190,7 @@ impl ShareRepository for TessaridbShareRepository {
              ADD RECIPIENT $recipient TO {vault}:$vid KEY $wrap; {RECORD} COMMIT;"
         );
         self.database
-            .run_presenting(place, &script, guard, &vault, write.vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, write.vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -238,7 +238,7 @@ impl ShareRepository for TessaridbShareRepository {
              UPDATE records:$record SET share_version = $next, rotate = true; {RECORD} COMMIT;"
         );
         self.database
-            .run_presenting(place, &script, guard, &vault, removal.vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, removal.vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())

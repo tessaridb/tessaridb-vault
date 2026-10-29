@@ -159,7 +159,7 @@ impl SignInService {
         };
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "GET sign_ins:$key;",
                 vec![bind("key", key.as_str())],
@@ -191,10 +191,11 @@ impl SignInService {
         // The step is recorded by compare-and-set: of two requests carrying one code, exactly one moves it.
         let recorded = self
             .database
-            .run_at(
+            .transact_at(
                 &self.place,
                 "BEGIN; UPDATE credentials:$account SET totp_last_step = $step WHERE totp_last_step < $step; \
                  DELETE sign_ins:$key; COMMIT;",
+                "",
                 vec![
                     bind("account", account.as_str()),
                     bind("step", step),
@@ -237,7 +238,7 @@ impl SignInService {
     async fn credential(&self, account: &AccountId) -> Result<Option<CredentialEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "SELECT verifier, totp, totp_factor, totp_last_step FROM credentials WHERE account_id = $account LIMIT 1;",
                 vec![bind("account", account.as_str())],

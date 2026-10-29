@@ -96,7 +96,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
     async fn get(&self, place: &Place, group: &GroupId) -> Result<Option<GroupKeyEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM group_keys:$group;",
                 vec![bind("group", group.as_str())],
@@ -119,10 +119,10 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
             None => (String::new(), Vec::new()),
         };
         parameters.push(bind("vid", vid(group).as_str()));
-        let script = format!("{recorded} INFO FOR RECIPIENTS OF {vault}:$vid;");
+        let opened = format!("INFO FOR RECIPIENTS OF {vault}:$vid;");
         let answers = self
             .database
-            .run_presenting(place, &script, parameters, &vault, vault_key)
+            .transact_presenting(place, &recorded, &opened, parameters, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         recipient_wraps(answers, MEMBER, "group key")
@@ -154,7 +154,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
              CREATE {vault}:$vid = {{ body: $public }};{added} {RECORD} COMMIT;"
         );
         self.database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -189,7 +189,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
              UPDATE shares SET recipient = $named WHERE company = $company AND target = $group; {RECORD} COMMIT;"
         );
         self.database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -210,7 +210,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
         guard.push(bind("vid", vid(group).as_str()));
         let script = format!("BEGIN; {GUARD}{added} {RECORD} COMMIT;");
         self.database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -224,7 +224,7 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
     ) -> Result<Option<String>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM member_keys:$keys;",
                 vec![bind("keys", membership_id(company, account).as_str())],

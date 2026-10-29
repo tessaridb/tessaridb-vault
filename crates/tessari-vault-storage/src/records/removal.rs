@@ -80,7 +80,7 @@ pub(super) async fn delete(
     let (company, record) = (removal.company.as_str(), removal.record.as_str());
     let held: Vec<Held> = answers::records(
         database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT file_id, size, kept FROM files WHERE record = $record AND company = $company \
                  USING INDEX by_record;",
@@ -121,7 +121,7 @@ pub(super) async fn delete(
          DELETE FROM files WHERE record = $record; DELETE records:$record; {RECORD} COMMIT;"
     );
     database
-        .run_presenting(place, &script, guard, &vault, removal.vault_key)
+        .transact_presenting(place, &script, "", guard, &vault, removal.vault_key)
         .await
         .map_err(|error| thrown(error.into()))?;
     Ok(())

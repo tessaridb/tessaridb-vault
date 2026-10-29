@@ -59,7 +59,7 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
              handoff_public: $handoff, created: $audit_at, expires: $expires }}; {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, guard)
+            .transact_at(place, &script, "", guard)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -73,7 +73,7 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
     ) -> Result<Vec<RequestEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM recovery_requests WHERE company = $company AND handed_by = NONE \
                  AND expires > $now LIMIT $limit USING INDEX by_company;",
@@ -110,7 +110,7 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
              kind: 'recovery', created: $audit_at }}; {RECORD} COMMIT;"
         );
         self.database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -134,12 +134,12 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
              THROW 'not handed over' IF (GET recovery_requests:$id).handed_by = NONE; \
              THROW 'recovery closed' IF (GET recovery_requests:$id).redeemed != NONE \
              OR (GET recovery_requests:$id).expires <= $audit_at; \
-             UPDATE recovery_requests:$id SET redeemed = $audit_at; {RECORD} COMMIT; \
-             REVEAL body FROM {vault}:$hid;"
+             UPDATE recovery_requests:$id SET redeemed = $audit_at; {RECORD} COMMIT;"
         );
+        let opened = format!("REVEAL body FROM {vault}:$hid;");
         let answers = self
             .database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, &opened, guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         match answers.into_iter().last() {
@@ -157,7 +157,7 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
     async fn record(&self, place: &Place, guard: Vec<(String, Value)>) -> Result<()> {
         let script = format!("BEGIN; {GUARD} {RECORD} COMMIT;");
         self.database
-            .run_at(place, &script, guard)
+            .transact_at(place, &script, "", guard)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -194,7 +194,7 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
              {RECORD} COMMIT;"
         );
         self.database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())

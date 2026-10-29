@@ -24,7 +24,7 @@ impl AccountRepository for TessaridbAccountRepository {
     async fn get(&self, place: &Place, id: &AccountId) -> Result<Option<AccountEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM accounts:$id;",
                 vec![bind("id", id.as_str())],
@@ -36,7 +36,7 @@ impl AccountRepository for TessaridbAccountRepository {
     async fn find_by_email(&self, place: &Place, email: &Email) -> Result<Option<AccountEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM accounts WHERE email = $email LIMIT 1 USING INDEX by_email;",
                 vec![bind("email", email.as_str())],
@@ -52,7 +52,7 @@ impl AccountRepository for TessaridbAccountRepository {
         let ids = Value::Array(ids.iter().map(|id| Value::from(id.as_str())).collect());
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM accounts WHERE account_id IN $ids;",
                 vec![("ids".to_owned(), ids)],

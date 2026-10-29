@@ -149,7 +149,7 @@ impl IdentityService {
         let key = key_of(state);
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "GET oidc_pending:$key;",
                 vec![bind("key", key.as_str())],
@@ -165,10 +165,11 @@ impl IdentityService {
         };
         let taken = self
             .database
-            .run_at(
+            .transact_at(
                 &self.place,
                 "BEGIN; LET $held = GET oidc_pending:$key; THROW 'not found' IF $held = NONE; \
                  DELETE oidc_pending:$key; COMMIT;",
+                "",
                 vec![bind("key", key.as_str())],
             )
             .await
@@ -195,7 +196,7 @@ impl IdentityService {
     pub async fn sign_in(&self, identity: &Identity) -> Result<Option<SessionToken>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "SELECT account FROM identities WHERE issuer = $issuer AND subject = $subject LIMIT 1;",
                 vec![

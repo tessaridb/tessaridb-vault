@@ -4,6 +4,7 @@ mod config;
 mod connection;
 mod place;
 mod pool;
+mod transact;
 
 pub use config::StoreConfig;
 pub use place::Place;

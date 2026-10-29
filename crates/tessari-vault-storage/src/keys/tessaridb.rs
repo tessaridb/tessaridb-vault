@@ -49,7 +49,7 @@ impl KeyRepository for TessaridbKeyRepository {
     ) -> Result<Option<KeyEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM member_keys:$keys;",
                 located(company, account),
@@ -61,7 +61,7 @@ impl KeyRepository for TessaridbKeyRepository {
     async fn list(&self, place: &Place, company: &CompanyId) -> Result<Vec<KeyEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM member_keys WHERE company = $company LIMIT $limit USING INDEX by_company;",
                 vec![
@@ -111,7 +111,7 @@ impl KeyRepository for TessaridbKeyRepository {
         );
         match self
             .database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
         {
             Err(tessari_vault_infrastructure::Error::Refused { message, .. })
@@ -134,10 +134,11 @@ impl KeyRepository for TessaridbKeyRepository {
         guard.extend(located(company, account));
         let vault = RecordVaults::name(company);
         // The read is on the trail before anything is opened: the transaction recording it commits first.
-        let script = format!("BEGIN; {GUARD} {RECORD} COMMIT; REVEAL body FROM {vault}:$vid;");
+        let recorded = format!("BEGIN; {GUARD} {RECORD} COMMIT;");
+        let opened = format!("REVEAL body FROM {vault}:$vid;");
         let answers = self
             .database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &recorded, &opened, guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         match answers.into_iter().last() {

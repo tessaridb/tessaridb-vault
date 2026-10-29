@@ -124,7 +124,7 @@ impl SessionService {
         };
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "GET sessions:$key;",
                 vec![bind("key", key.as_str())],

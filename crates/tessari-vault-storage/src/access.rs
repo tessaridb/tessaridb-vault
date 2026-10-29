@@ -170,7 +170,7 @@ async fn read_standing(
     company: &CompanyId,
 ) -> Result<Option<Standing>> {
     let answers = database
-        .run_at(
+        .read_at(
             place,
             "RETURN { membership: (GET memberships:$m), company: (GET groups:$c) };",
             vec![

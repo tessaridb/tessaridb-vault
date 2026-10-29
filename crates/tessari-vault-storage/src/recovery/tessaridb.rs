@@ -49,7 +49,7 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
     async fn get(&self, place: &Place, company: &CompanyId) -> Result<Option<RecoveryKeyEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM recovery_keys:$company;",
                 vec![bind("company", company.as_str())],
@@ -61,7 +61,7 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
     async fn owners(&self, place: &Place, company: &CompanyId) -> Result<Vec<KeyEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM member_keys WHERE company = $company AND account IN \
                  (SELECT account FROM memberships WHERE company = $company AND member_role = 'owner' \
@@ -98,7 +98,7 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
              created: time::now() }}; CREATE {vault}:$vid = {{ body: $public }};{added} {RECORD} COMMIT;"
         );
         self.database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -113,11 +113,11 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
     ) -> Result<Vec<(String, Vec<u8>)>> {
         let vault = RecordVaults::name(company);
         guard.push(bind("vid", VID));
-        let script =
-            format!("BEGIN; {GUARD} {RECORD} COMMIT; INFO FOR RECIPIENTS OF {vault}:$vid;");
+        let recorded = format!("BEGIN; {GUARD} {RECORD} COMMIT;");
+        let opened = format!("INFO FOR RECIPIENTS OF {vault}:$vid;");
         let answers = self
             .database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &recorded, &opened, guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         recipient_wraps(answers, OWNER, "recovery key")
@@ -131,7 +131,7 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
     ) -> Result<Option<String>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM member_keys:$keys;",
                 vec![bind("keys", membership_id(company, account).as_str())],
@@ -162,7 +162,7 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
              created: $audit_at }}; DELETE {vault}:$vid; CREATE {vault}:$vid = {{ body: $wrap }}; {RECORD} COMMIT;"
         );
         self.database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, "", guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -182,12 +182,13 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
         let script = format!(
             "BEGIN; {GUARD} THROW 'not found' IF (GET escrows:$keys).recovery_key_id = NONE; \
              CREATE recovery_notices = {{ company: $company, account: $account, by_account: $audit_actor, \
-             kind: 'escrow.read', created: $audit_at }}; {RECORD} COMMIT; \
-             RETURN (GET escrows:$keys).recovery_key_id; REVEAL body FROM {vault}:$vid;"
+             kind: 'escrow.read', created: $audit_at }}; {RECORD} COMMIT;"
         );
+        let opened =
+            format!("RETURN (GET escrows:$keys).recovery_key_id; REVEAL body FROM {vault}:$vid;");
         let answers = self
             .database
-            .run_presenting(place, &script, guard, &vault, vault_key)
+            .transact_presenting(place, &script, &opened, guard, &vault, vault_key)
             .await
             .map_err(|error| thrown(error.into()))?;
         let unreadable = || Error::Unreadable {
@@ -223,7 +224,7 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
     ) -> Result<Vec<NoticeEntity>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT by_account, kind, created FROM recovery_notices WHERE company = $company \
                  AND account = $account ORDER BY created LIMIT $limit USING INDEX by_member;",

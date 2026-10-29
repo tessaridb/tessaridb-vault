@@ -11,6 +11,7 @@ mod audit_reads;
 mod authenticator;
 mod binary;
 mod canaries;
+mod concurrency;
 mod enrolment;
 mod files;
 mod group_keys;

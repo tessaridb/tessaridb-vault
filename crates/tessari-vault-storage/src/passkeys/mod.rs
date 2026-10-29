@@ -150,7 +150,7 @@ impl PasskeyService {
     pub async fn credentials_of(&self, account: &AccountId) -> Result<Vec<String>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "SELECT credential FROM passkeys WHERE account = $account;",
                 vec![bind("account", account.as_str())],
@@ -235,7 +235,7 @@ impl PasskeyService {
     async fn stored(&self, credential: &str) -> Result<Option<Stored>> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 &self.place,
                 "SELECT account, public_key, sign_count FROM passkeys WHERE credential = $credential LIMIT 1;",
                 vec![bind("credential", credential)],

@@ -42,7 +42,7 @@ impl ChainRepository for TessaridbChainRepository {
     ) -> Result<(Option<ChainEntity>, Vec<StatementEntity>)> {
         let answers = self
             .database
-            .run_at(
+            .read_at(
                 place,
                 "SELECT * FROM chains:$company; \
                  SELECT * FROM statements WHERE company = $company ORDER BY seq LIMIT $limit \
@@ -114,7 +114,7 @@ impl ChainRepository for TessaridbChainRepository {
              bytes: $bytes, signature: $signature, author: $author, created: $now }}; {RECORD} COMMIT;"
         );
         self.database
-            .run_at(place, &script, guard)
+            .transact_at(place, &script, "", guard)
             .await
             .map_err(|error| thrown(error.into()))?;
         Ok(())
