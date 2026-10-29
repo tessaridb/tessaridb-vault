@@ -137,7 +137,7 @@ impl RecordService {
                     author: actor.account(),
                     sealed,
                     now,
-                    vault_key: self.vaults.key(company)?,
+                    vault_key: self.vaults.key(company, standing.key_epoch)?,
                     company_type,
                     share_version: 0,
                     extra: &[],
@@ -185,7 +185,7 @@ impl RecordService {
                 recorded(actor, company, &standing, "record.read", record.as_str()),
                 company,
                 &entity,
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await?;
         let revised_by = opened.author.clone();
@@ -255,7 +255,7 @@ impl RecordService {
                     author: actor.account(),
                     sealed: revision.sealed,
                     now,
-                    vault_key: self.vaults.key(company)?,
+                    vault_key: self.vaults.key(company, standing.key_epoch)?,
                     company_type: None,
                     share_version: entity.share_version,
                     extra: revision.wraps,

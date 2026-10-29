@@ -108,3 +108,58 @@ async fn a_keyed_write_and_reveal_round_trip_and_another_key_or_none_is_refused(
         );
     }
 }
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_company_is_keyed_under_the_service_key_epoch_current_when_it_was_made() {
+    use crate::world::{Cast, World};
+
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let current = world.vault_keys.current_epoch();
+    assert!(
+        current > 1,
+        "the live ring holds an older epoch beside the current one"
+    );
+    let row = world
+        .database
+        .run_at(
+            &world.place,
+            "RETURN (GET groups:$c).key_epoch;",
+            vec![("c".to_owned(), Value::from(cast.company_a.as_str()))],
+        )
+        .await
+        .expect("the company row reads back");
+    assert_eq!(
+        row.last().and_then(|answer| match answer {
+            Answer::Value { value, .. } => Some(value.clone()),
+            _ => None,
+        }),
+        Some(Value::from(i64::from(current))),
+        "the company row names the epoch its vault is keyed under"
+    );
+    let vault = format!("records_{}", cast.company_a);
+    let probe = format!("CREATE {vault}:'epoch-probe' = {{ body: 'epoch-canary' }};");
+    let older = world
+        .vault_keys
+        .company(1, &cast.company_a)
+        .expect("KV(A) under epoch 1");
+    let refused = world
+        .database
+        .run_presenting(&world.place, &probe, Vec::new(), &vault, older)
+        .await
+        .expect_err("the older epoch's key opened a vault keyed under the current one");
+    assert!(
+        refused.to_string().contains("the key is wrong"),
+        "{refused:?}"
+    );
+    let keyed = world
+        .vault_keys
+        .company(current, &cast.company_a)
+        .expect("KV(A) under the current epoch");
+    world
+        .database
+        .run_presenting(&world.place, &probe, Vec::new(), &vault, keyed)
+        .await
+        .expect("the current epoch's key opens the vault");
+}

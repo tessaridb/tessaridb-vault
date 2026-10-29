@@ -71,13 +71,14 @@ impl CompanyService {
             action: "company.create",
             target: id.as_str(),
         };
-        self.vaults.declare(&self.place, &id).await?;
+        let key_epoch = self.vaults.declare(&self.place, &id).await?;
         self.repository
             .create(
                 &self.place,
                 audit::binds(actor, &event),
                 &id,
                 name,
+                key_epoch,
                 &joining,
             )
             .await?;

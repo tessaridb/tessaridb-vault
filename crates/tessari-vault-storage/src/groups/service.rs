@@ -278,7 +278,10 @@ impl GroupService {
             .retiring(&self.place, company, group)
             .await?
             .ok_or(Error::NotFound)?;
-        let revocation = self.group_keys.revocation(company, group, account).await?;
+        let revocation = self
+            .group_keys
+            .revocation(company, group, account, standing.key_epoch)
+            .await?;
         let target = format!("{group}:{account}");
         self.repository
             .remove_member(

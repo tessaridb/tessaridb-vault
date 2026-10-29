@@ -45,6 +45,7 @@ pub(crate) trait CompanyRepository: Send + Sync {
         audit: Vec<(String, Value)>,
         company: &CompanyId,
         name: &Name,
+        key_epoch: u32,
         owner: &Joining,
     ) -> Result<()>;
     async fn all(&self, place: &Place) -> Result<Vec<CompanyEntity>>;

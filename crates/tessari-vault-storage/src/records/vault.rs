@@ -26,17 +26,19 @@ impl RecordVaults {
         format!("records_{}", company.as_str())
     }
 
-    /// The key that opens `company`'s vault, for one request.
-    pub(crate) fn key(&self, company: &CompanyId) -> Result<VaultKey> {
-        Ok(self.keys.company(company.as_str())?)
+    /// The key that opens `company`'s vault, keyed under `epoch`, for one request.
+    pub(crate) fn key(&self, company: &CompanyId, epoch: u32) -> Result<VaultKey> {
+        Ok(self.keys.company(epoch, company.as_str())?)
     }
 
     /// Declare `company`'s vault and its sealed field, before the company's rows exist: a create that fails after
-    /// this leaves an empty vault that nothing names, never a company without its vault.
-    pub(crate) async fn declare(&self, place: &Place, company: &CompanyId) -> Result<()> {
+    /// this leaves an empty vault that nothing names, never a company without its vault. Answers the epoch the vault
+    /// is keyed under, which the company's row records.
+    pub(crate) async fn declare(&self, place: &Place, company: &CompanyId) -> Result<u32> {
         let vault = Self::name(company);
+        let epoch = self.keys.current_epoch();
         self.database
-            .declare_keyed_vault(place, &vault, &self.key(company)?)
+            .declare_keyed_vault(place, &vault, &self.key(company, epoch)?)
             .await?;
         // The name was built from a checked company id above; it is grammar and cannot be bound.
         self.database
@@ -46,6 +48,6 @@ impl RecordVaults {
                 Vec::new(),
             )
             .await?;
-        Ok(())
+        Ok(epoch)
     }
 }

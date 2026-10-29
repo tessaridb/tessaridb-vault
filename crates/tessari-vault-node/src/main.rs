@@ -18,7 +18,7 @@ use tessari_vault_constants::{
 };
 use tessari_vault_infrastructure::config::{NodeConfig, listen_address};
 use tessari_vault_infrastructure::custody::{
-    PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal, VaultKeys,
+    KeyRing, PasswordCost, Passwords, SigninKeys, TotpSeal, VaultKeys,
 };
 use tessari_vault_infrastructure::hardening::forbid_core_dumps;
 use tessari_vault_infrastructure::health::{PROBE_BUDGET, probe, probe_address};
@@ -100,20 +100,20 @@ async fn run() -> Result<&'static str, StartError> {
     }
     let config = NodeConfig::from_lookup(|key| std::env::var(key).ok())?;
     // Read before anything else is reached: a missing or open key file refuses the start, naming the variable. The
-    // key is dropped, and cleared, once the keys derived from it exist.
-    let service_key = ServiceKey::load(&config.service_key_file)?;
+    // ring is dropped, and cleared, once the keys derived from it exist.
+    let ring = KeyRing::load(&config.service_key_file)?;
     let cost = PasswordCost::new(
         PASSWORD_HASH_MEMORY_KIB_FLOOR,
         PASSWORD_HASH_ITERATIONS_FLOOR,
         PASSWORD_HASH_PARALLELISM_FLOOR,
     )?;
     let custody = Custody {
-        passwords: Passwords::new(&service_key, cost, PASSWORD_CONCURRENCY_DEFAULT)?,
-        seal: Arc::new(TotpSeal::new(&service_key)?),
-        signin_keys: SigninKeys::new(&service_key)?,
-        vault_keys: Arc::new(VaultKeys::new(&service_key)?),
+        passwords: Passwords::new(&ring, cost, PASSWORD_CONCURRENCY_DEFAULT)?,
+        seal: Arc::new(TotpSeal::new(&ring)?),
+        signin_keys: SigninKeys::new(ring.current())?,
+        vault_keys: Arc::new(VaultKeys::new(&ring)?),
     };
-    drop(service_key);
+    drop(ring);
     let place = Place::new(config.namespace.as_str(), config.database.as_str())?;
     let database = Database::new(config.store.clone(), STORE_CONNECTIONS)?;
     migrate(&database, &place).await?;

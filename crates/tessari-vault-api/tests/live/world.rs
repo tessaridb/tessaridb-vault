@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use tessari_vault_api::{AppState, router};
 use tessari_vault_infrastructure::config::PasskeyParty;
 use tessari_vault_infrastructure::custody::{
-    PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal, VaultKeys,
+    KeyRing, PasswordCost, Passwords, SigninKeys, TotpSeal, VaultKeys,
 };
 use tessari_vault_infrastructure::oidc::OidcProvider;
 use tessari_vault_infrastructure::tessaridb::{Database, Place, StoreConfig};
@@ -137,6 +137,11 @@ impl Node {
     }
 }
 
+/// The live ring's epoch 1, the one before the current: what a server that held only it would have derived from.
+pub(crate) fn older_epoch_key() -> String {
+    "ab".repeat(32)
+}
+
 /// The server over a fresh namespace, and the tokens of the people in it.
 pub struct World {
     pub app: Router,
@@ -205,20 +210,25 @@ impl World {
         .expect("a loopback pool");
         let key_file =
             std::env::temp_dir().join(format!("vault-live-key-{}-{turn}", std::process::id()));
-        std::fs::write(&key_file, "ab".repeat(32)).expect("the key file");
+        // Two epochs, so every live test runs on a current epoch with an older one beside it.
+        std::fs::write(
+            &key_file,
+            format!("1 {}\n2 {}\n", older_epoch_key(), "cd".repeat(32)),
+        )
+        .expect("the key file");
         std::fs::set_permissions(
             &key_file,
             std::os::unix::fs::PermissionsExt::from_mode(0o600),
         )
         .expect("its mode");
-        let service_key = ServiceKey::load(&key_file).expect("a service key");
+        let ring = KeyRing::load(&key_file).expect("a service key ring");
         let passwords = Passwords::new(
-            &service_key,
+            &ring,
             PasswordCost::new(65_536, 3, 1).expect("the floor"),
             4,
         )
         .expect("the verifier");
-        let seal = std::sync::Arc::new(TotpSeal::new(&service_key).expect("the seal"));
+        let seal = std::sync::Arc::new(TotpSeal::new(&ring).expect("the seal"));
         let place = Place::new(namespace, "main").expect("plain names");
         migrate(&server_database, &place)
             .await
@@ -226,8 +236,8 @@ impl World {
         migrate(&server_database, &place)
             .await
             .expect("the schema applies a second time unchanged");
-        let signin_keys = SigninKeys::new(&service_key).expect("the sign-in keys");
-        let vault_keys = std::sync::Arc::new(VaultKeys::new(&service_key).expect("the vault keys"));
+        let signin_keys = SigninKeys::new(ring.current()).expect("the sign-in keys");
+        let vault_keys = std::sync::Arc::new(VaultKeys::new(&ring).expect("the vault keys"));
         let storage = Storage::new(
             &server_database,
             &place,

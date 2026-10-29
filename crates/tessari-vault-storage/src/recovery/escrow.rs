@@ -58,7 +58,7 @@ impl RecoveryService {
                     recovery_key_id: recovery_key_id.as_str(),
                     wrap,
                 },
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await
     }
@@ -120,7 +120,7 @@ impl RecoveryService {
                 ),
                 company,
                 account,
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await?;
         let key_id = KeyId::parse(&key_id).map_err(|_| Error::Unreadable {

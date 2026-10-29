@@ -140,7 +140,7 @@ impl RecoveryRequestService {
                 company,
                 id,
                 wrap,
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await
     }
@@ -175,7 +175,7 @@ impl RecoveryRequestService {
                 company,
                 actor.account(),
                 id,
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await;
         if let Err(Error::Conflict(Conflict::RecoveryClosed)) = redeemed {
@@ -234,7 +234,7 @@ impl RecoveryRequestService {
                     kdf,
                     wrapped,
                 },
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await
     }

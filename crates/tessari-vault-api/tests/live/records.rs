@@ -37,8 +37,14 @@ async fn each_company_gets_a_records_vault_that_only_its_own_key_opens() {
         "{fields:?}"
     );
 
-    let key_a = world.vault_keys.company(&cast.company_a).expect("KV(A)");
-    let key_b = world.vault_keys.company(&cast.company_b).expect("KV(B)");
+    let key_a = world
+        .vault_keys
+        .company(world.vault_keys.current_epoch(), &cast.company_a)
+        .expect("KV(A)");
+    let key_b = world
+        .vault_keys
+        .company(world.vault_keys.current_epoch(), &cast.company_b)
+        .expect("KV(B)");
     world
         .database
         .run_presenting(

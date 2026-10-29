@@ -71,7 +71,7 @@ impl KeyService {
                 company,
                 &set,
                 epoch_seconds(),
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await?;
         Ok(set.public)
@@ -111,7 +111,7 @@ impl KeyService {
                 ),
                 company,
                 actor.account(),
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await?;
         let new = NewKeys::new(

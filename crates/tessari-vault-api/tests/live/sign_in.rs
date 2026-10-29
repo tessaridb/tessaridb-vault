@@ -352,3 +352,97 @@ async fn a_session_the_store_has_expired_is_refused() {
     };
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_verifier_made_under_an_older_epoch_signs_in_and_is_made_again_under_the_current() {
+    use tessari_vault_infrastructure::custody::{KeyRing, PasswordCost, Passwords};
+    use tessari_vault_infrastructure::tessaridb::{Answer, Value as StoreValue};
+
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    let email = "epoch@alpha.test";
+    let account = add_member(&world, &cast.company_a, &cast.admin_a, email, "member").await;
+    let token = issue(&world, &cast.admin_a, &cast.company_a, &account)
+        .await
+        .1["token"]
+        .as_str()
+        .expect("a token")
+        .to_owned();
+    let secret = begin(&world, &token).await.1["secret"]
+        .as_str()
+        .expect("a secret")
+        .to_owned();
+    let (status, body) = complete(&world, &token, PASSWORD, &code(&secret, 0)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    // Behind the server's back: the verifier a server holding only epoch 1 made for this password.
+    let key_file =
+        std::env::temp_dir().join(format!("vault-live-epoch-one-{}", std::process::id()));
+    std::fs::write(&key_file, crate::world::older_epoch_key()).expect("the key file");
+    std::fs::set_permissions(
+        &key_file,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .expect("its mode");
+    let older = Passwords::new(
+        &KeyRing::load(&key_file).expect("epoch 1 alone"),
+        PasswordCost::new(65_536, 3, 1).expect("the floor"),
+        1,
+    )
+    .expect("the older verifier")
+    .hash(PASSWORD)
+    .await
+    .expect("hashed");
+    let bind = |name: &str, value: StoreValue| (name.to_owned(), value);
+    world
+        .database
+        .run_at(
+            &world.place,
+            "UPDATE credentials:$a SET verifier = $v, key_epoch = 1;",
+            vec![
+                bind("a", StoreValue::from(account.as_str())),
+                bind("v", StoreValue::from(older.phc.as_str())),
+            ],
+        )
+        .await
+        .expect("the row is put back to epoch 1");
+    let row = || async {
+        let answers = world
+            .database
+            .run_at(
+                &world.place,
+                "RETURN { epoch: (GET credentials:$a).key_epoch, verifier: (GET credentials:$a).verifier };",
+                vec![bind("a", StoreValue::from(account.as_str()))],
+            )
+            .await
+            .expect("the row reads back");
+        match answers.last() {
+            Some(Answer::Value {
+                value: StoreValue::Object(fields),
+                ..
+            }) => (
+                fields.get("epoch").cloned(),
+                fields.get("verifier").cloned(),
+            ),
+            other => panic!("not one row: {other:?}"),
+        }
+    };
+    assert_eq!(row().await.0, Some(StoreValue::from(1_i64)));
+
+    challenge(&password(&world, email, PASSWORD).await);
+    let (epoch, verifier) = row().await;
+    assert_eq!(
+        epoch,
+        Some(StoreValue::from(i64::from(
+            world.vault_keys.current_epoch()
+        ))),
+        "the sign-in moved the verifier to the current epoch"
+    );
+    assert_ne!(verifier, Some(StoreValue::from(older.phc.as_str())));
+    challenge(&password(&world, email, PASSWORD).await);
+    assert_eq!(
+        password(&world, email, "not the passphrase").await.0,
+        StatusCode::UNAUTHORIZED
+    );
+}

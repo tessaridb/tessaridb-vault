@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use tessari_vault_core::access::{Action, Decision, Standing, decide};
-use tessari_vault_infrastructure::tessaridb::{Answer, Database, Place, Value};
+use tessari_vault_infrastructure::tessaridb::{Answer, Database, Number, Place, Value};
 use tessari_vault_types::{AccountId, CompanyId, CompanyState, MemberState, Role};
 
 use crate::{Conflict, Error, Result};
@@ -202,7 +202,18 @@ fn standing_from(found: &BTreeMap<String, Value>) -> Result<Option<Standing>> {
         role: parsed::<Role>(membership, "member_role")?,
         member: parsed::<MemberState>(membership, "state")?,
         company: parsed::<CompanyState>(group, "state")?,
+        key_epoch: key_epoch(group)?,
     }))
+}
+
+/// The epoch a company row says its vault is keyed under.
+fn key_epoch(group: &BTreeMap<String, Value>) -> Result<u32> {
+    match group.get("key_epoch") {
+        Some(Value::Number(Number::Integer(epoch))) => {
+            u32::try_from(*epoch).map_err(|_| unreadable("standing", "key_epoch"))
+        }
+        _ => Err(unreadable("standing", "key_epoch")),
+    }
 }
 
 fn word<'a>(object: &'a BTreeMap<String, Value>, field: &'static str) -> Result<&'a str> {

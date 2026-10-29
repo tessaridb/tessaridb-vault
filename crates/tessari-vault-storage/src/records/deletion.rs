@@ -54,7 +54,7 @@ impl RecordService {
                     record,
                     revision: entity.revision,
                     share_version: entity.share_version,
-                    vault_key: self.vaults.key(company)?,
+                    vault_key: self.vaults.key(company, standing.key_epoch)?,
                 },
             )
             .await

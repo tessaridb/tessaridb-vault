@@ -84,7 +84,7 @@ impl RecoveryService {
                 ),
                 company,
                 &key,
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await
     }
@@ -148,7 +148,7 @@ impl RecoveryService {
                     key.key_id.as_str(),
                 ),
                 company,
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await?
             .into_iter()

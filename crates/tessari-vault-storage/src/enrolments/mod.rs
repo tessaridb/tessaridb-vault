@@ -268,7 +268,7 @@ impl EnrolmentService {
                  THROW 'not found' IF $held = NONE OR $held.factor != $factor; \
                  LET $enrolled = SELECT account_id FROM credentials WHERE account_id = $account LIMIT 1; \
                  THROW 'already enrolled' IF array::len($enrolled) > 0; \
-                 CREATE credentials:$account = { account_id: $account, verifier: $verifier, totp: $sealed, \
+                 CREATE credentials:$account = { account_id: $account, verifier: $verifier, key_epoch: $key_epoch, totp: $sealed, \
                  totp_factor: $factor, totp_last_step: $step, created: time::now() }; \
                  DELETE enrolments:$key; DELETE enrolments:$pointer; COMMIT;",
                 "",
@@ -276,7 +276,8 @@ impl EnrolmentService {
                     bind("key", key.as_str()),
                     bind("factor", factor.as_str()),
                     bind("account", account.as_str()),
-                    bind("verifier", verifier.as_str()),
+                    bind("verifier", verifier.phc.as_str()),
+                    bind("key_epoch", i64::from(verifier.epoch)),
                     bind("sealed", sealed.as_str()),
                     bind("step", step),
                     bind("pointer", pointer.as_str()),

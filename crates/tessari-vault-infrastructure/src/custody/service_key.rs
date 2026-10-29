@@ -1,8 +1,8 @@
 //! The service key (K_svc): 256 random bits in a file only the service user can read, and the keys derived from it.
 //!
-//! The file holds 64 hexadecimal characters (`openssl rand -hex 32`), optionally followed by one newline. It is read
-//! once at start-up; a file anyone else can read, or of any other shape, refuses the start and names the variable,
-//! never falling back to a generated key. Each derived key is HKDF-SHA-256 (RFC 5869) under a label of its own
+//! One key is 64 hexadecimal characters (`openssl rand -hex 32`); the file holds one, or one per epoch, and is read
+//! once at start-up as a [`super::KeyRing`]. A file anyone else can read, or of any other shape, refuses the start and
+//! names the variable, never falling back to a generated key. Each derived key is HKDF-SHA-256 (RFC 5869) under a label of its own
 //! (key-hierarchy worksheet §9), so no two uses share a key.
 
 use std::fmt;
@@ -72,13 +72,15 @@ pub(super) const fn refuse(reason: &'static str) -> Error {
 }
 
 impl ServiceKey {
-    /// Read the key from `path`.
+    /// Read one key from `path`; the node reads the file as a [`super::KeyRing`], and this is the single-key shape
+    /// the ring's tests compare against.
     ///
     /// # Errors
     ///
     /// [`Error::InvalidConfig`] for `TESSARIDB_VAULT_SERVICE_KEY_FILE` when the file cannot be read, any group or
     /// other permission bit is set, or it is not 64 hexadecimal characters with at most one trailing newline.
-    pub fn load(path: &Path) -> Result<Self> {
+    #[cfg(test)]
+    pub(super) fn load(path: &Path) -> Result<Self> {
         let text = read_private(path)?;
         Self::parse(text.strip_suffix(b"\n").unwrap_or(&text))
     }

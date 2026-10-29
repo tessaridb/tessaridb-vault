@@ -7,6 +7,7 @@ fn standing(role: Role) -> Standing {
         role,
         member: MemberState::Active,
         company: CompanyState::Active,
+        key_epoch: 1,
     }
 }
 
@@ -256,6 +257,7 @@ fn the_evaluator_agrees_with_the_plain_statement_of_the_rules_on_every_input() {
                         role,
                         member,
                         company,
+                        key_epoch: 1,
                     };
                     assert_eq!(
                         decide(Some(&held), *action),

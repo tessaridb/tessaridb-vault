@@ -180,7 +180,7 @@ async fn the_store_passphrase_opens_no_company_vault() {
                 &vault,
                 world
                     .vault_keys
-                    .company(company)
+                    .company(world.vault_keys.current_epoch(), company)
                     .expect("the company's key"),
             )
             .await
@@ -272,7 +272,10 @@ async fn a_snapshot_restored_into_a_clean_store_opens_with_the_service_key_alone
     let world = World::on_disk(&source).await;
     let cast = Cast::new(&world).await;
     let vault = crate::records::vault(&cast.company_a);
-    let key_a = world.vault_keys.company(&cast.company_a).expect("KV(A)");
+    let key_a = world
+        .vault_keys
+        .company(world.vault_keys.current_epoch(), &cast.company_a)
+        .expect("KV(A)");
     world
         .database
         .run_presenting(
@@ -335,7 +338,7 @@ async fn a_snapshot_restored_into_a_clean_store_opens_with_the_service_key_alone
             &vault,
             world
                 .vault_keys
-                .company(&cast.company_a)
+                .company(world.vault_keys.current_epoch(), &cast.company_a)
                 .expect("KV(A) again"),
         )
         .await
@@ -352,7 +355,10 @@ async fn a_snapshot_restored_into_a_clean_store_opens_with_the_service_key_alone
         Some(&StoreValue::from("restored-canary")),
         "{fields:?}"
     );
-    let key_b = world.vault_keys.company(&cast.company_b).expect("KV(B)");
+    let key_b = world
+        .vault_keys
+        .company(world.vault_keys.current_epoch(), &cast.company_b)
+        .expect("KV(B)");
     let refused = database
         .run_presenting(&world.place, &reveal, Vec::new(), &vault, key_b)
         .await

@@ -58,6 +58,7 @@ impl GroupKeyService {
         company: &CompanyId,
         group: &GroupId,
         rotating: bool,
+        key_epoch: u32,
     ) -> Result<Vec<PublicKeys>> {
         let reach = self
             .repository
@@ -67,7 +68,13 @@ impl GroupKeyService {
         let wrapped: HashSet<String> = match self.repository.get(&self.place, group).await? {
             Some(_) if !rotating => self
                 .repository
-                .wraps(&self.place, None, company, group, self.vaults.key(company)?)
+                .wraps(
+                    &self.place,
+                    None,
+                    company,
+                    group,
+                    self.vaults.key(company, key_epoch)?,
+                )
                 .await?
                 .into_iter()
                 .map(|(key, _)| key)
@@ -112,7 +119,9 @@ impl GroupKeyService {
         .await?;
         let existing = self.repository.get(&self.place, group).await?;
         let rotating = existing.as_ref().is_some_and(|entity| entity.rotate);
-        let open = self.open(company, group, rotating).await?;
+        let open = self
+            .open(company, group, rotating, standing.key_epoch)
+            .await?;
         // Keyed already is the answer before any wrap is judged; the script's own check holds under a race.
         if existing.is_some() && !rotating {
             return Err(Error::Conflict(Conflict::KeysExist));
@@ -124,7 +133,7 @@ impl GroupKeyService {
             "group_key.keep"
         };
         let guard = recorded(actor, company, &standing, action, group.as_str());
-        let vault_key = self.vaults.key(company)?;
+        let vault_key = self.vaults.key(company, standing.key_epoch)?;
         if rotating {
             self.repository
                 .rekey(&self.place, guard, company, group, &key, vault_key)
@@ -142,6 +151,7 @@ impl GroupKeyService {
         company: &CompanyId,
         group: &GroupId,
         account: &AccountId,
+        key_epoch: u32,
     ) -> Result<Option<Revocation>> {
         if self.repository.get(&self.place, group).await?.is_none() {
             return Ok(None);
@@ -155,7 +165,13 @@ impl GroupKeyService {
         };
         let wrapped = self
             .repository
-            .wraps(&self.place, None, company, group, self.vaults.key(company)?)
+            .wraps(
+                &self.place,
+                None,
+                company,
+                group,
+                self.vaults.key(company, key_epoch)?,
+            )
             .await?
             .into_iter()
             .any(|(key, _)| key == own);
@@ -164,7 +180,7 @@ impl GroupKeyService {
         }
         Ok(Some(Revocation {
             recipient: format!("member:{own}"),
-            vault_key: self.vaults.key(company)?,
+            vault_key: self.vaults.key(company, key_epoch)?,
         }))
     }
 
@@ -188,7 +204,7 @@ impl GroupKeyService {
             Action::KeyGroup,
         )
         .await?;
-        let open = self.open(company, group, false).await?;
+        let open = self.open(company, group, false, standing.key_epoch).await?;
         if self.repository.get(&self.place, group).await?.is_none() {
             return Err(Error::NotFound);
         }
@@ -200,7 +216,7 @@ impl GroupKeyService {
                 company,
                 group,
                 &wraps,
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await
     }
@@ -216,7 +232,7 @@ impl GroupKeyService {
         company: &CompanyId,
         group: &GroupId,
     ) -> Result<Vec<PublicKeys>> {
-        access::authorize(
+        let standing = access::authorize(
             &self.database,
             &self.place,
             actor,
@@ -230,7 +246,8 @@ impl GroupKeyService {
             .get(&self.place, group)
             .await?
             .is_some_and(|entity| entity.rotate);
-        self.open(company, group, rotating).await
+        self.open(company, group, rotating, standing.key_epoch)
+            .await
     }
 
     /// The group's key, with the caller's own wrap of it when they hold one; the read is on the trail first.
@@ -276,7 +293,7 @@ impl GroupKeyService {
                 )),
                 company,
                 group,
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await?;
         let wrap = mine.and_then(|mine| {

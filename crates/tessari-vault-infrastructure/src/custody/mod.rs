@@ -9,7 +9,7 @@ mod totp_seal;
 mod vault_keys;
 
 pub use key_ring::KeyRing;
-pub use passwords::{PasswordCost, Passwords, Verdict};
+pub use passwords::{PasswordCost, Passwords, Verdict, Verifier};
 pub use service_key::ServiceKey;
 pub use signin_keys::SigninKeys;
 pub use totp_seal::TotpSeal;

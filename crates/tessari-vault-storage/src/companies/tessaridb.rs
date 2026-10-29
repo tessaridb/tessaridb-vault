@@ -83,12 +83,14 @@ impl CompanyRepository for TessaridbCompanyRepository {
         audit: Vec<(String, Value)>,
         company: &CompanyId,
         name: &Name,
+        key_epoch: u32,
         owner: &Joining,
     ) -> Result<()> {
         let mut parameters = audit;
         parameters.extend([
             bind("company", company.as_str()),
             bind("name", name.as_str()),
+            bind("key_epoch", i64::from(key_epoch)),
             bind("membership", membership_id(company, owner.id()).as_str()),
             bind("account", owner.id().as_str()),
             bind("role", Role::Owner.word()),
@@ -97,7 +99,7 @@ impl CompanyRepository for TessaridbCompanyRepository {
         let script = format!(
             "BEGIN; {account} \
              CREATE groups:$company = {{ group_id: $company, company: $company, kind: 'company', name: $name, \
-             state: 'active', created: time::now() }}; {NEW_MEMBERSHIP} {RECORD} COMMIT;"
+             key_epoch: $key_epoch, state: 'active', created: time::now() }}; {NEW_MEMBERSHIP} {RECORD} COMMIT;"
         );
         self.database
             .transact_at(place, &script, "", parameters)

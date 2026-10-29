@@ -165,7 +165,7 @@ impl FileService {
                     bytes,
                     completes,
                 },
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await;
         match written {
@@ -220,7 +220,7 @@ impl FileService {
                 &at,
                 meta.kept,
                 (count(offset)?, count(limit)?),
-                self.vaults.key(company)?,
+                self.vaults.key(company, standing.key_epoch)?,
             )
             .await
     }

@@ -1,7 +1,9 @@
 //! Sign-in password hashing: Argon2id (RFC 9106) over an HMAC-SHA-256 of the password under the pepper derived from
 //! the service key.
 //!
-//! The pepper lives outside the database, so a dump of the stored hashes alone cannot be attacked offline. The
+//! The pepper lives outside the database, so a dump of the stored hashes alone cannot be attacked offline. There is one
+//! pepper per epoch of the service key, and a verifier names the epoch it was made under; because the pepper is applied
+//! before Argon2id, a verifier moves to a new epoch only when its password is presented again. The
 //! password is put in Normalization Form C before anything else (NIST SP 800-63B-4 §3.1.1.2), so the same characters
 //! typed on two keyboards are one password. Every hash and every check runs on the blocking pool, a bounded number at
 //! a time: each one holds the configured memory, and the bound is what keeps a burst of sign-ins from holding more.
@@ -21,7 +23,7 @@ use tokio::sync::Semaphore;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-use super::ServiceKey;
+use super::KeyRing;
 use crate::{Error, Result};
 
 /// What the dummy hash is made of; nothing is ever compared against it as a real password.
@@ -78,9 +80,21 @@ pub enum Verdict {
     Mismatch,
 }
 
-/// The pepper and the cost; hashing and verifying run off the request workers, a bounded number at a time.
+/// A stored verifier: the PHC string and the epoch whose pepper it was made under.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Verifier {
+    /// The epoch of the service key whose pepper the hash was made under.
+    pub epoch: u32,
+    /// The Argon2id PHC string.
+    pub phc: String,
+}
+
+/// The peppers and the cost; hashing and verifying run off the request workers, a bounded number at a time.
 pub struct Passwords {
-    pepper: hmac::Key,
+    /// The epoch a new verifier is made under.
+    current: u32,
+    /// One pepper per epoch of the ring.
+    peppers: Vec<(u32, hmac::Key)>,
     cost: PasswordCost,
     random: SystemRandom,
     /// A hash at the current cost that an unknown account is checked against, so it costs what a known one does.
@@ -102,20 +116,25 @@ const fn custody(reason: &'static str) -> Error {
 }
 
 impl Passwords {
-    /// Prepare hashing at `cost` under the pepper `service_key` derives, at most `concurrency` at a time. Called once
-    /// at startup: it derives one key and makes one hash.
+    /// Prepare hashing at `cost` under the peppers the epochs of `ring` derive, at most `concurrency` at a time.
+    /// Called once at startup: it derives one key per epoch and makes one hash.
     ///
     /// # Errors
     ///
-    /// [`Error::Custody`] when the pepper cannot be derived or the dummy hash cannot be made.
-    pub fn new(
-        service_key: &ServiceKey,
-        cost: PasswordCost,
-        concurrency: usize,
-    ) -> Result<Arc<Self>> {
-        let pepper = service_key.pepper()?;
+    /// [`Error::Custody`] when a pepper cannot be derived or the dummy hash cannot be made.
+    pub fn new(ring: &KeyRing, cost: PasswordCost, concurrency: usize) -> Result<Arc<Self>> {
+        let peppers = ring
+            .epochs()
+            .into_iter()
+            .filter_map(|epoch| ring.epoch(epoch).map(|key| (epoch, key)))
+            .map(|(epoch, key)| {
+                key.pepper()
+                    .map(|pepper| (epoch, hmac::Key::new(hmac::HMAC_SHA256, pepper.as_slice())))
+            })
+            .collect::<Result<Vec<_>>>()?;
         let mut passwords = Self {
-            pepper: hmac::Key::new(hmac::HMAC_SHA256, pepper.as_slice()),
+            current: ring.current_epoch(),
+            peppers,
             cost,
             random: SystemRandom::new(),
             dummy: String::new(),
@@ -125,33 +144,70 @@ impl Passwords {
         Ok(Arc::new(passwords))
     }
 
-    /// `password` hashed for storage, as a PHC string.
+    /// `password` hashed for storage under the current epoch's pepper.
     ///
     /// # Errors
     ///
     /// [`Error::Custody`] when the random source or the hash fails.
-    pub async fn hash(self: &Arc<Self>, password: &str) -> Result<String> {
+    pub async fn hash(self: &Arc<Self>, password: &str) -> Result<Verifier> {
         let password = Zeroizing::new(password.to_owned());
-        self.off_workers(move |passwords| passwords.hash_now(&password))
-            .await
+        self.off_workers(move |passwords| {
+            passwords.hash_now(&password).map(|phc| Verifier {
+                epoch: passwords.current,
+                phc,
+            })
+        })
+        .await
     }
 
-    /// Whether `password` matches `stored`; `None` is an unknown account, checked against the dummy hash so it costs
-    /// the same, and never a match.
+    /// Whether `password` matches `stored`, a verifier and the epoch its row names. `None` is an unknown account,
+    /// and a verifier of an epoch the ring no longer holds is one whose password can no longer be checked: both are
+    /// checked against the dummy hash so they cost the same, and are never a match.
     ///
     /// # Errors
     ///
     /// [`Error::Custody`] when `stored` is not an Argon2id PHC string or the hash fails.
-    pub async fn verify(self: &Arc<Self>, password: &str, stored: Option<&str>) -> Result<Verdict> {
+    pub async fn verify(
+        self: &Arc<Self>,
+        password: &str,
+        stored: Option<(u32, &str)>,
+    ) -> Result<Verdict> {
         let password = Zeroizing::new(password.to_owned());
-        let stored = stored.map(str::to_owned);
-        self.off_workers(move |passwords| match &stored {
-            Some(stored) => passwords.verify_now(&password, stored),
-            None => passwords
-                .verify_now(&password, &passwords.dummy)
-                .map(|_| Verdict::Mismatch),
+        let stored = stored.map(|(epoch, phc)| (epoch, phc.to_owned()));
+        self.off_workers(move |passwords| {
+            let held = stored.as_ref().and_then(|(epoch, phc)| {
+                passwords.pepper(*epoch).map(|pepper| (*epoch, pepper, phc))
+            });
+            match held {
+                Some((epoch, pepper, phc)) => {
+                    passwords
+                        .verify_now(pepper, &password, phc)
+                        .map(|verdict| match verdict {
+                            Verdict::Match { rehash } => Verdict::Match {
+                                rehash: rehash || epoch != passwords.current,
+                            },
+                            Verdict::Mismatch => Verdict::Mismatch,
+                        })
+                }
+                None => passwords
+                    .verify_now(passwords.current_pepper()?, &password, &passwords.dummy)
+                    .map(|_| Verdict::Mismatch),
+            }
         })
         .await
+    }
+
+    /// The pepper of `epoch`, when the ring holds it.
+    fn pepper(&self, epoch: u32) -> Option<&hmac::Key> {
+        self.peppers
+            .iter()
+            .find(|(held, _)| *held == epoch)
+            .map(|(_, pepper)| pepper)
+    }
+
+    fn current_pepper(&self) -> Result<&hmac::Key> {
+        self.pepper(self.current)
+            .ok_or(custody("the ring holds no pepper for its current epoch"))
     }
 
     /// Run `work` on the blocking pool once a permit is free; the permit is held until it finishes.
@@ -171,14 +227,10 @@ impl Passwords {
             .map_err(|_| custody("the password task did not finish"))?
     }
 
-    /// The pepper's HMAC of `password` in Normalization Form C: what Argon2id is handed instead of the password.
-    fn peppered(&self, password: &str) -> Zeroizing<Vec<u8>> {
+    /// `pepper`'s HMAC of `password` in Normalization Form C: what Argon2id is handed instead of the password.
+    fn peppered(pepper: &hmac::Key, password: &str) -> Zeroizing<Vec<u8>> {
         let normalised = Zeroizing::new(password.nfc().collect::<String>());
-        Zeroizing::new(
-            hmac::sign(&self.pepper, normalised.as_bytes())
-                .as_ref()
-                .to_vec(),
-        )
+        Zeroizing::new(hmac::sign(pepper, normalised.as_bytes()).as_ref().to_vec())
     }
 
     fn hash_now(&self, password: &str) -> Result<String> {
@@ -195,12 +247,12 @@ impl Passwords {
         )
         .map_err(|_| custody("the hash parameters are not usable"))?;
         Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
-            .hash_password(&self.peppered(password), &salt)
+            .hash_password(&Self::peppered(self.current_pepper()?, password), &salt)
             .map(|hash| hash.to_string())
             .map_err(|_| custody("hashing failed"))
     }
 
-    fn verify_now(&self, password: &str, stored: &str) -> Result<Verdict> {
+    fn verify_now(&self, pepper: &hmac::Key, password: &str, stored: &str) -> Result<Verdict> {
         let not_ours = || custody("a stored password hash that is not an Argon2id PHC string");
         let parsed = PasswordHash::new(stored).map_err(|_| not_ours())?;
         if Algorithm::try_from(parsed.algorithm) != Ok(Algorithm::Argon2id) {
@@ -214,7 +266,7 @@ impl Passwords {
         let rehash = version != Version::V0x13 || self.cost.exceeds(&params);
         // The library compares the derived tag with the stored one in constant time.
         match Argon2::new(Algorithm::Argon2id, version, params)
-            .verify_password(&self.peppered(password), &parsed)
+            .verify_password(&Self::peppered(pepper, password), &parsed)
         {
             Ok(()) => Ok(Verdict::Match { rehash }),
             Err(argon2::password_hash::Error::Password) => Ok(Verdict::Mismatch),

@@ -102,13 +102,11 @@ impl SignInService {
             Some(found) => self.credential(&found.id).await?,
             None => None,
         };
-        let verdict = self
-            .passwords
-            .verify(
-                password,
-                credential.as_ref().map(|held| held.verifier.as_str()),
-            )
-            .await?;
+        let stored = match &credential {
+            Some(held) => Some((held.epoch()?, held.verifier.as_str())),
+            None => None,
+        };
+        let verdict = self.passwords.verify(password, stored).await?;
         let (Some(found), Verdict::Match { rehash }) = (account, verdict) else {
             return Ok(PasswordStep::Failed);
         };
@@ -117,10 +115,11 @@ impl SignInService {
             self.database
                 .run_at(
                     &self.place,
-                    "UPDATE credentials:$account SET verifier = $verifier;",
+                    "UPDATE credentials:$account SET verifier = $verifier, key_epoch = $key_epoch;",
                     vec![
                         bind("account", found.id.as_str()),
-                        bind("verifier", verifier.as_str()),
+                        bind("verifier", verifier.phc.as_str()),
+                        bind("key_epoch", i64::from(verifier.epoch)),
                     ],
                 )
                 .await?;
@@ -240,7 +239,7 @@ impl SignInService {
             .database
             .read_at(
                 &self.place,
-                "SELECT verifier, totp, totp_factor, totp_last_step FROM credentials WHERE account_id = $account LIMIT 1;",
+                "SELECT verifier, key_epoch, totp, totp_factor, totp_last_step FROM credentials WHERE account_id = $account LIMIT 1;",
                 vec![bind("account", account.as_str())],
             )
             .await?;

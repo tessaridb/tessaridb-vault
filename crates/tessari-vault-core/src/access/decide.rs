@@ -11,6 +11,9 @@ pub struct Standing {
     pub member: MemberState,
     /// Whether the company is open.
     pub company: CompanyState,
+    /// The service-key epoch the company's records vault is keyed under, read with the rest, so the key a request
+    /// presents is the one the vault holds when the work began.
+    pub key_epoch: u32,
 }
 
 /// What a caller asks to do inside a company. The roles an action touches are part of it, because making or
