@@ -1530,6 +1530,9 @@
     );
     return { raw, keyId };
   }
+  async function recordKeyOf(company, vouched, recipient, opened) {
+    return (await unwrapped(company, vouched, recipient, opened)).raw;
+  }
   async function openRecord(company, vouched, recipient, opened) {
     const { row: row2 } = opened;
     const { raw, keyId } = await unwrapped(company, vouched, recipient, opened);
@@ -1595,13 +1598,14 @@
     /** The record opened, or the reason it would not open. */
     async open(opened) {
       try {
-        const key = await this.#keyFor(opened);
+        const key = await this.keyFor(opened);
         return { row: opened.row, document: await openRecord(this.#held.company, this.#vouched, key, opened) };
       } catch (problem2) {
         return { row: opened.row, problem: problem2 instanceof VaultCryptoError ? problem2.reason : "malformed" };
       }
     }
-    async #keyFor(opened) {
+    /** The person's own key or the group key `opened`'s wrap is kept for; a share re-opens that wrap with it. */
+    async keyFor(opened) {
       if (opened.recipient.kind === "member") {
         return memberKey(this.#held.keys);
       }
@@ -1818,14 +1822,14 @@
     if (!isId2(account) || authorKey !== null && !isId2(authorKey)) {
       return null;
     }
-    const shares = v["shares"].map((share) => {
-      if (!isRecord5(share) || !isId2(share["target"]) || !isId2(share["key_id"])) {
+    const shares = v["shares"].map((share2) => {
+      if (!isRecord5(share2) || !isId2(share2["target"]) || !isId2(share2["key_id"])) {
         return null;
       }
-      const { kind, right } = share;
-      return (kind === "member" || kind === "group") && (right === "read" || right === "edit") ? { kind, target: share["target"], right, keyId: share["key_id"] } : null;
+      const { kind, right } = share2;
+      return (kind === "member" || kind === "group") && (right === "read" || right === "edit") ? { kind, target: share2["target"], right, keyId: share2["key_id"] } : null;
     });
-    return shares.every((share) => share !== null) ? { author: { account, keyId: authorKey }, shares } : null;
+    return shares.every((share2) => share2 !== null) ? { author: { account, keyId: authorKey }, shares } : null;
   }
   function readDirectory(v) {
     if (!isRecord5(v) || !Array.isArray(v["keys"])) {
@@ -1846,15 +1850,15 @@
       ...listed.shares
     ];
     const recipients = [];
-    for (const share of wanted.filter((each) => !(each.kind === "member" && each.keyId === own))) {
-      const keyId = keyIdBytes(share.keyId);
-      const member = share.kind === "member" ? directory.get(share.target) : void 0;
-      const key = share.kind === "member" ? member?.keyId === share.keyId ? member.agreementPublic : void 0 : groups.get(share.target);
+    for (const share2 of wanted.filter((each) => !(each.kind === "member" && each.keyId === own))) {
+      const keyId = keyIdBytes(share2.keyId);
+      const member = share2.kind === "member" ? directory.get(share2.target) : void 0;
+      const key = share2.kind === "member" ? member?.keyId === share2.keyId ? member.agreementPublic : void 0 : groups.get(share2.target);
       if (keyId === null || key === void 0) {
         return null;
       }
       recipients.push({
-        recipient: share.kind === "member" ? { kind: "member", account: share.target } : { kind: "group", group: share.target },
+        recipient: share2.kind === "member" ? { kind: "member", account: share2.target } : { kind: "group", group: share2.target },
         keyId,
         listed: key
       });
@@ -1875,12 +1879,12 @@
       return { ok: false, words: loadFailure(directory) };
     }
     const groups = /* @__PURE__ */ new Map();
-    for (const share of listed.value.shares.filter((each) => each.kind === "group")) {
-      const key = await call("GET", `${path}/groups/${encodeURIComponent(share.target)}/key`, readGroupKey);
+    for (const share2 of listed.value.shares.filter((each) => each.kind === "group")) {
+      const key = await call("GET", `${path}/groups/${encodeURIComponent(share2.target)}/key`, readGroupKey);
       if (!key.ok) {
         return { ok: false, words: key.status === 404 ? MOVED : loadFailure(key) };
       }
-      groups.set(share.target, key.value.public);
+      groups.set(share2.target, key.value.public);
     }
     const recipients = revisionRecipients(listed.value, directory.value, groups, hex(held2.keys.keyId));
     return recipients === null ? { ok: false, words: MOVED } : { ok: true, recipients };
@@ -2176,6 +2180,318 @@
     return [open3, dialog];
   }
 
+  // src/records/share-record.ts
+  async function shareBody(company, vouched, reader, opened, to, right) {
+    const raw = await recordKeyOf(company, vouched, reader, opened);
+    try {
+      const wrappedKeyId = keyIdBytes(opened.row.keyId);
+      if (wrappedKeyId === null) {
+        throw new VaultCryptoError("key-mismatch");
+      }
+      const context2 = { company, wrappedKind: "record", wrappedKeyId, recipientKind: to.recipient.kind, recipientKeyId: to.keyId };
+      const wrap = await wrapToVouched(vouched, to.recipient, to.listed, context2, raw);
+      const target = to.recipient.kind === "member" ? { member: to.recipient.account } : { group: to.recipient.group };
+      return { ...target, right, key_id: hex(to.keyId), wrap: encode(wrap) };
+    } finally {
+      wipe(raw);
+    }
+  }
+
+  // src/records/share-targets.ts
+  var isRecord6 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isId3 = (v) => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
+  var isText4 = (v) => typeof v === "string" && v !== "";
+  function readMemberList(v) {
+    if (!isRecord6(v) || !Array.isArray(v["members"])) {
+      return null;
+    }
+    const members = v["members"].map((member) => {
+      if (!isRecord6(member) || !isRecord6(member["account"]) || typeof member["state"] !== "string") {
+        return null;
+      }
+      const { id, name, email } = member["account"];
+      return isId3(id) && isText4(name) && isText4(email) ? { account: id, name, email, active: member["state"] === "active" } : null;
+    });
+    return members.every((member) => member !== null) ? members : null;
+  }
+  function readGroupList(v) {
+    if (!isRecord6(v) || !Array.isArray(v["groups"])) {
+      return null;
+    }
+    const groups = v["groups"].map((group) => {
+      if (!isRecord6(group) || !isId3(group["id"]) || !isText4(group["name"])) {
+        return null;
+      }
+      const { kind } = group;
+      return kind === "company" || kind === "department" || kind === "team" ? { id: group["id"], kind, name: group["name"] } : null;
+    });
+    return groups.every((group) => group !== null) ? groups : null;
+  }
+  function shareTargets(members, groups, directory, groupKeys, author, shared) {
+    const open3 = (id) => id !== author && !shared.includes(id);
+    const people = members.filter((member) => member.active && open3(member.account)).map((member) => {
+      const listed = directory.get(member.account);
+      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
+      return listed === void 0 || keyId === null ? { id: member.account, label: member.name, detail: member.email, recipient: null, missing: "hasn't set an unlock password yet" } : { id: member.account, label: member.name, detail: member.email, recipient: { recipient: { kind: "member", account: member.account }, keyId, listed: listed.agreementPublic } };
+    });
+    const teams = groups.filter((group) => open3(group.id)).map((group) => {
+      const listed = groupKeys.get(group.id);
+      const keyId = listed === void 0 ? null : keyIdBytes(listed.keyId);
+      const detail = groupDetail(group.kind);
+      return listed === void 0 || keyId === null ? { id: group.id, label: group.name, detail, recipient: null, missing: "has no key yet" } : { id: group.id, label: group.name, detail, recipient: { recipient: { kind: "group", group: group.id }, keyId, listed: listed.public } };
+    });
+    return [...people, ...teams];
+  }
+  function filterTargets(targets, text2) {
+    const wanted = text2.trim().toLowerCase();
+    return targets.filter((target) => `${target.label}
+${target.detail}`.toLowerCase().includes(wanted));
+  }
+  function sharedRows(shares, members, groups) {
+    return shares.map((share2) => {
+      const { target, right } = share2;
+      if (share2.kind === "member") {
+        const member = members.find((each) => each.account === target);
+        return member === void 0 ? { target, label: "A member no longer listed", detail: "", right } : { target, label: member.name, detail: member.email, right };
+      }
+      const group = groups.find((each) => each.id === target);
+      return group === void 0 ? { target, label: "A group no longer listed", detail: "", right } : { target, label: group.name, detail: groupDetail(group.kind), right };
+    });
+  }
+  var groupDetail = (kind) => kind === "company" ? "Everyone in the company" : kind === "department" ? "Department" : "Team";
+
+  // src/records/share-words.ts
+  var REOPEN = "This record or its sharing changed while you were deciding. Open it again, then share it.";
+  function shareFailure(status, code, fallback) {
+    if (status === 403) {
+      return "You can read this record but not share it.";
+    }
+    if (status !== 409) {
+      return fallback;
+    }
+    switch (code) {
+      case "already_shared":
+        return "This record is shared with them already.";
+      case "no_key":
+        return "They have no key yet, so nothing can be shared with them. Ask them to set their unlock password first.";
+      case "unknown_key":
+        return "Their key changed while you were deciding. Open the record again, then share it.";
+      case "stale_revision":
+      case "stale_shares":
+        return REOPEN;
+      default:
+        return fallback;
+    }
+  }
+  function sealFailure(reason) {
+    return reason === "unvouched-recipient" ? "Their key is not vouched for in the company yet, so nothing can be shared with them. An admin vouches for new keys." : "This record could not be opened to share it. Open it again, then share it.";
+  }
+  function removeShareFailure(status, _code, fallback) {
+    if (status === 403) {
+      return "You can read this record but not change who it is shared with.";
+    }
+    if (status === 404) {
+      return "The record is no longer shared with them, or it is gone.";
+    }
+    return fallback;
+  }
+
+  // src/records/share-dialog.ts
+  var RIGHTS = [
+    { right: "read", words: "Can view" },
+    { right: "edit", words: "Can edit" }
+  ];
+  function shareControls(context2, targets) {
+    let chosen = null;
+    let right = "read";
+    const filter = el("input", { id: "share-filter", type: "search", autocomplete: "off", "aria-controls": "share-targets" });
+    const list = el("div", { id: "share-targets", class: "targets" });
+    const said = el("div", { "aria-live": "polite" });
+    const rights = RIGHTS.map((each) => el("button", { type: "button", class: "chip", "aria-pressed": String(each.right === right) }, each.words));
+    const cancel = el("button", { type: "button" }, "Cancel");
+    const confirm = el("button", { type: "button", class: "primary" }, "Share");
+    const draw2 = () => {
+      const shown = filterTargets(targets, filter.value);
+      if (shown.length === 0) {
+        fill(list, el("p", { class: "muted" }, targets.length === 0 ? "Everyone in the company can open this record already." : `No member or group matches “${filter.value.trim()}”.`));
+        return;
+      }
+      fill(list, ...shown.map((target) => targetRow(target, target.id === chosen, () => chosen = target.id)));
+    };
+    const press = (at2) => {
+      right = RIGHTS[at2]?.right ?? "read";
+      rights.forEach((each, other) => each.setAttribute("aria-pressed", String(other === at2)));
+    };
+    rights.forEach((button, at2) => button.addEventListener("click", () => press(at2)));
+    filter.addEventListener("input", draw2);
+    const dialog = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": "share-title" },
+      el("h2", { id: "share-title" }, `Share “${context2.title}”`),
+      el("div", { class: "field" }, el("label", { for: filter.id }, "Find a member or group"), filter),
+      el("fieldset", { class: "choices" }, el("legend", {}, "Share with"), list),
+      el("fieldset", { class: "choices" }, el("legend", {}, "What they can do"), el("div", { class: "chips" }, ...rights)),
+      said,
+      el("div", { class: "actions" }, cancel, confirm)
+    );
+    const open3 = el("button", { type: "button" }, "Share");
+    open3.addEventListener("click", () => {
+      chosen = null;
+      press(0);
+      filter.value = "";
+      fill(said, null);
+      draw2();
+      dialog.showModal();
+    });
+    cancel.addEventListener("click", () => dialog.close());
+    confirm.addEventListener("click", () => {
+      const target = targets.find((each) => each.id === chosen);
+      if (target?.recipient == null) {
+        fill(said, refusal("Choose a member or group to share with."));
+        return;
+      }
+      confirm.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Sharing the record."));
+      void share(context2, target.recipient, right).then((words) => {
+        confirm.disabled = false;
+        if (words === null) {
+          dialog.close();
+          context2.done();
+          return;
+        }
+        fill(said, refusal(words));
+      });
+    });
+    return [open3, dialog];
+  }
+  function targetRow(target, checked, choose) {
+    const id = `share-target-${target.id}`;
+    const radio = el("input", { id, type: "radio", name: "share-target", value: target.id, ...checked ? { checked: "" } : {} });
+    if (target.recipient === null) {
+      radio.disabled = true;
+    }
+    radio.addEventListener("change", choose);
+    const detail = target.recipient === null ? `${target.detail} · ${target.missing}` : target.detail;
+    return el("div", { class: "choice" }, radio, el("label", { for: id }, target.label, el("span", { class: "detail" }, detail)));
+  }
+  async function share(context2, to, right) {
+    const { held: held2, vouched, opener, opened } = context2;
+    let body;
+    try {
+      body = await shareBody(held2.company, vouched, await opener.keyFor(opened), opened, to, right);
+    } catch (problem2) {
+      return sealFailure(problem2 instanceof VaultCryptoError ? problem2.reason : "malformed");
+    }
+    const answer = await call("POST", `${companyPath(held2)}/records/${encodeURIComponent(opened.row.id)}/shares`, ignored, { body });
+    return answer.ok ? null : shareFailure(answer.status, answer.code, loadFailure(answer));
+  }
+
+  // src/records/shared-with-view.ts
+  function sharedWithSection(held2, id, rows, done) {
+    const reason = el("input", { id: "unshare-reason", type: "text", autocomplete: "off", maxlength: "500" });
+    const said = el("div", { "aria-live": "polite" });
+    const title = el("h2", { id: "unshare-title" });
+    const keep2 = el("button", { type: "button", autofocus: "" }, "Keep sharing");
+    const confirm = el("button", { type: "button", class: "danger" }, "Stop sharing");
+    const dialog = el(
+      "dialog",
+      { class: "confirm", "aria-labelledby": title.id },
+      title,
+      el(
+        "p",
+        {},
+        "They can no longer open this record. What they have already seen, and backups taken before now, are not taken back. The record's next change is sealed under a new key."
+      ),
+      el("div", { class: "field" }, el("label", { for: reason.id }, "Reason, kept on the company's trail (optional)"), reason),
+      said,
+      el("div", { class: "actions" }, keep2, confirm)
+    );
+    let removing = null;
+    keep2.addEventListener("click", () => dialog.close());
+    confirm.addEventListener("click", () => {
+      if (removing === null) {
+        return;
+      }
+      confirm.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Removing the share."));
+      const route = `${companyPath(held2)}/records/${encodeURIComponent(id)}/shares/${encodeURIComponent(removing.target)}`;
+      void call("DELETE", route, ignored, { reason: reason.value.trim() }).then((answer) => {
+        confirm.disabled = false;
+        if (answer.ok) {
+          dialog.close();
+          done();
+          return;
+        }
+        fill(said, refusal(removeShareFailure(answer.status, answer.code, loadFailure(answer))));
+      });
+    });
+    const items = rows.map((row2) => {
+      const remove = el("button", { type: "button", class: "quiet", "aria-label": `Stop sharing with ${row2.label}` }, "Remove");
+      remove.addEventListener("click", () => {
+        removing = row2;
+        fill(title, `Stop sharing with “${row2.label}”?`);
+        fill(said, null);
+        reason.value = "";
+        dialog.showModal();
+      });
+      return el(
+        "li",
+        { class: "share" },
+        el("div", {}, el("span", { class: "share-name" }, row2.label), row2.detail === "" ? null : el("span", { class: "detail" }, row2.detail)),
+        el("span", { class: "muted" }, row2.right === "edit" ? "Can edit" : "Can view"),
+        remove
+      );
+    });
+    const section = el(
+      "section",
+      { class: "record-section", "aria-labelledby": "shared-with" },
+      el("h2", { id: "shared-with" }, "Shared with"),
+      items.length === 0 ? el("p", { class: "muted" }, "It isn't shared with anyone; only its author can open it.") : el("ul", { class: "shares" }, ...items)
+    );
+    return [section, dialog];
+  }
+
+  // src/records/sharing.ts
+  var failed = (answer) => ({ ok: false, words: loadFailure(answer) });
+  async function loadSharing(held2, id) {
+    const path = companyPath(held2);
+    const [listed, members, groups, directory] = await Promise.all([
+      call("GET", `${path}/records/${encodeURIComponent(id)}/shares`, readShares),
+      call("GET", `${path}/members`, readMemberList),
+      call("GET", `${path}/groups`, readGroupList),
+      call("GET", `${path}/keys`, readDirectory)
+    ]);
+    if (!listed.ok) {
+      return listed.status === 403 ? null : failed(listed);
+    }
+    if (!members.ok) {
+      return failed(members);
+    }
+    if (!groups.ok) {
+      return failed(groups);
+    }
+    if (!directory.ok) {
+      return failed(directory);
+    }
+    const keys = await Promise.all(
+      groups.value.map((group) => call("GET", `${path}/groups/${encodeURIComponent(group.id)}/key`, readGroupKey).then((key) => [group.id, key]))
+    );
+    const groupKeys = /* @__PURE__ */ new Map();
+    for (const [group, key] of keys) {
+      if (key.ok) {
+        groupKeys.set(group, { keyId: hex(key.value.keyId), public: key.value.public });
+      } else if (key.status !== 404) {
+        return failed(key);
+      }
+    }
+    const { author, shares } = listed.value;
+    return {
+      ok: true,
+      rows: sharedRows(shares, members.value, groups.value),
+      targets: shareTargets(members.value, groups.value, directory.value, groupKeys, author.account, shares.map((share2) => share2.target))
+    };
+  }
+
   // src/records/record-view.ts
   async function drawRecord(main2, held2, id, copy2, stops2, back, editHref, gone) {
     const toList = el("a", { href: back, class: "back" }, "All records");
@@ -2193,7 +2509,8 @@
       fill(said, refusal(opened.status === 404 ? "This record doesn't exist, or it isn't shared with you." : loadFailure(opened)));
       return;
     }
-    const item = await new Opener(held2, chain.vouched).open(opened.value);
+    const opener = new Opener(held2, chain.vouched);
+    const [item, sharing] = await Promise.all([opener.open(opened.value), loadSharing(held2, id)]);
     if (!("document" in item)) {
       fill(main2, toList, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
       return;
@@ -2209,29 +2526,34 @@
       )
     );
     const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type))));
-    const [remove, dialog] = deleteControls(held2, id, document2.title === "" ? "Untitled" : document2.title, gone);
-    const actions = el("div", { class: "actions" }, el("a", { class: "button", href: editHref }, "Edit"), remove ?? null);
-    fill(main2, toList, el("div", { class: "page-head" }, head, actions), ...sections, dialog ?? null);
+    const named = document2.title === "" ? "Untitled" : document2.title;
+    const [remove, dialog] = deleteControls(held2, id, named, gone);
+    const again = () => void drawRecord(main2, held2, id, copy2, stops2, back, editHref, gone);
+    const context2 = { held: held2, vouched: chain.vouched, opener, opened: opened.value, title: named, done: again };
+    const [share2, shareDialog] = sharing?.ok === true ? shareControls(context2, sharing.targets) : [];
+    const shared = sharing === null ? [] : sharing.ok ? sharedWithSection(held2, id, sharing.rows, again) : [el("section", { class: "record-section" }, el("h2", {}, "Shared with"), refusal(sharing.words))];
+    const actions = el("div", { class: "actions" }, el("a", { class: "button", href: editHref }, "Edit"), share2 ?? null, remove ?? null);
+    fill(main2, toList, el("div", { class: "page-head" }, head, actions), ...sections, ...shared, dialog ?? null, shareDialog ?? null);
     title.focus();
   }
 
   // src/sign-in-model.ts
-  var isRecord6 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord7 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readMethods(v) {
-    if (!isRecord6(v)) {
+    if (!isRecord7(v)) {
       return null;
     }
     const { password, passkey: passkey2, provider } = v;
     return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
   }
   function readChallenge(v) {
-    return isRecord6(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+    return isRecord7(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
   }
   function readSession(v) {
-    return isRecord6(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+    return isRecord7(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
   function readPasskeyRequest(v) {
-    return isRecord6(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+    return isRecord7(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
   function signInFailure(failure) {
     switch (failure.code) {

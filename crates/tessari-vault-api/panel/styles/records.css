@@ -172,3 +172,42 @@ dialog.confirm .actions {
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
+
+/* Whom a record can be shared with: a list that scrolls inside the dialog once it is longer than a few rows. */
+.targets {
+  max-block-size: 16rem;
+  overflow-y: auto;
+  padding-inline-end: var(--s-2);
+}
+
+.choice label .detail,
+.share .detail {
+  display: block;
+  font-weight: 400;
+  font-size: var(--t-caption);
+  color: var(--text-muted);
+}
+
+.choice input:disabled + label {
+  color: var(--text-muted);
+}
+
+.shares {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.share {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-4);
+  min-block-size: var(--row-height);
+  padding-block: var(--s-2);
+  border-block-end: 1px solid var(--border);
+}
+
+.share-name {
+  font-weight: 550;
+}

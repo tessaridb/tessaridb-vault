@@ -41,14 +41,15 @@ export class Opener {
   /** The record opened, or the reason it would not open. */
   async open(opened: OpenedRecord): Promise<Listed> {
     try {
-      const key = await this.#keyFor(opened);
+      const key = await this.keyFor(opened);
       return { row: opened.row, document: await openRecord(this.#held.company, this.#vouched, key, opened) };
     } catch (problem) {
       return { row: opened.row, problem: problem instanceof VaultCryptoError ? problem.reason : "malformed" };
     }
   }
 
-  async #keyFor(opened: OpenedRecord): Promise<RecipientKey> {
+  /** The person's own key or the group key `opened`'s wrap is kept for; a share re-opens that wrap with it. */
+  async keyFor(opened: OpenedRecord): Promise<RecipientKey> {
     if (opened.recipient.kind === "member") {
       return memberKey(this.#held.keys);
     }

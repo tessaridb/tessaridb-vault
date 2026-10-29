@@ -5,7 +5,7 @@
 import type { Bytes } from "../crypto/bytes.ts";
 import { keyIdBytes } from "../unlock-model.ts";
 import type { ShareRecipient } from "./save-record.ts";
-import type { DirectoryKey } from "./shares-model.ts";
+import type { DirectoryKey, ListedShare } from "./shares-model.ts";
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isId = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
@@ -83,10 +83,41 @@ export function shareTargets(
     .map((group): ShareTarget => {
       const listed = groupKeys.get(group.id);
       const keyId = listed === undefined ? null : keyIdBytes(listed.keyId);
-      const detail = group.kind === "company" ? "Everyone in the company" : group.kind === "department" ? "Department" : "Team";
+      const detail = groupDetail(group.kind);
       return listed === undefined || keyId === null
         ? { id: group.id, label: group.name, detail, recipient: null, missing: "has no key yet" }
         : { id: group.id, label: group.name, detail, recipient: { recipient: { kind: "group", group: group.id }, keyId, listed: listed.public } };
     });
   return [...people, ...teams];
 }
+
+/** The targets whose name or detail holds `text`, ignoring case and the spaces around it. */
+export function filterTargets(targets: readonly ShareTarget[], text: string): readonly ShareTarget[] {
+  const wanted = text.trim().toLowerCase();
+  return targets.filter((target) => `${target.label}\n${target.detail}`.toLowerCase().includes(wanted));
+}
+
+/** One row of a record's "Shared with" list. */
+export interface SharedRow {
+  readonly target: string;
+  readonly label: string;
+  readonly detail: string;
+  readonly right: "read" | "edit";
+}
+
+/** Each of `shares` named from the company's members and groups; one neither lists any more is said to be so. */
+export function sharedRows(shares: readonly ListedShare[], members: readonly ListedMember[], groups: readonly ListedGroup[]): readonly SharedRow[] {
+  return shares.map((share): SharedRow => {
+    const { target, right } = share;
+    if (share.kind === "member") {
+      const member = members.find((each) => each.account === target);
+      return member === undefined
+        ? { target, label: "A member no longer listed", detail: "", right }
+        : { target, label: member.name, detail: member.email, right };
+    }
+    const group = groups.find((each) => each.id === target);
+    return group === undefined ? { target, label: "A group no longer listed", detail: "", right } : { target, label: group.name, detail: groupDetail(group.kind), right };
+  });
+}
+
+const groupDetail = (kind: ListedGroup["kind"]): string => (kind === "company" ? "Everyone in the company" : kind === "department" ? "Department" : "Team");

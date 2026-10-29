@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { Bytes } from "../../src/crypto/bytes.ts";
-import { readGroupList, readMemberList, shareTargets } from "../../src/records/share-targets.ts";
+import { filterTargets, readGroupList, readMemberList, sharedRows, shareTargets } from "../../src/records/share-targets.ts";
 import type { DirectoryKey } from "../../src/records/shares-model.ts";
 
 const [AUTHOR, ADMIN, LEFT, NEW, TEAM, DEPT] = ["a", "b", "c", "e", "d", "f"].map((c) => c.repeat(32)) as [string, string, string, string, string, string];
@@ -37,6 +37,35 @@ describe("share targets", () => {
         ["Bo Admin", "member"],
         ["Ed New", "hasn't set an unlock password yet"],
         ["Platform", "group"],
+      ],
+    );
+  });
+
+  it("keeps the targets whose name or detail holds the filter, ignoring case", () => {
+    assert.ok(MEMBERS !== null && GROUPS !== null);
+    const targets = shareTargets(MEMBERS, GROUPS, DIRECTORY, new Map(), AUTHOR, []);
+    assert.deepEqual(filterTargets(targets, "  eD ").map((target) => target.label), ["Ed New"]);
+    assert.deepEqual(filterTargets(targets, "DEPARTMENT").map((target) => target.label), ["Engineering"]);
+    assert.equal(filterTargets(targets, "").length, targets.length);
+  });
+
+  it("names every share the record has, with what it lets them do", () => {
+    assert.ok(MEMBERS !== null && GROUPS !== null);
+    const rows = sharedRows(
+      [
+        { kind: "member", target: LEFT, right: "read", keyId: "77".repeat(16) },
+        { kind: "group", target: TEAM, right: "edit", keyId: "66".repeat(16) },
+        { kind: "member", target: "9".repeat(32), right: "read", keyId: "88".repeat(16) },
+      ],
+      MEMBERS,
+      GROUPS,
+    );
+    assert.deepEqual(
+      rows.map((row) => [row.target, row.label, row.detail, row.right]),
+      [
+        [LEFT, "Cy Left", "left@x.test", "read"],
+        [TEAM, "Platform", "Team", "edit"],
+        ["9".repeat(32), "A member no longer listed", "", "read"],
       ],
     );
   });
