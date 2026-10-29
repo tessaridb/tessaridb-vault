@@ -36,7 +36,12 @@ use tessari_vault_api::routes;
 use world::{Cast, World};
 
 /// Routes that refuse nobody by design, each with the reason; every other route has a probe.
-const EXEMPT: [(Method, &str, &str); 5] = [
+const EXEMPT: [(Method, &str, &str); 6] = [
+    (
+        Method::GET,
+        "/api/sign-in/methods",
+        "which ways in this server offers: names no account",
+    ),
     (
         Method::POST,
         "/api/sign-in/passkey/begin",

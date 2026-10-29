@@ -281,3 +281,18 @@ async fn one_network_address_trying_many_accounts_backs_off() {
         "the twenty-first try from one network address"
     );
 }
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn the_page_is_told_which_ways_in_this_server_offers() {
+    let world = World::new().await;
+    let (status, body) = world
+        .call(Method::GET, "/api/sign-in/methods", None, None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // The live server has a passkey party and no identity provider.
+    assert_eq!(
+        body,
+        json!({ "password": true, "passkey": true, "provider": false })
+    );
+}

@@ -9,7 +9,7 @@ import { copyFile, readFile, writeFile } from "node:fs/promises";
 
 const ASSETS = new URL("../assets/", import.meta.url);
 const STATIC = new URL("./assets/", import.meta.url);
-const STYLES = ["tokens.css", "base.css", "shell.css"];
+const STYLES = ["tokens.css", "base.css", "shell.css", "forms.css"];
 
 /** Nothing the page loads may come from off this server: the vault must work on a network with no route out. */
 function local(what, text) {

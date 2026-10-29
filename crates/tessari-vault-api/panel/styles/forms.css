@@ -1,0 +1,229 @@
+/* ─────────────────────────────────────────────────────────────── forms ── */
+
+/* Cards, fields, choices, buttons and the sign-in gate, the same as the TessariDB S3 console's, so a person who uses
+   both meets one set of controls. Values come from the semantic and component tiers only. */
+
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--shadow);
+  padding: var(--card-inset);
+  margin-block-end: var(--stack);
+}
+
+.field {
+  display: grid;
+  gap: var(--s-2);
+  margin-block-end: var(--s-5);
+  max-inline-size: 32rem;
+}
+
+
+.segmented {
+  display: inline-flex;
+  min-block-size: var(--control-height);
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+}
+
+.segmented label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--s-3);
+  border-radius: calc(var(--control-radius) - 3px);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.segmented input:checked + label {
+  background: var(--surface-raised);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.12);
+}
+
+.segmented input:focus-visible + label {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+
+label {
+  font-weight: 600;
+  font-size: var(--t-data);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  padding: var(--s-2) var(--s-3);
+  min-block-size: var(--control-height);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--border-strong);
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
+button,
+.button {
+  font: inherit;
+  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-block-size: var(--control-height);
+  padding: 0 var(--s-5);
+  border-radius: var(--button-radius);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur-press) var(--ease-out);
+}
+
+/* Press feedback on everything pressable. */
+button:active,
+.button:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button:hover,
+  .button:hover {
+    background: var(--surface-sunken);
+  }
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+button.primary,
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+button.primary:hover,
+.button.primary:hover {
+  background: var(--accent-hover);
+}
+
+
+button.quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+button.quiet:hover {
+  color: var(--text);
+  background: var(--surface-sunken);
+}
+
+/* A row action shown as its icon alone: its accessible name says the action and the row, its tooltip the action. */
+
+.message.bad {
+  color: var(--bad);
+  margin-block-start: var(--s-3);
+  max-inline-size: var(--measure);
+}
+
+/* Signing in is the only thing on the page, so it sits in the middle of it. */
+.gate {
+  display: grid;
+  place-items: center;
+  min-block-size: 85dvh;
+}
+
+.gate .card {
+  inline-size: min(100%, 25rem);
+  padding: var(--s-6) var(--s-5);
+  text-align: center;
+}
+
+.gate .field {
+  max-inline-size: none;
+  text-align: start;
+}
+
+.gate .logo {
+  inline-size: 3rem;
+  block-size: 3rem;
+  margin-block-end: var(--s-3);
+}
+
+.gate h1 {
+  margin-block-end: var(--s-2);
+}
+
+.gate button.link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+}
+.gate button.primary,
+.gate .provider {
+  inline-size: 100%;
+  margin-block-start: var(--s-2);
+}
+
+.gate p.muted {
+  margin-block: var(--s-3) var(--s-5);
+}
+
+/* Before signing in there is nothing to navigate: the sign-in card is the page. */
+body.signed-out .side {
+  display: none;
+}
+
+body.signed-out .shell {
+  grid-template-columns: minmax(0, 1fr);
+  background: none;
+}
+
+/* Windows high contrast and other forced palettes keep every boundary visible. */
+@media (forced-colors: active) {
+  button,
+  .button,
+  .card {
+    border: 1px solid CanvasText;
+  }
+}

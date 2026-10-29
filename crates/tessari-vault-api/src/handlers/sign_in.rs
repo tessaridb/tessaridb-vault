@@ -14,6 +14,22 @@ use crate::ApiError;
 use crate::caller::{Body, Caller, Unsigned};
 use crate::state::AppState;
 
+/// The ways in this server offers, so the page shows only the ones that work.
+#[derive(Serialize)]
+pub(crate) struct Methods {
+    password: bool,
+    passkey: bool,
+    provider: bool,
+}
+
+pub(crate) async fn methods(State(state): State<AppState>, _: Unsigned) -> Json<Methods> {
+    Json(Methods {
+        password: true,
+        passkey: state.passkeys.is_some(),
+        provider: state.oidc.is_some(),
+    })
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Credentials {

@@ -67,10 +67,10 @@
 
   /* Dials (designer ref 28): quiet, near-static, airy enough to breathe. */
   --dial-variance: 30;
-  --dial-motion: 25;
+  --dial-motion: 30;
   --dial-density: 55;
 
-  /* MOTION 20: state feedback only — one short duration, a strong ease-out. */
+  /* MOTION 30: state feedback only — one short duration, a strong ease-out. */
   --dur-fast: 120ms;
   --dur-press: 160ms;
   --ease: cubic-bezier(0.25, 1, 0.5, 1);
