@@ -1438,7 +1438,8 @@ dependencies = [
 [[package]]
 name = "tessaridb-oauth-client"
 version = "0.1.0"
-source = "git+https://github.com/tessaridb/tessaridb-oauth-client?rev=c0f8954e37cfe6cd0945fcc2d5d9cffe211e7945#c0f8954e37cfe6cd0945fcc2d5d9cffe211e7945"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31b293d43cb1ba56ecbaa6ded2693c20898b5a85eb0280fa73d87d3f578da9df"
 dependencies = [
  "base64 0.22.1",
  "reqwest",
