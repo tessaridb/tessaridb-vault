@@ -110,9 +110,16 @@ impl Storage {
             database.clone(),
             place.clone(),
         ));
+        let group_keys = Arc::new(GroupKeyService::new(
+            Arc::new(TessaridbGroupKeyRepository::new(database.clone())),
+            Arc::clone(&vaults),
+            database.clone(),
+            place.clone(),
+        ));
         let groups = Arc::new(GroupService::new(
             Arc::new(TessaridbGroupRepository::new(database.clone())),
             Arc::clone(&accounts),
+            Arc::clone(&group_keys),
             database.clone(),
             place.clone(),
         ));
@@ -158,12 +165,6 @@ impl Storage {
         ));
         let keys = Arc::new(KeyService::new(
             Arc::new(TessaridbKeyRepository::new(database.clone())),
-            Arc::clone(&vaults),
-            database.clone(),
-            place.clone(),
-        ));
-        let group_keys = Arc::new(GroupKeyService::new(
-            Arc::new(TessaridbGroupKeyRepository::new(database.clone())),
             Arc::clone(&vaults),
             database.clone(),
             place.clone(),

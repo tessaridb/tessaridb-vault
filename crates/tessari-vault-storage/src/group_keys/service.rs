@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use tessari_vault_core::access::Action;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
-use tessari_vault_types::{CompanyId, GroupId};
+use tessari_vault_types::{AccountId, CompanyId, GroupId};
 
-use super::entity::{GroupKey, MemberWrap, NewGroupKey};
+use super::entity::{GroupKey, MemberWrap, NewGroupKey, Revocation};
 use super::repository::GroupKeyRepository;
 use crate::access::{self, Actor, recorded};
 use crate::keys::PublicKeys;
@@ -52,22 +52,27 @@ impl GroupKeyService {
         }
     }
 
-    /// The key sets inside the group's reach that hold no wrap of its key yet.
-    async fn open(&self, company: &CompanyId, group: &GroupId) -> Result<Vec<PublicKeys>> {
+    /// The key sets inside the group's reach that hold no wrap of its key yet; all of them for a key being replaced.
+    async fn open(
+        &self,
+        company: &CompanyId,
+        group: &GroupId,
+        rotating: bool,
+    ) -> Result<Vec<PublicKeys>> {
         let reach = self
             .repository
             .reach(&self.place, company, group)
             .await?
             .ok_or(Error::NotFound)?;
         let wrapped: HashSet<String> = match self.repository.get(&self.place, group).await? {
-            Some(_) => self
+            Some(_) if !rotating => self
                 .repository
                 .wraps(&self.place, None, company, group, self.vaults.key(company)?)
                 .await?
                 .into_iter()
                 .map(|(key, _)| key)
                 .collect(),
-            None => HashSet::new(),
+            _ => HashSet::new(),
         };
         reach
             .into_iter()
@@ -82,13 +87,14 @@ impl GroupKeyService {
             .collect()
     }
 
-    /// Key `group` with `key`, wrapped to members inside its reach.
+    /// Key `group` with `key`, wrapped to members inside its reach; a key due for rotation is replaced, its old
+    /// wraps dropped and the group's shares pointed at the new key.
     ///
     /// # Errors
     ///
     /// [`Error::Refused`] per the decision (admins key groups); [`Error::NotFound`] for a group that is not the
-    /// company's; [`Conflict::KeysExist`] when the group is keyed; [`Conflict::OutsideReach`] for a wrap to a key
-    /// set outside the reach, or two to one.
+    /// company's; [`Conflict::KeysExist`] when the group is keyed and not due; [`Conflict::OutsideReach`] for a wrap
+    /// to a key set outside the reach, or two to one.
     pub async fn keep(
         &self,
         actor: &Actor,
@@ -104,22 +110,62 @@ impl GroupKeyService {
             Action::KeyGroup,
         )
         .await?;
-        let open = self.open(company, group).await?;
+        let existing = self.repository.get(&self.place, group).await?;
+        let rotating = existing.as_ref().is_some_and(|entity| entity.rotate);
+        let open = self.open(company, group, rotating).await?;
         // Keyed already is the answer before any wrap is judged; the script's own check holds under a race.
-        if self.repository.get(&self.place, group).await?.is_some() {
+        if existing.is_some() && !rotating {
             return Err(Error::Conflict(Conflict::KeysExist));
         }
         within(&Self::ids(&open), key.wraps())?;
-        self.repository
-            .keep(
-                &self.place,
-                recorded(actor, company, &standing, "group_key.keep", group.as_str()),
-                company,
-                group,
-                &key,
-                self.vaults.key(company)?,
-            )
-            .await
+        let action = if rotating {
+            "group_key.rotate"
+        } else {
+            "group_key.keep"
+        };
+        let guard = recorded(actor, company, &standing, action, group.as_str());
+        let vault_key = self.vaults.key(company)?;
+        if rotating {
+            self.repository
+                .rekey(&self.place, guard, company, group, &key, vault_key)
+                .await
+        } else {
+            self.repository
+                .keep(&self.place, guard, company, group, &key, vault_key)
+                .await
+        }
+    }
+
+    /// The wrap of `group`'s key to `account`'s key set, when there is one, ready to be taken off as they leave.
+    pub(crate) async fn revocation(
+        &self,
+        company: &CompanyId,
+        group: &GroupId,
+        account: &AccountId,
+    ) -> Result<Option<Revocation>> {
+        if self.repository.get(&self.place, group).await?.is_none() {
+            return Ok(None);
+        }
+        let Some(own) = self
+            .repository
+            .own_key(&self.place, company, account)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let wrapped = self
+            .repository
+            .wraps(&self.place, None, company, group, self.vaults.key(company)?)
+            .await?
+            .into_iter()
+            .any(|(key, _)| key == own);
+        if !wrapped {
+            return Ok(None);
+        }
+        Ok(Some(Revocation {
+            recipient: format!("member:{own}"),
+            vault_key: self.vaults.key(company)?,
+        }))
     }
 
     /// Add `wraps` of the group's key, each to a key set inside the reach that holds none yet.
@@ -142,7 +188,7 @@ impl GroupKeyService {
             Action::KeyGroup,
         )
         .await?;
-        let open = self.open(company, group).await?;
+        let open = self.open(company, group, false).await?;
         if self.repository.get(&self.place, group).await?.is_none() {
             return Err(Error::NotFound);
         }
@@ -178,7 +224,7 @@ impl GroupKeyService {
             Action::KeyGroup,
         )
         .await?;
-        self.open(company, group).await
+        self.open(company, group, false).await
     }
 
     /// The group's key, with the caller's own wrap of it when they hold one; the read is on the trail first.
@@ -237,6 +283,7 @@ impl GroupKeyService {
             key_id: entity.key_id()?,
             public: entity.public()?,
             wrap,
+            rotation_due: entity.rotate,
         })
     }
 }

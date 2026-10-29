@@ -12,6 +12,7 @@ pub(crate) struct GroupKeyEntity {
     pub(crate) company: String,
     pub(crate) key_id: String,
     pub(crate) group_public: String,
+    pub(crate) rotate: bool,
 }
 
 impl FromRecord for GroupKeyEntity {
@@ -20,6 +21,7 @@ impl FromRecord for GroupKeyEntity {
             company: row.take("company")?,
             key_id: row.take("key_id")?,
             group_public: row.take("group_public")?,
+            rotate: row.take("rotate")?,
         })
     }
 }
@@ -129,6 +131,14 @@ pub struct GroupKey {
     pub public: Vec<u8>,
     /// The caller's wrap of the private key, when they are in the reach and an admin has wrapped it to them.
     pub wrap: Option<Vec<u8>>,
+    /// Whether a member left the group's reach, so an admin must key it again.
+    pub rotation_due: bool,
+}
+
+/// A member's wrap of a group key, about to be taken off the group's vault record with the key that opens it.
+pub(crate) struct Revocation {
+    pub(crate) recipient: String,
+    pub(crate) vault_key: tessari_vault_infrastructure::tessaridb::VaultKey,
 }
 
 fn fault(what: &str) -> Error {

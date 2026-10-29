@@ -184,7 +184,7 @@ impl RecordService {
                 self.vaults.key(company)?,
             )
             .await?;
-        let (recipient, sealed) = opened.for_caller(&reached, own_key.as_deref())?;
+        let (recipient, sealed) = opened.for_caller(&reached, own_key.as_deref(), entity.rotate)?;
         Ok(OpenedRecord {
             record: entity.into_model()?,
             sealed,

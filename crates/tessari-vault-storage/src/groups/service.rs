@@ -9,15 +9,17 @@ use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_types::{AccountId, CompanyId, GroupId, GroupKind, Name};
 
 use super::entity::{Group, GroupEntity};
-use super::repository::{GroupRepository, NewGroup};
+use super::repository::{GroupRepository, Leaving, NewGroup};
 use crate::access::{self, Actor, recorded};
 use crate::accounts::{Account, AccountService};
+use crate::group_keys::GroupKeyService;
 use crate::{Conflict, Error, Result};
 
 /// Departments and teams.
 pub struct GroupService {
     repository: Arc<dyn GroupRepository>,
     accounts: Arc<AccountService>,
+    group_keys: Arc<GroupKeyService>,
     database: Database,
     place: Place,
 }
@@ -26,12 +28,14 @@ impl GroupService {
     pub(crate) fn new(
         repository: Arc<dyn GroupRepository>,
         accounts: Arc<AccountService>,
+        group_keys: Arc<GroupKeyService>,
         database: Database,
         place: Place,
     ) -> Self {
         Self {
             repository,
             accounts,
+            group_keys,
             database,
             place,
         }
@@ -248,7 +252,8 @@ impl GroupService {
             .await
     }
 
-    /// Take a member out of one of the company's groups.
+    /// Take a member out of one of the company's groups: their wrap of the group's key goes, and the keys they could
+    /// hold retire with every record shared through them, so each is rotated before it is trusted again.
     ///
     /// # Errors
     ///
@@ -268,19 +273,24 @@ impl GroupService {
             Action::RemoveFromGroup,
         )
         .await?;
+        let affected = self
+            .repository
+            .retiring(&self.place, company, group)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let revocation = self.group_keys.revocation(company, group, account).await?;
+        let target = format!("{group}:{account}");
         self.repository
             .remove_member(
                 &self.place,
-                recorded(
-                    actor,
+                recorded(actor, company, &standing, "group.member.remove", &target),
+                Leaving {
                     company,
-                    &standing,
-                    "group.member.remove",
-                    &format!("{group}:{account}"),
-                ),
-                company,
-                group,
-                account,
+                    group,
+                    account,
+                    affected,
+                    revocation,
+                },
             )
             .await
     }

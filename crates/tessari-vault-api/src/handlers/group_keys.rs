@@ -40,6 +40,7 @@ pub(crate) struct GroupKeyItem {
     key_id: String,
     public: String,
     wrap: Option<String>,
+    rotation_due: bool,
 }
 
 #[derive(Serialize)]
@@ -120,6 +121,7 @@ pub(crate) async fn read(
         key_id: key.key_id.to_string(),
         public: base64url::encode(&key.public),
         wrap: key.wrap.as_deref().map(base64url::encode),
+        rotation_due: key.rotation_due,
     }))
 }
 

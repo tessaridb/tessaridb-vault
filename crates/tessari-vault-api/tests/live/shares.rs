@@ -48,7 +48,7 @@ pub(crate) fn record_path(cast: &Cast, record: &str) -> String {
     format!("/api/companies/{}/records/{record}", cast.company_a)
 }
 
-fn to_group(group: &str, key_id: &str, right: &str, seed: u8) -> Value {
+pub(crate) fn to_group(group: &str, key_id: &str, right: &str, seed: u8) -> Value {
     json!({ "group": group, "right": right, "key_id": key_id, "wrap": encoded(&[seed; 82]) })
 }
 

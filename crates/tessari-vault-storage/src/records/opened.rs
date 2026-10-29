@@ -16,10 +16,16 @@ impl OpenedRevision {
         mut self,
         reached: &Reached,
         own_key: Option<&str>,
+        rotate: bool,
     ) -> Result<(String, Sealed)> {
-        let (recipient, wrap) = reached
-            .wrap_for(own_key, &mut self.recipients)
-            .ok_or_else(|| unreadable("a wrap reaching the caller"))?;
+        let Some((recipient, wrap)) = reached.wrap_for(own_key, &mut self.recipients) else {
+            // A group key replaced since the latest revision: the next revision wraps to the new one.
+            return Err(if rotate {
+                Error::Conflict(crate::Conflict::RotationDue)
+            } else {
+                unreadable("a wrap reaching the caller")
+            });
+        };
         let sealed = Sealed::new(self.body, self.signature, self.author_key, wrap)
             .map_err(|_| unreadable("the sealed parts"))?;
         Ok((recipient, sealed))

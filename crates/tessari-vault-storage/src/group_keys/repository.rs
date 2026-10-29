@@ -39,6 +39,17 @@ pub(crate) trait GroupKeyRepository: Send + Sync {
         key: &NewGroupKey,
         vault_key: VaultKey,
     ) -> Result<()>;
+    /// Replace a group key due for rotation with `key` and its wraps: every old wrap goes, and the group's shares
+    /// name the new key; refused unless the key is due.
+    async fn rekey(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        company: &CompanyId,
+        group: &GroupId,
+        key: &NewGroupKey,
+        vault_key: VaultKey,
+    ) -> Result<()>;
     /// Add wraps of the group's key.
     async fn add_wraps(
         &self,

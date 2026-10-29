@@ -5,10 +5,12 @@ use tessari_vault_infrastructure::tessaridb::{Database, Place, Value};
 use tessari_vault_types::{AccountId, CompanyId, GroupId, Name};
 
 use super::entity::{GroupEntity, MemberRow};
-use super::repository::{GroupRepository, NewGroup};
+use super::repository::{GroupRepository, Leaving, NewGroup};
 use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
+use crate::records::RecordVaults;
 use crate::{Result, answers};
+use tessari_vault_constants::RECORD_LIST_MAX;
 
 /// Refuses unless `$group` is a department or team of `$company`, the answer a group of another company gets.
 const GROUP_OF_COMPANY: &str = "\
@@ -183,22 +185,68 @@ impl GroupRepository for TessaridbGroupRepository {
         self.write(place, &script, parameters).await
     }
 
+    async fn retiring(
+        &self,
+        place: &Place,
+        company: &CompanyId,
+        group: &GroupId,
+    ) -> Result<Option<Vec<String>>> {
+        let Some(entity) = self.get(place, company, group).await? else {
+            return Ok(None);
+        };
+        let mut affected = vec![entity.id.clone()];
+        if let Ok(parent) = GroupId::parse(&entity.parent)
+            && let Some(department) = self.get(place, company, &parent).await?
+            && department.kind == "department"
+        {
+            affected.push(department.id);
+        }
+        Ok(Some(affected))
+    }
+
     async fn remove_member(
         &self,
         place: &Place,
         mut parameters: Vec<(String, Value)>,
-        company: &CompanyId,
-        group: &GroupId,
-        account: &AccountId,
+        leaving: Leaving<'_>,
     ) -> Result<()> {
+        let vault = RecordVaults::name(leaving.company);
         parameters.extend([
-            bind("company", company.as_str()),
-            bind("group", group.as_str()),
-            bind("account", account.as_str()),
+            bind("company", leaving.company.as_str()),
+            bind("group", leaving.group.as_str()),
+            bind("account", leaving.account.as_str()),
+            bind("gvid", format!("group.{}", leaving.group.as_str()).as_str()),
+            bind(
+                "affected",
+                Value::Array(leaving.affected.into_iter().map(Value::from).collect()),
+            ),
+            bind("limit", RECORD_LIST_MAX),
         ]);
+        let revoke = match &leaving.revocation {
+            Some(revocation) => {
+                parameters.push(bind("revoked", revocation.recipient.as_str()));
+                format!(" REMOVE RECIPIENT $revoked FROM {vault}:$gvid;")
+            }
+            None => String::new(),
+        };
+        // The keys the leaver could hold retire, and so does every record shared through them; the version moves
+        // so a read decided before this commit refuses.
         let script = format!(
-            "BEGIN; {GUARD} {GROUP_OF_COMPANY} DELETE accounts:$account->in_group->groups:$group; {RECORD} COMMIT;"
+            "BEGIN; {GUARD} {GROUP_OF_COMPANY} DELETE accounts:$account->in_group->groups:$group; \
+             UPDATE group_keys SET rotate = true WHERE company = $company AND group_id IN $affected; \
+             UPDATE records SET rotate = true, share_version = share_version + 1 WHERE company = $company \
+             AND record_id IN (SELECT record FROM shares WHERE company = $company AND target IN $affected \
+             LIMIT $limit);{revoke} {RECORD} COMMIT;"
         );
-        self.write(place, &script, parameters).await
+        match leaving.revocation {
+            Some(revocation) => {
+                self.database
+                    .run_presenting(place, &script, parameters, &vault, revocation.vault_key)
+                    .await
+                    .map_err(|error| thrown(error.into()))?;
+                Ok(())
+            }
+            None => self.write(place, &script, parameters).await,
+        }
     }
 }

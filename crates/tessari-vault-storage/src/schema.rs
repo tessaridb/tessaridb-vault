@@ -72,7 +72,7 @@ DEFINE TABLE IF NOT EXISTS statements (company string, seq int, bytes string, si
 created int); \
 DEFINE INDEX IF NOT EXISTS by_company ON statements FIELDS company; \
 DEFINE TABLE IF NOT EXISTS group_keys (company string, group_id string, key_id string, group_public string, \
-created datetime); \
+rotate bool, created datetime); \
 DEFINE INDEX IF NOT EXISTS by_key ON group_keys FIELDS company, key_id UNIQUE; \
 DEFINE TABLE IF NOT EXISTS shares (company string, record string, target_kind string, target string, access string, \
 recipient string, by_account string, created int); \

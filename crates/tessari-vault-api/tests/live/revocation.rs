@@ -141,3 +141,167 @@ async fn only_an_editor_removes_a_share_and_only_one_that_exists() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "a share was removed twice");
 }
+
+async fn group_key(world: &World, cast: &Cast, group: &str, token: &str) -> Value {
+    let (status, key) = world
+        .call(
+            Method::GET,
+            &format!("/api/companies/{}/groups/{group}/key", cast.company_a),
+            Some(token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{key}");
+    key
+}
+
+async fn rekey(world: &World, cast: &Cast, group: &str, key_id: &str) -> (StatusCode, Value) {
+    world
+        .call(
+            Method::PUT,
+            &format!("/api/companies/{}/groups/{group}/key", cast.company_a),
+            Some(&cast.owner_a),
+            Some(serde_json::json!({ "key_id": key_id, "public": crate::records::encoded(&[0x42; 32]), "wraps": [] })),
+        )
+        .await
+}
+
+async fn out_of_team(world: &World, cast: &Cast, account: &str) {
+    let (status, body) = world
+        .call(
+            Method::DELETE,
+            &format!(
+                "/api/companies/{}/groups/{}/members/{account}",
+                cast.company_a, cast.team_a
+            ),
+            Some(&cast.owner_a),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn leaving_a_team_stops_its_member_at_once_and_its_key_and_records_rotate() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    crate::shares::into_team(&world, &cast, &cast.admin_a_id).await;
+    let old_key = "d5".repeat(16);
+    crate::shares::keyed(&world, &cast, &cast.team_a, &old_key, &[&cast.admin_a_key]).await;
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &shares(&cast, &cast.record_a),
+            Some(&cast.member_a),
+            Some(crate::shares::to_group(&cast.team_a, &old_key, "read", 3)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let path = record_path(&cast, &cast.record_a);
+    assert_eq!(
+        group_key(&world, &cast, &cast.team_a, &cast.admin_a).await["rotation_due"],
+        false
+    );
+
+    out_of_team(&world, &cast, &cast.admin_a_id).await;
+    let removed = Instant::now();
+    let (status, _) = world
+        .call(Method::GET, &path, Some(&cast.admin_a), None)
+        .await;
+    let refused_after = removed.elapsed();
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "a member who left the team still read"
+    );
+    println!("revocation: left the team → first refused read in {refused_after:?}");
+    let key = group_key(&world, &cast, &cast.team_a, &cast.admin_a).await;
+    assert_eq!(
+        key["wrap"],
+        Value::Null,
+        "the team key is still wrapped to who left"
+    );
+    assert_eq!(key["rotation_due"], true);
+    assert_eq!(rotation_due(&world, &cast).await, true);
+
+    let new_key = "d6".repeat(16);
+    let (status, body) = rekey(&world, &cast, &cast.team_a, &new_key).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let key = group_key(&world, &cast, &cast.team_a, &cast.owner_a).await;
+    assert_eq!(key["key_id"], new_key.as_str());
+    assert_eq!(key["rotation_due"], false);
+    let (status, twice) = rekey(&world, &cast, &cast.team_a, &"d7".repeat(16)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{twice}");
+    assert_eq!(twice["error_code"], "keys_exist");
+
+    // The share now names the new team key, so the rotation revision must wrap to it.
+    let mut rotated = revision(1, &cast.member_a_key, Vec::new());
+    rotated["key_id"] = serde_json::json!("e2".repeat(16));
+    let (status, stale) = world
+        .call(
+            Method::PUT,
+            &path,
+            Some(&cast.member_a),
+            Some(rotated.clone()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{stale}");
+    assert_eq!(stale["error_code"], "stale_shares");
+    rotated["wraps"] = serde_json::json!([{ "recipient": format!("group:{new_key}"), "wrap": crate::records::encoded(&[4; 82]) }]);
+    let (status, body) = world
+        .call(Method::PUT, &path, Some(&cast.member_a), Some(rotated))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(rotation_due(&world, &cast).await, false);
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn leaving_a_team_also_rotates_the_key_of_its_department() {
+    let world = World::new().await;
+    let cast = Cast::new(&world).await;
+    crate::shares::into_team(&world, &cast, &cast.admin_a_id).await;
+    let department_key = "d8".repeat(16);
+    crate::shares::keyed(
+        &world,
+        &cast,
+        &cast.department_a,
+        &department_key,
+        &[&cast.admin_a_key],
+    )
+    .await;
+    let (status, body) = world
+        .call(
+            Method::POST,
+            &shares(&cast, &cast.record_a),
+            Some(&cast.member_a),
+            Some(crate::shares::to_group(
+                &cast.department_a,
+                &department_key,
+                "read",
+                5,
+            )),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    out_of_team(&world, &cast, &cast.admin_a_id).await;
+    let (status, _) = world
+        .call(
+            Method::GET,
+            &record_path(&cast, &cast.record_a),
+            Some(&cast.admin_a),
+            None,
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "a member who left the department's team still read"
+    );
+    assert_eq!(
+        group_key(&world, &cast, &cast.department_a, &cast.owner_a).await["rotation_due"],
+        true
+    );
+    assert_eq!(rotation_due(&world, &cast).await, true);
+}
