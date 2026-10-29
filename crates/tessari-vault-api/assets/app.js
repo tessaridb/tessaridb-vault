@@ -665,6 +665,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     plus: ["M12 5v14", "M5 12h14"],
     search: [ring(11, 11, 6.5), "M20 20l-4.2-4.2"]
   };
+  var isIconName = (name) => name !== void 0 && Object.hasOwn(SHAPES, name);
   function icon(name) {
     const svg = document.createElementNS(SVG, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
@@ -3186,6 +3187,20 @@ ${target.detail}`.toLowerCase().includes(wanted));
     return company.filter((member) => member.active && !inside.has(member.account)).sort((one, other) => one.name.localeCompare(other.name));
   }
 
+  // src/groups/group-words.ts
+  function keyButton(group, rotate) {
+    return rotate ? { text: "Make a new key", label: `Make a new key for ${group}` } : { text: "Key this group", label: `Key this group, ${group}` };
+  }
+  function giveButton(group, waiting) {
+    return { text: `Give access (${waiting} waiting)`, label: `Give access (${waiting} waiting), ${group}` };
+  }
+  function membersButton(group) {
+    return { text: "Members", label: `Members of ${group}` };
+  }
+  function takeOutButton(person, group) {
+    return { text: "Take out", label: `Take out ${person} from ${group}` };
+  }
+
   // src/groups/groups-model.ts
   var KEY_BYTES5 = 32;
   var isRecord8 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -3241,6 +3256,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
 
   // src/groups/group-members-view.ts
+  var labelled = (words) => el("button", { type: "button", "aria-label": words.label }, words.text);
   function membersControl(held2, row2, changed) {
     const path = `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}/members`;
     const body = el("div", {});
@@ -3269,9 +3285,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
         return;
       }
       const people = inGroup.value.map((member) => {
-        const remove2 = el("button", { type: "button", "aria-label": `Take ${member.name} out of ${row2.name}` }, "Take out");
+        const remove2 = labelled(takeOutButton(member.name, row2.name));
         remove2.addEventListener("click", () => act("DELETE", `${path}/${encodeURIComponent(member.account)}`));
-        return el("li", { class: "share member" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove2);
+        return el("li", { class: "share" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove2);
       });
       const candidates = addable(company.value, inGroup.value);
       let chosen = null;
@@ -3310,7 +3326,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     gone.addEventListener("click", () => send("DELETE", `${companyPath(held2)}/groups/${encodeURIComponent(row2.id)}`, void 0, () => dialog.close()));
     const settings = el("section", { class: "record-section" }, el("div", { class: "field" }, el("label", { for: name.id }, "Name"), name), rename, remove, sure);
     dialog.insertBefore(settings, said);
-    const open3 = el("button", { type: "button", "aria-label": `People in ${row2.name}` }, "Members");
+    const open3 = labelled(membersButton(row2.name));
     open3.addEventListener("click", () => {
       touched = false;
       fill(said, null);
@@ -3372,7 +3388,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
   function groupItem(held2, row2, vouched, waiting, rotate, chain, again) {
     const said = el("div", { "aria-live": "polite" });
     const keyed = vouched.groupKeyOf(row2.id) !== void 0;
-    const give = waiting === null || waiting === 0 ? null : el("button", { type: "button", "aria-label": `Give ${row2.name}'s key to the ${waiting} waiting` }, `Give access (${waiting} waiting)`);
+    const give = waiting === null || waiting === 0 ? null : labelled(giveButton(row2.name, waiting));
     give?.addEventListener("click", () => {
       give.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Giving the group's key to the members waiting."));
@@ -3385,7 +3401,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         fill(said, refusal(words));
       });
     });
-    const key = keyed && !rotate ? null : el("button", { type: "button", "aria-label": `${rotate ? "Make a new key for" : "Key"} ${row2.name}` }, rotate ? "Make a new key" : "Key this group");
+    const key = keyed && !rotate ? null : labelled(keyButton(row2.name, rotate));
     key?.addEventListener("click", () => {
       key.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Making the group's key."));
@@ -4230,9 +4246,6 @@ ${target.detail}`.toLowerCase().includes(wanted));
   }
 
   // src/shell-icons.ts
-  function isIconName(name) {
-    return name === "records" || name === "members" || name === "sun" || name === "moon" || name === "lock" || name === "sign-out" || name === "switch";
-  }
   function setIcon(control2, name) {
     control2.querySelector(":scope > svg.icon")?.remove();
     control2.prepend(icon(name));

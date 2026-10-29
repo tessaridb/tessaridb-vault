@@ -39,6 +39,9 @@ const SHAPES = {
 
 export type IconName = keyof typeof SHAPES;
 
+/** Whether the vault draws an icon called `name`. */
+export const isIconName = (name: string | undefined): name is IconName => name !== undefined && Object.hasOwn(SHAPES, name);
+
 /** The icon `name`, decorative: hidden from assistive technology. */
 export function icon(name: IconName): SVGSVGElement {
   const svg = document.createElementNS(SVG, "svg");

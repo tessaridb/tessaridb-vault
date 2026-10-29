@@ -114,8 +114,26 @@ table.records .message {
 }
 
 /* A member row: who, their role, their key's state, and Vouch where it is offered. */
+.shares,
 .share.member {
-  grid-template-columns: minmax(0, 1fr) minmax(5rem, 8rem) auto minmax(4.5rem, auto);
+  --member-columns: minmax(0, 1fr) minmax(5rem, 8rem) auto minmax(4.5rem, auto);
+}
+
+.share.member {
+  grid-template-columns: var(--member-columns);
+}
+
+/* The rows share the list's columns, so roles and key states line up from one person to the next. */
+@media (min-width: 48.01rem) {
+  .shares:has(> .share.member) {
+    display: grid;
+    grid-template-columns: var(--member-columns);
+  }
+
+  .shares > .share.member {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
 }
 
 /* A key's state as a badge: its words carry the meaning, the dot's colour only repeats it. */
@@ -178,4 +196,18 @@ table.records .message {
   flex-wrap: wrap;
   gap: var(--s-2);
   justify-content: flex-end;
+}
+
+/* On a phone the buttons go under the name and its key state, which would otherwise have no width left. */
+@media (max-width: 48rem) {
+  .share.group {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: var(--s-2);
+  }
+
+  .share.group .row-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    margin-inline-start: 0;
+  }
 }

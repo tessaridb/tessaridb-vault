@@ -10,7 +10,11 @@ import { readMemberList } from "../records/share-targets.ts";
 import { refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { addable, readGroupMembers } from "./group-members.ts";
+import { membersButton, takeOutButton, type ButtonWords } from "./group-words.ts";
 import { createFailure, type TreeRow } from "./groups-model.ts";
+
+/** A button showing `words.text`, named `words.label`. */
+export const labelled = (words: ButtonWords): HTMLButtonElement => el("button", { type: "button", "aria-label": words.label }, words.text);
 
 /** The "Members" button of group `row` and the dialog it opens; `changed` runs once the dialog closes after a change. */
 export function membersControl(held: Unlocked, row: TreeRow, changed: () => void): readonly HTMLElement[] {
@@ -41,9 +45,9 @@ export function membersControl(held: Unlocked, row: TreeRow, changed: () => void
       return;
     }
     const people = inGroup.value.map((member) => {
-      const remove = el("button", { type: "button", "aria-label": `Take ${member.name} out of ${row.name}` }, "Take out");
+      const remove = labelled(takeOutButton(member.name, row.name));
       remove.addEventListener("click", () => act("DELETE", `${path}/${encodeURIComponent(member.account)}`));
-      return el("li", { class: "share member" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove);
+      return el("li", { class: "share" }, el("div", {}, el("span", { class: "share-name" }, member.name), el("span", { class: "detail" }, member.email)), el("span", {}), remove);
     });
     const candidates = addable(company.value, inGroup.value);
     let chosen: string | null = null;
@@ -83,7 +87,7 @@ export function membersControl(held: Unlocked, row: TreeRow, changed: () => void
   gone.addEventListener("click", () => send("DELETE", `${companyPath(held)}/groups/${encodeURIComponent(row.id)}`, undefined, () => dialog.close()));
   const settings = el("section", { class: "record-section" }, el("div", { class: "field" }, el("label", { for: name.id }, "Name"), name), rename, remove, sure);
   dialog.insertBefore(settings, said);
-  const open = el("button", { type: "button", "aria-label": `People in ${row.name}` }, "Members");
+  const open = labelled(membersButton(row.name));
   open.addEventListener("click", () => {
     touched = false;
     fill(said, null);

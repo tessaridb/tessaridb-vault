@@ -15,7 +15,8 @@ import { companyPath } from "../records/load.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { groupKeyBody, newGroupKey, pendingWraps, wrapsBody } from "./group-key.ts";
-import { membersControl } from "./group-members-view.ts";
+import { labelled, membersControl } from "./group-members-view.ts";
+import { giveButton, keyButton } from "./group-words.ts";
 import { createFailure, groupTree, readGroupRows, readPending, readRotationDue, type TreeRow } from "./groups-model.ts";
 
 const KIND_WORDS = { company: "Company", department: "Department", team: "Team" } as const;
@@ -74,7 +75,7 @@ export async function drawGroups(main: HTMLElement, held: Unlocked, notice: stri
 function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: number | null, rotate: boolean, chain: readonly Statement[], again: (words?: string | null) => void): HTMLElement {
   const said = el("div", { "aria-live": "polite" });
   const keyed = vouched.groupKeyOf(row.id) !== undefined;
-  const give = waiting === null || waiting === 0 ? null : el("button", { type: "button", "aria-label": `Give ${row.name}'s key to the ${waiting} waiting` }, `Give access (${waiting} waiting)`);
+  const give = waiting === null || waiting === 0 ? null : labelled(giveButton(row.name, waiting));
   give?.addEventListener("click", () => {
     give.disabled = true;
     fill(said, el("p", { class: "muted", role: "status" }, "Giving the group's key to the members waiting."));
@@ -87,7 +88,7 @@ function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: numb
       fill(said, refusal(words));
     });
   });
-  const key = keyed && !rotate ? null : el("button", { type: "button", "aria-label": `${rotate ? "Make a new key for" : "Key"} ${row.name}` }, rotate ? "Make a new key" : "Key this group");
+  const key = keyed && !rotate ? null : labelled(keyButton(row.name, rotate));
   key?.addEventListener("click", () => {
     key.disabled = true;
     fill(said, el("p", { class: "muted", role: "status" }, "Making the group's key."));
