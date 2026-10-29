@@ -3,6 +3,7 @@
 
 import { call, type Failure } from "../api.ts";
 import { el, fill } from "../dom.ts";
+import { icon } from "../icons.ts";
 import { openedPagePath, readOpenedPage } from "../records-model.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
@@ -26,24 +27,21 @@ export const CHAIN_REFUSED =
 
 const sameScope = (a: Scope, b: Scope): boolean => a.kind === b.kind && (a.kind !== "group" || (b.kind === "group" && a.group === b.group));
 
+/** One record as a table row: its title (the link), its type and when it last changed. */
 function row(item: Listed, href: (record: string) => string): HTMLElement {
-  const changed = el("span", { class: "muted" }, `Changed ${when.format(new Date(item.row.updated * 1000))}`);
+  const type = el("td", { class: "muted" }, typeName(item.row.recordType));
+  const changed = el("td", { class: "muted when" }, when.format(new Date(item.row.updated * 1000)));
   if (!("document" in item)) {
     return el(
-      "li",
-      { class: "record unreadable" },
-      el("span", { class: "record-title" }, "Record not shown"),
-      el("span", { class: "muted" }, typeName(item.row.recordType)),
-      el("p", { class: "message bad" }, unreadableWords(item.problem)),
+      "tr",
+      { class: "unreadable" },
+      el("td", {}, el("span", { class: "record-title" }, "Record not shown"), el("p", { class: "message bad" }, unreadableWords(item.problem))),
+      type,
+      changed,
     );
   }
-  return el(
-    "li",
-    { class: "record" },
-    el("a", { class: "record-title", href: href(item.row.id) }, item.document.title === "" ? "Untitled" : item.document.title),
-    el("span", { class: "muted" }, typeName(item.row.recordType)),
-    changed,
-  );
+  const title = item.document.title === "" ? "Untitled" : item.document.title;
+  return el("tr", {}, el("td", {}, el("a", { class: "record-title", href: href(item.row.id) }, title)), type, changed);
 }
 
 /** Draws the list into `main`; `href` names the view of one record. */
@@ -84,10 +82,17 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
   stops.push(() => document.removeEventListener("keydown", toFilter));
   const scopes = el("div", { class: "chips", role: "group", "aria-label": "Show" });
   const types = el("div", { class: "chips", role: "group", "aria-label": "Type" });
-  const list = el("ul", { class: "records", "aria-label": "Records" });
+  const rows = el("tbody");
+  const list = el(
+    "table",
+    { class: "records" },
+    el("caption", { class: "sr-only" }, "Records"),
+    el("thead", {}, el("tr", {}, el("th", { scope: "col" }, "Title"), el("th", { scope: "col" }, "Type"), el("th", { scope: "col" }, "Changed"))),
+    rows,
+  );
   const more = el("button", { type: "button", class: "quiet" }, "Load more");
   const tail = el("div", {});
-  const filter = el("div", { class: "field" }, el("label", { for: "record-filter" }, "Find a record by title"), search);
+  const filter = el("div", { class: "field search" }, el("label", { for: "record-filter" }, "Find a record by title"), el("span", { class: "search-box" }, icon("search"), search));
   const render = (): void => {
     filter.hidden = items.length === 0;
     types.hidden = items.length === 0;
@@ -121,7 +126,7 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
       }),
     );
     const kept = items.filter((item) => inScope(item, scope, held.account) && matches(item, search.value, type));
-    fill(list, ...kept.map((item) => row(item, href)));
+    fill(rows, ...kept.map((item) => row(item, href)));
     list.hidden = kept.length === 0;
     if (items.length === 0) {
       fill(said, el("p", {}, "No records yet. Records you make, and records others share with you, appear here."));
@@ -162,7 +167,7 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
   }
   search.addEventListener("input", render);
   more.addEventListener("click", () => void load().then((loaded) => loaded && render()));
-  fill(main, head, filter, scopes, types, said, list, tail);
+  fill(main, head, el("div", { class: "toolbar" }, filter, el("div", { class: "filters" }, scopes, types)), said, list, tail);
   render();
   title.focus();
 }

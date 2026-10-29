@@ -31,6 +31,7 @@ const SHAPES = {
   share: [ring(6, 12, 2.5), ring(18, 6, 2.5), ring(18, 18, 2.5), "M8.2 10.8l7.6-3.6", "M8.2 13.2l7.6 3.6"],
   trash: ["M4 7h16", "M9.5 7V4.5h5V7", "M6.5 7l1 13h9l1-13", "M10 11v5.5", "M14 11v5.5"],
   close: ["M6 6l12 12", "M18 6L6 18"],
+  search: [ring(11, 11, 6.5), "M20 20l-4.2-4.2"],
 } as const;
 
 export type IconName = keyof typeof SHAPES;

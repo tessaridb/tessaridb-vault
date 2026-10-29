@@ -106,10 +106,11 @@ export async function drawMembers(main: HTMLElement, held: Unlocked, notice: str
     });
     return el(
       "li",
-      { class: "share" },
-      el("div", {}, el("span", { class: "share-name" }, row.account === held.account ? `${row.label} (you)` : row.label), el("span", { class: "detail" }, `${row.detail} \u00B7 ${ROLE_WORDS[row.role]}`)),
-      el("span", { class: "muted" }, keyStateWords(row.state)),
-      vouch,
+      { class: "share member" },
+      el("div", {}, el("span", { class: "share-name" }, row.account === held.account ? `${row.label} (you)` : row.label), el("span", { class: "detail" }, row.detail)),
+      el("span", { class: "muted" }, ROLE_WORDS[row.role]),
+      el("span", { class: `state ${row.state}` }, keyStateWords(row.state)),
+      vouch ?? el("span", {}),
     );
   });
   const own = me?.fingerprint ?? null;

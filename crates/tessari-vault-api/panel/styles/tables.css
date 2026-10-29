@@ -1,0 +1,161 @@
+/* ─────────────────────────────────────────────────────────────── tables ── */
+
+/* Above a list: the search box and the filter chips on one band, wrapping on a narrow screen. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-3) var(--s-5);
+  margin-block-end: var(--s-5);
+}
+
+.toolbar .field.search {
+  flex: 1 1 18rem;
+  max-inline-size: 28rem;
+  margin: 0;
+}
+
+.search-box {
+  position: relative;
+  display: block;
+}
+
+.search-box > .icon {
+  position: absolute;
+  inset-inline-start: var(--s-3);
+  inset-block-start: 50%;
+  translate: 0 -50%;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-box > input {
+  inline-size: 100%;
+  padding-inline-start: calc(var(--s-3) + var(--icon) + var(--s-2));
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+}
+
+.filters .chips {
+  margin: 0;
+}
+
+/* The records list as a table: a header row naming the columns, one row per record, the title the link. */
+table.records {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+
+table.records th {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--t-caption);
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: start;
+  color: var(--text-muted);
+  border-block-end: 1px solid var(--border);
+}
+
+table.records td {
+  block-size: var(--row-height);
+  padding: var(--s-2) var(--s-3);
+  vertical-align: middle;
+  border-block-end: 1px solid var(--border);
+}
+
+table.records th:first-child,
+table.records td:first-child {
+  padding-inline-start: 0;
+}
+
+table.records td:first-child {
+  inline-size: 60%;
+  max-inline-size: 0;
+}
+
+table.records .when {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+table.records .record-title {
+  display: block;
+  color: var(--text);
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  table.records tbody tr:hover {
+    background: var(--surface-sunken);
+  }
+
+  table.records a.record-title:hover {
+    color: var(--accent-text);
+    text-decoration: underline;
+  }
+}
+
+table.records .message {
+  margin: var(--s-1) 0 0;
+}
+
+@media (max-width: 48rem) {
+  table.records td:nth-child(2),
+  table.records th:nth-child(2) {
+    display: none;
+  }
+}
+
+/* A member row: who, their role, their key's state, and Vouch where it is offered. */
+.share.member {
+  grid-template-columns: minmax(0, 1fr) minmax(5rem, 8rem) auto minmax(4.5rem, auto);
+}
+
+/* A key's state as a badge: its words carry the meaning, the dot's colour only repeats it. */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  justify-self: start;
+  padding: var(--s-1) var(--s-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  font-size: var(--t-data);
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.state::before {
+  content: "";
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.state.vouched::before {
+  background: var(--ok);
+}
+
+.state.waiting::before {
+  background: var(--warn);
+}
+
+@media (max-width: 48rem) {
+  .share.member {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-2);
+    padding-block: var(--s-3);
+  }
+
+  .share.member > :nth-child(2) {
+    display: none;
+  }
+}
