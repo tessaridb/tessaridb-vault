@@ -57,8 +57,7 @@ services:
       - vault-keys:/keys
 
   vault:
-    image: tessaridb/vault:dev
-    build: .
+    image: tessaridb/vault:0.0.1
     restart: unless-stopped
     network_mode: "service:tessaridb"
     depends_on:
