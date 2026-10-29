@@ -4,12 +4,17 @@
 //! store throttles the whole node after three wrong keys in a row; so each company is first marked `key_moving`, which
 //! turns its requests into a retryable conflict that presents no key, then re-wrapped, then given its new epoch and
 //! unmarked. A run cut short between the two is finished by the next one, which finds the vault already opening under
-//! the current epoch's key.
+//! the current epoch's key. Every TOTP seed is then sealed again under the current epoch.
+
+mod counts;
+mod seeds;
+
+pub use counts::Remaining;
 
 use std::sync::Arc;
 
 use tessari_vault_infrastructure::Error as StoreError;
-use tessari_vault_infrastructure::custody::VaultKeys;
+use tessari_vault_infrastructure::custody::{TotpSeal, VaultKeys};
 use tessari_vault_infrastructure::tessaridb::{
     Database, FromRecord, MappingFault, Place, RefusalClass, Row,
 };
@@ -29,6 +34,10 @@ pub struct Rotated {
     pub repaired: usize,
     /// Companies whose vault opened under neither epoch: left marked, so their requests are refused without a key.
     pub stranded: Vec<CompanyId>,
+    /// TOTP seeds sealed again under the current epoch.
+    pub seeds_resealed: usize,
+    /// TOTP seeds that opened under no epoch the ring holds: their members re-enrol.
+    pub seeds_unopened: usize,
 }
 
 /// One company row as the rotation reads it.
@@ -58,18 +67,26 @@ pub struct RotationService {
     database: Database,
     place: Place,
     keys: Arc<VaultKeys>,
+    seal: Arc<TotpSeal>,
 }
 
 impl RotationService {
-    pub(crate) const fn new(database: Database, place: Place, keys: Arc<VaultKeys>) -> Self {
+    pub(crate) const fn new(
+        database: Database,
+        place: Place,
+        keys: Arc<VaultKeys>,
+        seal: Arc<TotpSeal>,
+    ) -> Self {
         Self {
             database,
             place,
             keys,
+            seal,
         }
     }
 
-    /// Move every company vault not yet on the current epoch, or marked moving, to the current epoch.
+    /// Move every company vault not yet on the current epoch, or marked moving, to the current epoch, then seal
+    /// every TOTP seed again under it.
     ///
     /// # Errors
     ///
@@ -90,6 +107,8 @@ impl RotationService {
             moved: 0,
             repaired: 0,
             stranded: Vec::new(),
+            seeds_resealed: 0,
+            seeds_unopened: 0,
         };
         for keyed in records::<Keyed>(answers, "company")? {
             let company = CompanyId::parse(&keyed.id).map_err(|_| unreadable("group_id"))?;
@@ -117,6 +136,9 @@ impl RotationService {
             }
             self.settle(&company, recorded, current).await?;
         }
+        let swept = self.reseal_seeds().await?;
+        rotated.seeds_resealed = swept.resealed;
+        rotated.seeds_unopened = swept.unopened;
         Ok(rotated)
     }
 

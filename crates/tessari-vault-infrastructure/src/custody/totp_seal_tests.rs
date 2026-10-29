@@ -131,3 +131,16 @@ fn a_seed_names_the_epoch_it_was_sealed_under_and_opens_under_that_epoch_alone()
         "the epoch is bound into the associated data, not only used to pick the key"
     );
 }
+
+#[test]
+fn a_sealed_seed_says_which_epoch_sealed_it_and_the_seal_which_epoch_it_seals_under() {
+    let later = ring_seal(&[(1, 1), (2, 2)]);
+    assert_eq!(later.current_epoch(), 2);
+    let older = seal(1).seal("acct-a", "totp-1", SEED).expect("sealed");
+    let fresh = later.seal("acct-a", "totp-1", SEED).expect("sealed");
+    assert_eq!(TotpSeal::epoch_of(&older), Some(1));
+    assert_eq!(TotpSeal::epoch_of(&fresh), Some(2));
+    for unreadable in [Vec::new(), vec![2, 0, 0], vec![1, 0, 0, 0, 2]] {
+        assert_eq!(TotpSeal::epoch_of(&unreadable), None, "{unreadable:?}");
+    }
+}

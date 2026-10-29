@@ -3,9 +3,13 @@
 //! key.
 
 use axum::http::{Method, StatusCode};
+use tessari_vault_infrastructure::custody::TotpSeal;
 use tessari_vault_infrastructure::tessaridb::{Answer, Value};
 
-use crate::world::{Cast, World, older_epoch_key};
+use tessari_vault_core::totp;
+
+use crate::enrolment::{base32, begin, complete, issue};
+use crate::world::{Cast, World, add_member, older_epoch_key};
 
 /// The ring after an operator added epoch 2 to a server that held epoch 1 alone.
 fn added_epoch() -> String {
@@ -36,6 +40,59 @@ async fn row(world: &World, company: &str) -> (Option<Value>, Option<Value>) {
     }
 }
 
+/// Enrol a new member of company A with a password and an authenticator, so a sealed seed exists.
+async fn enrol(world: &World, cast: &Cast, email: &str) {
+    let account = add_member(world, &cast.company_a, &cast.admin_a, email, "member").await;
+    let token = issue(world, &cast.admin_a, &cast.company_a, &account)
+        .await
+        .1["token"]
+        .as_str()
+        .expect("a token")
+        .to_owned();
+    let secret = begin(world, &token).await.1["secret"]
+        .as_str()
+        .expect("a secret")
+        .to_owned();
+    let step = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after 1970")
+        .as_secs()
+        / 30;
+    let code = format!("{:06}", totp::code_at(&base32(&secret), step));
+    let (status, body) = complete(world, &token, "a passphrase of my own", &code).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+/// The epoch each enrolled credential's sealed seed names.
+async fn seed_epochs(world: &World) -> Vec<Option<u32>> {
+    let answers = world
+        .database
+        .run_at(&world.place, "SELECT totp FROM credentials;", Vec::new())
+        .await
+        .expect("the credentials read back");
+    let Some(Answer::Records { records, .. }) = answers.last() else {
+        panic!("not records: {answers:?}");
+    };
+    records
+        .iter()
+        .map(|(_, record)| match record {
+            Value::Object(fields) => match fields.get("totp") {
+                Some(Value::String(text)) => {
+                    let bytes: Vec<u8> = (0..text.len())
+                        .step_by(2)
+                        .filter_map(|at| {
+                            u8::from_str_radix(text.get(at..at.saturating_add(2))?, 16).ok()
+                        })
+                        .collect();
+                    TotpSeal::epoch_of(&bytes)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 const PROBE: &str = "REVEAL body FROM {vault}:'rotation-probe';";
 
 #[tokio::test]
@@ -58,12 +115,39 @@ async fn a_rotation_moves_every_company_vault_to_the_current_epoch_and_keeps_its
         )
         .await
         .expect("a body sealed under epoch 1");
+    enrol(&world, &cast, "seeded@alpha.test").await;
+    let enrolled = seed_epochs(&world).await;
+    assert!(!enrolled.is_empty() && enrolled.iter().all(|epoch| *epoch == Some(1)));
     let (later, keys) = world.storage_on(&added_epoch());
+    let before = later.rotation.remaining().await.expect("the counts");
+    assert_eq!(
+        (before.companies, before.verifiers, before.seeds),
+        (vec![(1, 2)], vec![(1, 1)], vec![(1, 1)]),
+        "everything on epoch 1"
+    );
     let rotated = later.rotation.rotate().await.expect("the rotation runs");
     assert_eq!(
         (rotated.moved, rotated.repaired, rotated.stranded.len()),
         (2, 0, 0),
         "both companies moved"
+    );
+    let after = later.rotation.remaining().await.expect("the counts");
+    assert_eq!(
+        (after.companies, after.verifiers, after.seeds),
+        (vec![(2, 2)], vec![(1, 1)], vec![(2, 1)]),
+        "the verifier moves only when its member signs in"
+    );
+    assert_eq!(
+        (rotated.seeds_resealed, rotated.seeds_unopened),
+        (enrolled.len(), 0),
+        "every seed sealed again"
+    );
+    assert!(
+        seed_epochs(&world)
+            .await
+            .iter()
+            .all(|epoch| *epoch == Some(2)),
+        "every seed now names epoch 2"
     );
     for company in [&cast.company_a, &cast.company_b] {
         assert_eq!(
@@ -108,8 +192,13 @@ async fn a_rotation_moves_every_company_vault_to_the_current_epoch_and_keeps_its
     );
     let again = later.rotation.rotate().await.expect("a second run");
     assert_eq!(
-        (again.moved, again.repaired, again.stranded.len()),
-        (0, 0, 0),
+        (
+            again.moved,
+            again.repaired,
+            again.stranded.len(),
+            again.seeds_resealed
+        ),
+        (0, 0, 0, 0),
         "nothing left to move"
     );
 }

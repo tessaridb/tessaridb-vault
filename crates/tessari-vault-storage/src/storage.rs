@@ -97,6 +97,7 @@ impl Storage {
             database.clone(),
             place.clone(),
             Arc::clone(&vault_keys),
+            Arc::clone(&seal),
         ));
         let vaults = Arc::new(RecordVaults::new(database.clone(), vault_keys));
         let accounts = Arc::new(AccountService::new(

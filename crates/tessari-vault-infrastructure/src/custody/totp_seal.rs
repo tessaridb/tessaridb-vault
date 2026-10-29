@@ -75,6 +75,23 @@ impl TotpSeal {
         })
     }
 
+    /// The epoch a seed sealed now is sealed under.
+    #[must_use]
+    pub const fn current_epoch(&self) -> u32 {
+        self.current
+    }
+
+    /// The epoch `sealed` names, when it is of this layout; opening it is what proves anything more.
+    #[must_use]
+    pub fn epoch_of(sealed: &[u8]) -> Option<u32> {
+        let (format, rest) = sealed.split_first()?;
+        if *format != FORMAT {
+            return None;
+        }
+        rest.split_first_chunk::<EPOCH_BYTES>()
+            .map(|(epoch, _)| u32::from_be_bytes(*epoch))
+    }
+
     fn key(&self, epoch: u32) -> Option<&LessSafeKey> {
         self.keys
             .iter()
