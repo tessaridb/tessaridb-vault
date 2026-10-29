@@ -1,5 +1,5 @@
 // The company's vouching chain as `GET /api/companies/{company}/statements` answers it, which owner key a new key set
-// pins (Q-VA-36: trusted when the key set is made, then held under the unlock key), and the first statement an owner's
+// pins (trusted when the key set is made, then held under the unlock key), and the first statement an owner's
 // browser owes an empty chain. No DOM here, so all of it is tested.
 
 import { decode, encode } from "./base64url.ts";

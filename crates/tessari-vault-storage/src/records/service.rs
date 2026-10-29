@@ -75,7 +75,7 @@ impl RecordService {
     }
 
     /// Keep a new record `id` whose first revision is `sealed`, under the record key `key_id`. The browser chooses the
-    /// id, because revision 1 is sealed and signed over it before the record exists (Q-VA-39).
+    /// id, because revision 1 is sealed and signed over it before the record exists.
     ///
     /// # Errors
     ///

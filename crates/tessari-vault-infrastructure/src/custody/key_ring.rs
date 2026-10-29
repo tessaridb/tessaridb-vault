@@ -1,4 +1,4 @@
-//! The service key's epochs (ADR-VA-0003 D1): the file holds one key, which is epoch 1, or one `<epoch> <64 hex>`
+//! The service key's epochs: the file holds one key, which is epoch 1, or one `<epoch> <64 hex>`
 //! line per epoch in ascending order, and the highest epoch is current. Every value derived from the service key
 //! names the epoch it was made under, so a new epoch can be added and the old one retired once nothing names it.
 

@@ -81,7 +81,7 @@ impl From<&OpenedRecord> for Opened {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NewRecord {
-    /// The id the browser sealed revision 1 under (Q-VA-39).
+    /// The id the browser sealed revision 1 under.
     id: String,
     record_type: String,
     key_id: String,

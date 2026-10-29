@@ -1,5 +1,5 @@
 // A member's key set in one company: an X25519 agreement key and an Ed25519 signing key, made in this browser and
-// wrapped under the unlock key, with the company owner's public key pinned beside them (Q-VA-36: the root every
+// wrapped under the unlock key, with the company owner's public key pinned beside them (the root every
 // statement chain is checked from, so a server that later lists another owner key gains nothing). The server keeps it in
 // its opaque `wrapped` field as `[2][wraps made 4][field agreement wrap][field signing wrap][pin nonce 12][field pin]`.
 // Each wrap and the pin authenticate their own account, company and key id, so the count is the one value the server

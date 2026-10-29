@@ -1,5 +1,5 @@
 // Making and revising a record in the browser. The record id is chosen here, because revision 1 is sealed and signed
-// over it before the record exists (Q-VA-39). Every revision gets a new record key: the body is sealed under it, the
+// over it before the record exists. Every revision gets a new record key: the body is sealed under it, the
 // author signs the revision, and the key is wrapped to the author's own key and, for a revision, to every recipient the
 // record is shared with, each only when the owner's chain vouches for the key the server listed. Only the sealed parts
 // leave the page.

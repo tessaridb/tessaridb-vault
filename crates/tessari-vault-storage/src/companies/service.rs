@@ -50,7 +50,7 @@ impl CompanyService {
     }
 
     /// Create a company with its first owner (R1), answering the company, the owner's account and, when the owner has
-    /// no credential yet, their enrolment link (Q-VA-34): nobody else may issue an owner's link, so the company's
+    /// no credential yet, their enrolment link: nobody else may issue an owner's link, so the company's
     /// bootstrap hands it once to the platform admin who made it, on the new company's trail. Platform admins only.
     ///
     /// # Errors
