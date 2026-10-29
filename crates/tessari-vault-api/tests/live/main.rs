@@ -32,6 +32,7 @@ mod record_types;
 mod records;
 mod recovery;
 mod recovery_owners;
+mod restore;
 mod revocation;
 mod rotation;
 mod rules;
