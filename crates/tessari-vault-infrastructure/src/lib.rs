@@ -3,6 +3,7 @@
 pub mod config;
 pub mod custody;
 mod error;
+pub mod health;
 pub mod oidc;
 pub mod random;
 pub mod tessaridb;

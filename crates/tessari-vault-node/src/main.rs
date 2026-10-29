@@ -3,6 +3,9 @@
 //!
 //! `tessaridb-vault enrolment-link` prints, instead of serving, a single-use link for the configured platform admin
 //! while that account has no credential: the one way the first person gets in, and never written to a log.
+//!
+//! `tessaridb-vault health` asks the server already running at `TESSARIDB_VAULT_LISTEN` whether it answers, and exits
+//! 0 when it does: the image's health check, in an image with no shell.
 
 use std::net::SocketAddr;
 use std::process::ExitCode;
@@ -13,10 +16,11 @@ use tessari_vault_constants::{
     PASSWORD_CONCURRENCY_DEFAULT, PASSWORD_HASH_ITERATIONS_FLOOR, PASSWORD_HASH_MEMORY_KIB_FLOOR,
     PASSWORD_HASH_PARALLELISM_FLOOR, STORE_CONNECTIONS,
 };
-use tessari_vault_infrastructure::config::NodeConfig;
+use tessari_vault_infrastructure::config::{NodeConfig, listen_address};
 use tessari_vault_infrastructure::custody::{
     PasswordCost, Passwords, ServiceKey, SigninKeys, TotpSeal, VaultKeys,
 };
+use tessari_vault_infrastructure::health::{PROBE_BUDGET, probe, probe_address};
 use tessari_vault_infrastructure::oidc::OidcProvider;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_observability::init_tracing;
@@ -26,6 +30,9 @@ use tokio::signal::unix::{SignalKind, signal};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("health") {
+        return health().await;
+    }
     let _guard = match init_tracing() {
         Ok(guard) => guard,
         Err(error) => {
@@ -45,6 +52,24 @@ async fn main() -> ExitCode {
     }
 }
 
+/// Ask the running server whether it answers. It reads the listen address and nothing else, so it needs no key file
+/// and no store credentials.
+async fn health() -> ExitCode {
+    let answer = match listen_address(|key| std::env::var(key).ok()) {
+        Ok(listen) => probe(probe_address(listen), PROBE_BUDGET)
+            .await
+            .map_err(|error| error.to_string()),
+        Err(error) => Err(error.to_string()),
+    };
+    match answer {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(reason) => {
+            eprintln!("tessaridb-vault health: {reason}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// Why the node could not start or keep serving.
 #[derive(Debug, thiserror::Error)]
 enum StartError {
@@ -56,7 +81,7 @@ enum StartError {
     PlatformAdmin(&'static str),
     #[error("cannot listen: {0}")]
     Listen(#[source] std::io::Error),
-    #[error("unknown command {0:?}; the only one is `enrolment-link`")]
+    #[error("unknown command {0:?}; the commands are `enrolment-link` and `health`")]
     Command(String),
     #[error("`enrolment-link` needs TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL and _NAME")]
     NoPlatformAdmin,

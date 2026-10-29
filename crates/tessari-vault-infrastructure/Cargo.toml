@@ -22,7 +22,7 @@ tessaridb-oauth-client.workspace = true
 argon2 = { workspace = true, features = ["password-hash"] }
 unicode-normalization.workspace = true
 zeroize.workspace = true
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tokio = { workspace = true, features = ["rt", "sync", "time", "net", "io-util"] }
 tracing.workspace = true
 thiserror.workspace = true
 

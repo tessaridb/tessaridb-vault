@@ -113,6 +113,8 @@ alone, and leaves an existing key untouched. Back that volume up apart from the 
 without its service key cannot be opened. The server (`8080`) is published on `127.0.0.1`; put a TLS-terminating
 proxy in front and set `VAULT_PUBLIC_URL` to its https address before exposing it. The image is distroless and runs
 as the non-root user `65532`; it carries no credential, and the server refuses to start without the values it needs.
+Its health check runs `tessaridb-vault health`, which asks the server in the container whether it answers, so
+`docker compose up --wait` returns once the server serves.
 
 ## Building and checking
 

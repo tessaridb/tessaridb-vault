@@ -79,6 +79,22 @@ pub struct OidcConfig {
     pub redirect: String,
 }
 
+/// Where the server listens: `TESSARIDB_VAULT_LISTEN`, default `127.0.0.1:8080`. Read alone by `health`, which needs
+/// nothing else.
+///
+/// # Errors
+///
+/// [`Error::InvalidConfig`] for an address that is not `host:port`.
+pub fn listen_address(lookup: impl Fn(&str) -> Option<String>) -> Result<SocketAddr> {
+    lookup("TESSARIDB_VAULT_LISTEN")
+        .unwrap_or_else(|| "127.0.0.1:8080".to_owned())
+        .parse()
+        .map_err(|_| Error::InvalidConfig {
+            field: "TESSARIDB_VAULT_LISTEN",
+            reason: "an address of the form host:port",
+        })
+}
+
 impl NodeConfig {
     /// The settings the variables `lookup` answers hold.
     ///
@@ -111,13 +127,7 @@ impl NodeConfig {
             }
             _ => None,
         };
-        let listen = lookup("TESSARIDB_VAULT_LISTEN")
-            .unwrap_or_else(|| "127.0.0.1:8080".to_owned())
-            .parse()
-            .map_err(|_| Error::InvalidConfig {
-                field: "TESSARIDB_VAULT_LISTEN",
-                reason: "an address of the form host:port",
-            })?;
+        let listen = listen_address(&lookup)?;
         let platform_admin = match (
             lookup("TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL"),
             lookup("TESSARIDB_VAULT_PLATFORM_ADMIN_NAME"),

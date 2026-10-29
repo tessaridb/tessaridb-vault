@@ -41,6 +41,12 @@ EXPOSE 8080/tcp
 
 USER nonroot
 
+# `tessaridb-vault health` asks the server in this container whether it answers
+# (an unauthenticated route that names no account) and exits 0 when it does;
+# the image has no shell or HTTP client to ask it with.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD ["/usr/local/bin/tessaridb-vault", "health"]
+
 # No init process: the server handles SIGTERM and SIGINT itself, finishing the
 # requests in flight, and starts no child process. `tessaridb-vault
 # enrolment-link` run in this image prints the platform admin's join link.

@@ -130,6 +130,22 @@ async fn the_binary_lets_the_first_person_in_and_stops_on_sigterm() {
     let mut lines = printed.lines();
     lines.find(|line| line.starts_with("enrolment token for "));
     let token = lines.next().expect("the token line").trim().to_owned();
+    // The health check reads the listen address alone: with nothing serving it fails and says why.
+    let health = |setup: &Setup| {
+        Command::new(binary())
+            .env_clear()
+            .env("TESSARIDB_VAULT_LISTEN", &setup.listen)
+            .arg("health")
+            .output()
+            .expect("the health command runs")
+    };
+    let before = health(&setup);
+    assert!(!before.status.success(), "healthy with nothing serving");
+    assert!(
+        String::from_utf8_lossy(&before.stderr).contains("nothing answers at"),
+        "{}",
+        String::from_utf8_lossy(&before.stderr)
+    );
     let mut server = setup
         .command(&binary())
         .stdout(Stdio::null())
@@ -149,6 +165,12 @@ async fn the_binary_lets_the_first_person_in_and_stops_on_sigterm() {
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+    let after = health(&setup);
+    assert!(
+        after.status.success(),
+        "not healthy while serving: {}",
+        String::from_utf8_lossy(&after.stderr)
+    );
     let (status, begun) = post(
         &http,
         format!("{base}/api/enrolment/begin"),
