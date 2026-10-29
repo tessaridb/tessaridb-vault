@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createFailure, groupTree, readGroupRows, readPending } from "../../src/groups/groups-model.ts";
+import { createFailure, groupTree, readGroupRows, readPending, readRotationDue } from "../../src/groups/groups-model.ts";
 
 const [COMPANY, ENGINEERING, SALES, PLATFORM, DATA, DIRECT] = ["a", "b", "c", "d", "e", "f"].map((c) => c.repeat(32)) as [string, string, string, string, string, string];
 
@@ -41,5 +41,11 @@ describe("the groups page", () => {
   it("says why a group could not be made", () => {
     assert.match(createFailure("wrong_parent", "fallback"), /department sits in the company/);
     assert.equal(createFailure("other", "fallback"), "fallback");
+  });
+
+  it("reads whether a group's key is due for a new one, as after a member left", () => {
+    assert.equal(readRotationDue({ key_id: "11".repeat(16), public: "x", wrap: null, rotation_due: true }), true);
+    assert.equal(readRotationDue({ key_id: "11".repeat(16), public: "x", wrap: null, rotation_due: false }), false);
+    assert.equal(readRotationDue({ key_id: "11".repeat(16) }), null);
   });
 });

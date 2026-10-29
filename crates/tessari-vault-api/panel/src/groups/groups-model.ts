@@ -85,3 +85,8 @@ export function createFailure(code: string, fallback: string): string {
       return fallback;
   }
 }
+
+/** Whether a group's key (`GET …/groups/{group}/key`) is due for a new one, as after a member left; null if unsaid. */
+export function readRotationDue(v: unknown): boolean | null {
+  return isRecord(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
+}

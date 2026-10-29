@@ -15,7 +15,7 @@ import { companyPath } from "../records/load.ts";
 import { heading, refusal } from "../screen.ts";
 import type { Unlocked } from "../vault.ts";
 import { groupKeyBody, newGroupKey, pendingWraps, wrapsBody } from "./group-key.ts";
-import { createFailure, groupTree, readGroupRows, readPending, type TreeRow } from "./groups-model.ts";
+import { createFailure, groupTree, readGroupRows, readPending, readRotationDue, type TreeRow } from "./groups-model.ts";
 
 const KIND_WORDS = { company: "Company", department: "Department", team: "Team" } as const;
 
@@ -48,7 +48,17 @@ export async function drawGroups(main: HTMLElement, held: Unlocked, notice: stri
         .map((row) => call("GET", `${path}/groups/${encodeURIComponent(row.id)}/key/pending`, readPending).then((answer) => [row.id, answer.ok ? answer.value.length : 0] as const)),
     ),
   );
-  const items = tree.map((row) => groupItem(held, row, vouched, waiting.get(row.id) ?? null, chain.value.statements, again));
+  // A key due for rotation is made anew rather than handed on: whoever left may still hold the old one.
+  const due = new Set(
+    (
+      await Promise.all(
+        tree
+          .filter((row) => vouched.groupKeyOf(row.id) !== undefined)
+          .map((row) => call("GET", `${path}/groups/${encodeURIComponent(row.id)}/key`, readRotationDue).then((answer) => (answer.ok && answer.value === true ? row.id : null))),
+      )
+    ).filter((id) => id !== null),
+  );
+  const items = tree.map((row) => groupItem(held, row, vouched, due.has(row.id) ? null : (waiting.get(row.id) ?? null), due.has(row.id), chain.value.statements, again));
   fill(
     main,
     el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "A record shared with a group opens for everyone in it. A group needs a key before anything can be shared with it."))),
@@ -60,7 +70,7 @@ export async function drawGroups(main: HTMLElement, held: Unlocked, notice: stri
 }
 
 /** One group's line: its name, kind and key state, "Key this group" while it has none, and access for who waits. */
-function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: number | null, chain: readonly Statement[], again: (words?: string | null) => void): HTMLElement {
+function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: number | null, rotate: boolean, chain: readonly Statement[], again: (words?: string | null) => void): HTMLElement {
   const said = el("div", { "aria-live": "polite" });
   const keyed = vouched.groupKeyOf(row.id) !== undefined;
   const give = waiting === null || waiting === 0 ? null : el("button", { type: "button", "aria-label": `Give ${row.name}'s key to the ${waiting} waiting` }, `Give access (${waiting} waiting)`);
@@ -76,7 +86,7 @@ function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: numb
       fill(said, refusal(words));
     });
   });
-  const key = keyed ? null : el("button", { type: "button", "aria-label": `Key ${row.name}` }, "Key this group");
+  const key = keyed && !rotate ? null : el("button", { type: "button", "aria-label": `${rotate ? "Make a new key for" : "Key"} ${row.name}` }, rotate ? "Make a new key" : "Key this group");
   key?.addEventListener("click", () => {
     key.disabled = true;
     fill(said, el("p", { class: "muted", role: "status" }, "Making the group's key."));
@@ -93,7 +103,7 @@ function groupItem(held: Unlocked, row: TreeRow, vouched: Vouched, waiting: numb
     "li",
     { class: "share group", "data-depth": String(row.depth) },
     el("div", {}, el("span", { class: "share-name" }, row.name), el("span", { class: "detail" }, KIND_WORDS[row.kind])),
-    el("span", { class: `state ${keyed ? "vouched" : "waiting"}` }, keyed ? "Has a key" : "No key yet"),
+    el("span", { class: `state ${keyed && !rotate ? "vouched" : "waiting"}` }, rotate ? "Needs a new key" : keyed ? "Has a key" : "No key yet"),
     key ?? give ?? el("span", {}),
     said,
   );

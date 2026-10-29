@@ -3215,6 +3215,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
         return fallback;
     }
   }
+  function readRotationDue(v) {
+    return isRecord7(v) && typeof v["rotation_due"] === "boolean" ? v["rotation_due"] : null;
+  }
 
   // src/groups/groups-view.ts
   var KIND_WORDS = { company: "Company", department: "Department", team: "Team" };
@@ -3243,7 +3246,12 @@ ${target.detail}`.toLowerCase().includes(wanted));
         tree.filter((row2) => vouched.groupKeyOf(row2.id) !== void 0).map((row2) => call("GET", `${path}/groups/${encodeURIComponent(row2.id)}/key/pending`, readPending).then((answer) => [row2.id, answer.ok ? answer.value.length : 0]))
       )
     );
-    const items = tree.map((row2) => groupItem(held2, row2, vouched, waiting.get(row2.id) ?? null, chain.value.statements, again));
+    const due = new Set(
+      (await Promise.all(
+        tree.filter((row2) => vouched.groupKeyOf(row2.id) !== void 0).map((row2) => call("GET", `${path}/groups/${encodeURIComponent(row2.id)}/key`, readRotationDue).then((answer) => answer.ok && answer.value === true ? row2.id : null))
+      )).filter((id) => id !== null)
+    );
+    const items = tree.map((row2) => groupItem(held2, row2, vouched, due.has(row2.id) ? null : waiting.get(row2.id) ?? null, due.has(row2.id), chain.value.statements, again));
     fill(
       main2,
       el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, "A record shared with a group opens for everyone in it. A group needs a key before anything can be shared with it."))),
@@ -3253,7 +3261,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     );
     title.focus();
   }
-  function groupItem(held2, row2, vouched, waiting, chain, again) {
+  function groupItem(held2, row2, vouched, waiting, rotate, chain, again) {
     const said = el("div", { "aria-live": "polite" });
     const keyed = vouched.groupKeyOf(row2.id) !== void 0;
     const give = waiting === null || waiting === 0 ? null : el("button", { type: "button", "aria-label": `Give ${row2.name}'s key to the ${waiting} waiting` }, `Give access (${waiting} waiting)`);
@@ -3269,7 +3277,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
         fill(said, refusal(words));
       });
     });
-    const key = keyed ? null : el("button", { type: "button", "aria-label": `Key ${row2.name}` }, "Key this group");
+    const key = keyed && !rotate ? null : el("button", { type: "button", "aria-label": `${rotate ? "Make a new key for" : "Key"} ${row2.name}` }, rotate ? "Make a new key" : "Key this group");
     key?.addEventListener("click", () => {
       key.disabled = true;
       fill(said, el("p", { class: "muted", role: "status" }, "Making the group's key."));
@@ -3286,7 +3294,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
       "li",
       { class: "share group", "data-depth": String(row2.depth) },
       el("div", {}, el("span", { class: "share-name" }, row2.name), el("span", { class: "detail" }, KIND_WORDS[row2.kind])),
-      el("span", { class: `state ${keyed ? "vouched" : "waiting"}` }, keyed ? "Has a key" : "No key yet"),
+      el("span", { class: `state ${keyed && !rotate ? "vouched" : "waiting"}` }, rotate ? "Needs a new key" : keyed ? "Has a key" : "No key yet"),
       key ?? give ?? el("span", {}),
       said
     );
