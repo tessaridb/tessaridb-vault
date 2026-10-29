@@ -10,6 +10,7 @@ const SECTIONS: ReadonlyMap<string, string> = new Map([
   ["group", "groups"],
   ["members", "members"],
   ["member", "members"],
+  ["trail", "trail"],
 ]);
 
 /** The `data-section` of the sidebar link for route `name`, or "" for a page outside the sections. */

@@ -245,3 +245,65 @@ a.share-name {
     text-decoration: underline;
   }
 }
+
+/* The trail as a table of the same grammar: when, who, what, on whom or what, and why. Times keep their width. */
+table.trail td:first-child {
+  inline-size: auto;
+  max-inline-size: none;
+}
+
+/* Wider than its column, a table scrolls inside its own frame and the page does not. */
+.table-frame {
+  overflow-x: auto;
+}
+
+.table-frame + button {
+  margin-block-start: var(--s-5);
+}
+
+/* On a phone each event reads as a short stack: what happened, to whom or what and by whom, then when and why. */
+@media (max-width: 48rem) {
+  table.trail thead {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  table.trail tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--s-3);
+    padding-block: var(--s-3);
+    border-block-end: 1px solid var(--border);
+  }
+
+  table.trail td:nth-child(n) {
+    display: block;
+    block-size: auto;
+    padding: 0;
+    border: 0;
+  }
+
+  table.trail td:nth-child(3) {
+    grid-area: 1 / 1 / 2 / -1;
+    font-weight: 550;
+  }
+
+  table.trail td:nth-child(4) {
+    grid-area: 2 / 1;
+  }
+
+  table.trail td:nth-child(2) {
+    grid-area: 2 / 2;
+    color: var(--text-muted);
+  }
+
+  table.trail td:nth-child(1),
+  table.trail td:nth-child(5) {
+    grid-column: 1 / -1;
+    font-size: var(--t-caption);
+    color: var(--text-muted);
+  }
+}

@@ -672,6 +672,7 @@ ${target.detail}`.toLowerCase().includes(wanted));
     records: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
     members: [ring(9, 8, 3.5), "M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6", "M16 4.5a3.5 3.5 0 0 1 0 7", "M18 14c2 .6 3 2.8 3 6"],
     groups: [box(9, 3, 6, 5, 1.5), box(3, 16, 6, 5, 1.5), box(15, 16, 6, 5, 1.5), "M12 8v4", "M6 16v-4h12v4"],
+    trail: [ring(12, 12, 8.5), "M12 7.5V12l3 2"],
     sun: [ring(12, 12, 4), "M12 2.5v2", "M12 19.5v2", "M2.5 12h2", "M19.5 12h2", "M5.3 5.3l1.4 1.4", "M17.3 17.3l1.4 1.4", "M5.3 18.7l1.4-1.4", "M17.3 6.7l1.4-1.4"],
     moon: ["M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"],
     menu: ["M4 7h16", "M4 12h16", "M4 17h16"],
@@ -4265,10 +4266,207 @@ ${END}
     return el("div", { class: "choice" }, radio, el("label", { for: id }, row2.name, el("span", { class: "detail" }, KIND_WORDS2[row2.kind])));
   }
 
-  // src/join-model.ts
+  // src/trail/trail-model.ts
   var isRecord11 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  function readEvents(v) {
+    if (!isRecord11(v) || !Array.isArray(v["events"])) {
+      return null;
+    }
+    const events = v["events"].map((each) => {
+      if (!isRecord11(each)) {
+        return null;
+      }
+      const { seq, at: at2, actor, action, target, reason } = each;
+      return typeof seq === "number" && typeof at2 === "number" && typeof actor === "string" && typeof action === "string" && typeof target === "string" && typeof reason === "string" ? { seq, at: at2, actor, action, target, reason } : null;
+    });
+    return events.every((each) => each !== null) ? events : null;
+  }
+  function readVerified(v) {
+    if (!isRecord11(v) || typeof v["intact"] !== "boolean") {
+      return null;
+    }
+    const broken = v["broken_at"];
+    return typeof broken === "number" || broken === null || broken === void 0 ? { intact: v["intact"], brokenAt: typeof broken === "number" ? broken : null } : null;
+  }
+  var WORDS = /* @__PURE__ */ new Map([
+    ["chain.append", "Vouched for a key"],
+    ["company.create", "Created the company"],
+    ["company.resume", "Resumed the company"],
+    ["company.suspend", "Suspended the company"],
+    ["enrolment.issue", "Issued a join link"],
+    ["file.complete", "Finished uploading a file"],
+    ["file.create", "Started uploading a file"],
+    ["file.read", "Downloaded a file"],
+    ["group_key.keep", "Keyed a group"],
+    ["group_key.read", "Opened a group's key"],
+    ["group_key.rotate", "Made a group a new key"],
+    ["group_key.wrap", "Gave a group's key to its members"],
+    ["group.create", "Created a group"],
+    ["group.delete", "Deleted a group"],
+    ["group.member.add", "Added someone to a group"],
+    ["group.member.remove", "Took someone out of a group"],
+    ["group.rename", "Renamed a group"],
+    ["keys.escrow", "Escrowed their keys for recovery"],
+    ["keys.keep", "Set up their keys"],
+    ["keys.read", "Opened their keys"],
+    ["keys.rewrap", "Set a new unlock password"],
+    ["member.add", "Added a member"],
+    ["member.change", "Changed a member"],
+    ["member.escrow.read", "Read a member's escrowed keys"],
+    ["member.recover", "Handed a member's keys over"],
+    ["member.recovery.redeem", "Took their recovered keys back"],
+    ["member.recovery.replay", "Tried a used recovery again"],
+    ["member.recovery.request", "Asked for recovery"],
+    ["member.remove", "Removed a member"],
+    ["record_type.define", "Defined a record type"],
+    ["record.create", "Created a record"],
+    ["record.delete", "Deleted a record"],
+    ["record.read", "Opened a record"],
+    ["record.revise", "Changed a record"],
+    ["record.share", "Shared a record"],
+    ["record.unshare", "Removed a share"],
+    ["recovery.key.read", "Read the recovery key"],
+    ["recovery.key", "Kept the recovery key"]
+  ]);
+  var actionWords = (action) => WORDS.get(action) ?? action;
+  function areaOf(action) {
+    const head = action.split(".")[0] ?? "";
+    switch (head) {
+      case "record":
+      case "record_type":
+      case "file":
+        return "records";
+      case "member":
+      case "enrolment":
+        return "members";
+      case "group":
+      case "group_key":
+        return "groups";
+      case "keys":
+      case "chain":
+      case "recovery":
+        return "keys";
+      case "company":
+        return "company";
+      default:
+        return "other";
+    }
+  }
+  var whoWords = (id, names) => names.get(id) ?? id.slice(0, 8);
+  function targetWords(target, names) {
+    const [group, account] = target.split(":");
+    if (group !== void 0 && account !== void 0 && names.has(group) && names.has(account)) {
+      return `${names.get(account)} in ${names.get(group)}`;
+    }
+    return names.get(target) ?? (target.length > 12 ? target.slice(0, 8) : target);
+  }
+  var verifyWords = (verified) => verified.intact ? "The trail is intact: no event was changed or removed." : `Event ${verified.brokenAt ?? "?"} doesn't check out: it, or one before it, was changed outside the vault. Tell your company's owner.`;
+  var PAGE = 100;
+  var pageFull = (count) => count >= PAGE;
+
+  // src/trail/trail-view.ts
+  var AREAS = [
+    ["all", "All"],
+    ["records", "Records"],
+    ["members", "Members"],
+    ["groups", "Groups"],
+    ["keys", "Keys"],
+    ["company", "Company"]
+  ];
+  var when2 = new Intl.DateTimeFormat(void 0, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+  async function drawTrail(main2, held2) {
+    const title = heading("Trail");
+    const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, `Everything done in ${held2.companyName}, newest first. Each event is written before the change it records.`)));
+    fill(main2, head, el("p", { class: "muted", role: "status" }, "Loading the trail."));
+    const path = companyPath(held2);
+    const [first, members, groups] = await Promise.all([call("GET", `${path}/audit`, readEvents), call("GET", `${path}/members`, readMemberList), call("GET", `${path}/groups`, readGroupRows)]);
+    if (!first.ok) {
+      fill(main2, head, refusal(first.status === 403 ? "Only the company's owners and admins can read the trail." : loadFailure(first)));
+      return;
+    }
+    const names = /* @__PURE__ */ new Map([[held2.company, held2.companyName]]);
+    for (const member of members.ok ? members.value : []) {
+      names.set(member.account, member.name);
+    }
+    for (const group of groups.ok ? groups.value : []) {
+      names.set(group.id, group.name);
+    }
+    const events = [...first.value];
+    let area = "all";
+    const body = el("tbody", {});
+    const said = el("div", { "aria-live": "polite" });
+    const older = el("button", { type: "button" }, "Older events");
+    const draw2 = () => {
+      const shown = events.filter((event) => area === "all" || areaOf(event.action) === area);
+      fill(
+        body,
+        ...shown.map(
+          (event) => el(
+            "tr",
+            {},
+            el("td", { class: "when" }, when2.format(new Date(event.at * 1e3))),
+            el("td", {}, whoWords(event.actor, names)),
+            el("td", {}, actionWords(event.action)),
+            el("td", {}, targetWords(event.target, names)),
+            el("td", { class: "muted" }, event.reason)
+          )
+        )
+      );
+      if (shown.length === 0) {
+        fill(body, el("tr", {}, el("td", { colspan: "5", class: "muted" }, "Nothing of this kind in the events read so far.")));
+      }
+    };
+    older.hidden = !pageFull(first.value.length);
+    older.addEventListener("click", () => {
+      older.disabled = true;
+      void call("GET", `${path}/audit?before=${events.at(-1)?.seq ?? 0}`, readEvents).then((next) => {
+        older.disabled = false;
+        if (!next.ok) {
+          fill(said, refusal(loadFailure(next)));
+          return;
+        }
+        events.push(...next.value);
+        older.hidden = !pageFull(next.value.length);
+        draw2();
+      });
+    });
+    const chips = AREAS.map(([each, words]) => el("button", { type: "button", class: "chip", "aria-pressed": String(each === area) }, words));
+    chips.forEach(
+      (chip, at2) => chip.addEventListener("click", () => {
+        area = AREAS[at2]?.[0] ?? "all";
+        chips.forEach((other, index) => other.setAttribute("aria-pressed", String(index === at2)));
+        draw2();
+      })
+    );
+    const check = el("button", { type: "button" }, "Check the trail");
+    check.addEventListener("click", () => {
+      check.disabled = true;
+      fill(said, el("p", { class: "muted", role: "status" }, "Checking every event."));
+      void call("GET", `${path}/audit/verify`, readVerified).then((verified) => {
+        check.disabled = false;
+        fill(said, verified.ok ? verified.value.intact ? el("p", { class: "muted", role: "status" }, verifyWords(verified.value)) : refusal(verifyWords(verified.value)) : refusal(loadFailure(verified)));
+      });
+    });
+    draw2();
+    fill(
+      main2,
+      head,
+      el("div", { class: "toolbar" }, el("div", { class: "chips", role: "group", "aria-label": "Show" }, ...chips), check),
+      said,
+      el(
+        "div",
+        { class: "table-frame", tabindex: "0", role: "region", "aria-label": "Events" },
+        el("table", { class: "records trail" }, el("thead", {}, el("tr", {}, ...["When", "Who", "What", "On", "Why"].map((words) => el("th", { scope: "col" }, words)))), body)
+      ),
+      older
+    );
+    title.focus();
+  }
+
+  // src/join-model.ts
+  var isRecord12 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readAuthenticator(v) {
-    if (!isRecord11(v)) {
+    if (!isRecord12(v)) {
       return null;
     }
     const { secret, uri } = v;
@@ -4313,22 +4511,22 @@ ${END}
   }
 
   // src/sign-in-model.ts
-  var isRecord12 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var isRecord13 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
   function readMethods(v) {
-    if (!isRecord12(v)) {
+    if (!isRecord13(v)) {
       return null;
     }
     const { password, passkey: passkey2, provider } = v;
     return typeof password === "boolean" && typeof passkey2 === "boolean" && typeof provider === "boolean" ? { password, passkey: passkey2, provider } : null;
   }
   function readChallenge(v) {
-    return isRecord12(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
+    return isRecord13(v) && typeof v["challenge"] === "string" && v["challenge"] !== "" ? v["challenge"] : null;
   }
   function readSession(v) {
-    return isRecord12(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
+    return isRecord13(v) && typeof v["session"] === "string" && v["session"] !== "" ? v["session"] : null;
   }
   function readPasskeyRequest(v) {
-    return isRecord12(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
+    return isRecord13(v) && typeof v["challenge"] === "string" && typeof v["rp_id"] === "string" ? { challenge: v["challenge"], rpId: v["rp_id"] } : null;
   }
   function signInFailure(failure) {
     switch (failure.code) {
@@ -5171,7 +5369,8 @@ ${END}
     ["groups", "groups"],
     ["group", "groups"],
     ["members", "members"],
-    ["member", "members"]
+    ["member", "members"],
+    ["trail", "trail"]
   ]);
   var sectionOf = (name) => SECTIONS.get(name) ?? "";
 
@@ -5191,6 +5390,7 @@ ${END}
     member: { path: "/members/:account", guard: open2 },
     groups: { path: "/groups", guard: open2 },
     group: { path: "/groups/:group", guard: open2 },
+    trail: { path: "/trail", guard: open2 },
     signIn: { path: "/sign-in", query: { next: text } },
     join: { path: "/join", query: { token: text } },
     unlock: { path: "/unlock", query: { next: text }, guard: session }
@@ -5278,6 +5478,13 @@ ${END}
         const held2 = unlocked();
         if (held2 !== null) {
           void drawGroup(view2, held2, outcome.match.params.group, router.href("groups", {}), () => go(router.href("groups", {})));
+        }
+        break;
+      }
+      case "trail": {
+        const held2 = unlocked();
+        if (held2 !== null) {
+          void drawTrail(view2, held2);
         }
         break;
       }

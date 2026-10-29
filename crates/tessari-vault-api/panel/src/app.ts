@@ -17,6 +17,7 @@ import { drawMember } from "./members/member-page.ts";
 import { drawMembers } from "./members/members-view.ts";
 import { drawGroup } from "./groups/group-page.ts";
 import { drawGroups } from "./groups/groups-view.ts";
+import { drawTrail } from "./trail/trail-view.ts";
 import { bearer, forget } from "./session.ts";
 import { join } from "./join.ts";
 import { providerReturned, signIn } from "./sign-in.ts";
@@ -45,6 +46,7 @@ const routes = defineRoutes({
   member: { path: "/members/:account", guard: open },
   groups: { path: "/groups", guard: open },
   group: { path: "/groups/:group", guard: open },
+  trail: { path: "/trail", guard: open },
   signIn: { path: "/sign-in", query: { next: text } },
   join: { path: "/join", query: { token: text } },
   unlock: { path: "/unlock", query: { next: text }, guard: session },
@@ -142,6 +144,13 @@ function draw(outcome: Outcome<Routes>, main: HTMLElement, router: Router<Routes
       const held = unlocked();
       if (held !== null) {
         void drawGroup(view, held, outcome.match.params.group, router.href("groups", {}), () => go(router.href("groups", {})));
+      }
+      break;
+    }
+    case "trail": {
+      const held = unlocked();
+      if (held !== null) {
+        void drawTrail(view, held);
       }
       break;
     }
