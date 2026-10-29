@@ -420,6 +420,7 @@ main:focus,
 @media (max-width: 48rem) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
+    align-content: start;
     background: none;
   }
 

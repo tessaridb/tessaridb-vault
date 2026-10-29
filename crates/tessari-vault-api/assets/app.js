@@ -48,9 +48,12 @@
       return { ok: false, status: 0, code: "network", message: "The vault did not answer." };
     }
     let parsed = null;
-    if (response.status !== 204) {
+    const text2 = response.status === 204 ? "" : await response.text().catch(() => void 0);
+    if (text2 === void 0) {
+      parsed = void 0;
+    } else if (text2 !== "") {
       try {
-        parsed = await response.json();
+        parsed = JSON.parse(text2);
       } catch {
         parsed = void 0;
       }
@@ -1540,7 +1543,8 @@
   async function drawList(main2, held2, href) {
     const title = heading("Records");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening your records."));
-    fill(main2, title, said);
+    const head = el("div", { class: "page-head" }, title);
+    fill(main2, head, said);
     const chain = await vouchedChain(held2);
     if (!chain.ok) {
       fill(said, refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
@@ -1573,6 +1577,7 @@
       );
       const kept = items.filter((item) => matches(item, search.value, type));
       fill(list, ...kept.map((item) => row(item, href)));
+      list.hidden = kept.length === 0;
       if (items.length === 0) {
         fill(said, el("p", {}, "No records yet. Records you make, and records others share with you, appear here."));
       } else if (kept.length === 0) {
@@ -1608,7 +1613,7 @@
     }
     search.addEventListener("input", render);
     more.addEventListener("click", () => void load().then((loaded) => loaded && render()));
-    fill(main2, title, filter, types, said, list, tail);
+    fill(main2, head, filter, types, said, list, tail);
     render();
     title.focus();
   }
@@ -1694,7 +1699,7 @@
   async function drawRecord(main2, held2, id, copy2, stops2, back) {
     const toList = el("a", { href: back, class: "back" }, "All records");
     const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening the record."));
-    fill(main2, toList, heading("Record"), said);
+    fill(main2, toList, el("div", { class: "page-head" }, heading("Record")), said);
     const [chain, opened] = await Promise.all([
       vouchedChain(held2),
       call("GET", `${companyPath(held2)}/records/${encodeURIComponent(id)}`, readOpened)
@@ -1709,7 +1714,7 @@
     }
     const item = await new Opener(held2, chain.vouched).open(opened.value);
     if (!("document" in item)) {
-      fill(main2, toList, heading("Record not shown"), refusal(unreadableWords(item.problem)));
+      fill(main2, toList, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
       return;
     }
     const { document: document2 } = item;
@@ -1722,7 +1727,8 @@
         el("dl", { class: "fields" }, ...section.fields.flatMap((field3) => fieldView(field3, copy2, stops2)))
       )
     );
-    fill(main2, toList, title, el("p", { class: "muted" }, typeName(document2.type)), ...sections);
+    const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document2.type))));
+    fill(main2, toList, head, ...sections);
     title.focus();
   }
 

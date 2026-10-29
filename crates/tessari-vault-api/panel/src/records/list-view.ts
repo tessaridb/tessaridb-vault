@@ -43,7 +43,8 @@ function row(item: Listed, href: (record: string) => string): HTMLElement {
 export async function drawList(main: HTMLElement, held: Unlocked, href: (record: string) => string): Promise<void> {
   const title = heading("Records");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening your records."));
-  fill(main, title, said);
+  const head = el("div", { class: "page-head" }, title);
+  fill(main, head, said);
   const chain = await vouchedChain(held);
   if (!chain.ok) {
     fill(said, refusal("problem" in chain ? CHAIN_REFUSED : loadFailure(chain)));
@@ -76,6 +77,7 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
     );
     const kept = items.filter((item) => matches(item, search.value, type));
     fill(list, ...kept.map((item) => row(item, href)));
+    list.hidden = kept.length === 0;
     if (items.length === 0) {
       fill(said, el("p", {}, "No records yet. Records you make, and records others share with you, appear here."));
     } else if (kept.length === 0) {
@@ -111,7 +113,7 @@ export async function drawList(main: HTMLElement, held: Unlocked, href: (record:
   }
   search.addEventListener("input", render);
   more.addEventListener("click", () => void load().then((loaded) => loaded && render()));
-  fill(main, title, filter, types, said, list, tail);
+  fill(main, head, filter, types, said, list, tail);
   render();
   title.focus();
 }

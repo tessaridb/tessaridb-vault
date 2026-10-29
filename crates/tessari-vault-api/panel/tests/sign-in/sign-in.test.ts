@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
-import { call } from "../../src/api.ts";
+import { call, ignored } from "../../src/api.ts";
 import { decode, encode } from "../../src/base64url.ts";
 import { afterSignIn, needsSession } from "../../src/guards.ts";
 import { bearer, forget, keep } from "../../src/session.ts";
@@ -149,5 +149,16 @@ describe("the call every request goes through", () => {
     };
     const dead = await call("GET", "/api/x", readSession);
     assert.equal(dead.ok ? "" : dead.code, "network");
+  });
+
+  it("takes a success with no body as done for a caller that ignores the answer, and as no answer for one that reads it", async () => {
+    answering(201, null);
+    assert.deepEqual(await call("POST", "/api/x", ignored), { ok: true, value: true });
+    answering(201, null);
+    const unread = await call("POST", "/api/x", readSession);
+    assert.equal(unread.ok ? "" : unread.code, "bad_answer");
+    globalThis.fetch = async () => new Response("not json", { status: 201 });
+    const garbled = await call("POST", "/api/x", ignored);
+    assert.equal(garbled.ok ? "" : garbled.code, "bad_answer");
   });
 });

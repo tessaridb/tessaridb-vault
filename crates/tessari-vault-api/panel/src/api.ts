@@ -58,10 +58,15 @@ export async function call<T>(method: Method, route: string, read: (value: unkno
   } catch {
     return { ok: false, status: 0, code: "network", message: "The vault did not answer." };
   }
+  // No body (a 204, or a bare 201 for a write that answers nothing) reads as `null`, which `ignored` takes and every
+  // other reader refuses; a body that is not JSON is unreadable.
   let parsed: unknown = null;
-  if (response.status !== 204) {
+  const text = response.status === 204 ? "" : await response.text().catch(() => undefined);
+  if (text === undefined) {
+    parsed = undefined;
+  } else if (text !== "") {
     try {
-      parsed = await response.json();
+      parsed = JSON.parse(text);
     } catch {
       parsed = undefined;
     }

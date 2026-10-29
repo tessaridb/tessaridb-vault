@@ -22,7 +22,7 @@ export async function drawRecord(
 ): Promise<void> {
   const toList = el("a", { href: back, class: "back" }, "All records");
   const said = el("div", { "aria-live": "polite" }, el("p", { class: "muted", role: "status" }, "Opening the record."));
-  fill(main, toList, heading("Record"), said);
+  fill(main, toList, el("div", { class: "page-head" }, heading("Record")), said);
   const [chain, opened] = await Promise.all([
     vouchedChain(held),
     call("GET", `${companyPath(held)}/records/${encodeURIComponent(id)}`, readOpened),
@@ -37,7 +37,7 @@ export async function drawRecord(
   }
   const item = await new Opener(held, chain.vouched).open(opened.value);
   if (!("document" in item)) {
-    fill(main, toList, heading("Record not shown"), refusal(unreadableWords(item.problem)));
+    fill(main, toList, el("div", { class: "page-head" }, heading("Record not shown")), refusal(unreadableWords(item.problem)));
     return;
   }
   const { document } = item;
@@ -50,6 +50,7 @@ export async function drawRecord(
       el("dl", { class: "fields" }, ...section.fields.flatMap((field) => fieldView(field, copy, stops))),
     ),
   );
-  fill(main, toList, title, el("p", { class: "muted" }, typeName(document.type)), ...sections);
+  const head = el("div", { class: "page-head" }, el("div", {}, title, el("p", { class: "lede" }, typeName(document.type))));
+  fill(main, toList, head, ...sections);
   title.focus();
 }
