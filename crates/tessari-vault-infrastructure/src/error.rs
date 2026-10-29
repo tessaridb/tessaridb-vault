@@ -19,6 +19,12 @@ pub enum Error {
         /// What the node says to do about it; `None` from a node too old to send one.
         class: Option<RefusalClass>,
     },
+    /// A read named a field its table does not declare; the node answered no records and said why.
+    #[error("{message}")]
+    UndeclaredField {
+        /// The node's own words, naming the table and the field.
+        message: String,
+    },
     /// A setting is missing or not of the shape it must have.
     #[error("{field}: {reason}")]
     InvalidConfig {

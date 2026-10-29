@@ -14,8 +14,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use tessari_vault_constants::{
-    STORE_RETRY_FIRST_PAUSE_MS, STORE_RETRY_MAX_PAUSE_MS, STORE_SIGNIN_ATTEMPTS,
-    STORE_SIGNIN_CONCURRENCY,
+    STORE_NOTE_UNDECLARED_FIELD, STORE_RETRY_FIRST_PAUSE_MS, STORE_RETRY_MAX_PAUSE_MS,
+    STORE_SIGNIN_ATTEMPTS, STORE_SIGNIN_CONCURRENCY,
 };
 use tessaridb_client::{Answer, Client, RefusalClass, Request, Tls, Value, VaultKey};
 use tokio::sync::{Semaphore, SemaphorePermit};
@@ -154,6 +154,19 @@ impl Database {
     pub(super) async fn exchange(&self, request: &Request, preamble: usize) -> Result<Vec<Answer>> {
         let (_slot, client, answers) = self.converse(request).await?;
         self.release(client);
+        // A read naming a field its table does not declare answers no records with a note; for this product that is
+        // a misspelt query, and answering it empty would read as "nothing there", so it fails instead.
+        let undeclared = answers.iter().find_map(|answer| match answer {
+            Answer::Records { notes, .. } => notes
+                .iter()
+                .find(|note| note.kind == STORE_NOTE_UNDECLARED_FIELD),
+            _ => None,
+        });
+        if let Some(note) = undeclared {
+            return Err(Error::UndeclaredField {
+                message: note.message.clone(),
+            });
+        }
         Ok(answers.into_iter().skip(preamble).collect())
     }
 

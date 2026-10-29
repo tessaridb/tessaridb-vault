@@ -371,3 +371,19 @@ async fn a_snapshot_restored_into_a_clean_store_opens_with_the_service_key_alone
     drop((node, world));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_read_naming_a_field_its_table_does_not_declare_is_refused_not_answered_empty() {
+    let world = World::new().await;
+    let read = world
+        .database
+        .run_at(
+            &world.place,
+            "SELECT * FROM accounts WHERE emial = 'owner@alpha.test';",
+            Vec::new(),
+        )
+        .await;
+    let refused = read.expect_err("a misspelt field is refused, not answered with no records");
+    assert!(refused.to_string().contains("emial"), "{refused}");
+}

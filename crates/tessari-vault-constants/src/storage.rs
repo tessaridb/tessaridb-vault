@@ -10,6 +10,9 @@ pub const STORE_RETRY_FIRST_PAUSE_MS: u64 = 2;
 /// The longest pause between store sign-in attempts, in milliseconds.
 pub const STORE_RETRY_MAX_PAUSE_MS: u64 = 64;
 
+/// The kind of note a node attaches to a read that names a field its table does not declare.
+pub const STORE_NOTE_UNDECLARED_FIELD: &str = "undeclared-field";
+
 /// How many connections sign in to the store at once. The node verifies only so many passwords concurrently and
 /// answers `throttled` beyond that.
 pub const STORE_SIGNIN_CONCURRENCY: usize = 4;
