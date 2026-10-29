@@ -33,16 +33,26 @@ fn located(at: &FileRef<'_>) -> Vec<(String, Value)> {
         bind("file", at.file.as_str()),
         bind("author", at.author.as_str()),
         bind("share_version", at.share_version),
-        bind("vid", format!("file.{}", at.file.as_str()).as_str()),
+        bind("vid", vault_entry(at.file.as_str()).as_str()),
     ]
 }
 
 /// The bucket path of part `index` of the file.
 fn part_path(at: &FileRef<'_>, index: i64) -> String {
-    format!("/{}/{}/{index}", at.company.as_str(), at.file.as_str())
+    bucket_path(at.company.as_str(), at.file.as_str(), index)
 }
 
-fn part_size() -> Result<i64> {
+/// The bucket path of part `index` of `company`'s file `file`.
+pub(crate) fn bucket_path(company: &str, file: &str, index: i64) -> String {
+    format!("/{company}/{file}/{index}")
+}
+
+/// The id a small file's sealed bytes are kept under in the records vault.
+pub(crate) fn vault_entry(file: &str) -> String {
+    format!("file.{file}")
+}
+
+pub(crate) fn part_size() -> Result<i64> {
     i64::try_from(FILE_PART_MAX_BYTES).map_err(|_| unreadable("part size"))
 }
 

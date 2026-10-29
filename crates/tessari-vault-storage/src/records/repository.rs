@@ -26,6 +26,17 @@ pub(crate) struct Write<'a> {
     pub(crate) extra: &'a [(String, Vec<u8>)],
 }
 
+/// A record about to leave the store, checked against what the caller's reach was decided on.
+pub(crate) struct Removal<'a> {
+    pub(crate) company: &'a CompanyId,
+    pub(crate) record: &'a RecordId,
+    /// The record's latest revision when it was read: every revision up to it leaves the vault.
+    pub(crate) revision: i64,
+    /// The record's share version when it was read.
+    pub(crate) share_version: i64,
+    pub(crate) vault_key: VaultKey,
+}
+
 #[async_trait]
 pub(crate) trait RecordRepository: Send + Sync {
     /// Every record of `company` that `author` wrote: the predicate is in the query, so nobody else's are read.
@@ -73,4 +84,11 @@ pub(crate) trait RecordRepository: Send + Sync {
         entity: &RecordEntity,
         vault_key: VaultKey,
     ) -> Result<OpenedRevision>;
+    /// Remove the record with every revision, wrap, share and file it holds, refused when it moved since it was read.
+    async fn delete(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        removal: Removal<'_>,
+    ) -> Result<()>;
 }

@@ -18,6 +18,9 @@ use crate::record_types::RecordTypeService;
 use crate::shares::{Reach, Reached};
 use crate::{Conflict, Error, Result};
 
+#[path = "deletion.rs"]
+mod deletion;
+
 /// Records and their revisions.
 pub struct RecordService {
     repository: Arc<dyn RecordRepository>,

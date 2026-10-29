@@ -7,4 +7,4 @@ mod tessaridb;
 
 pub use entity::{FileMeta, Kept};
 pub use service::FileService;
-pub(crate) use tessaridb::TessaridbFiles;
+pub(crate) use tessaridb::{TessaridbFiles, bucket_path, part_size, vault_entry};

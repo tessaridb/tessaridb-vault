@@ -63,6 +63,11 @@ pub enum Action {
     ReviseRecord,
     /// Share a record with a group or a member; which records is decided on the record.
     ShareRecord,
+    /// Delete a record with every revision, share and file: its author may, and an admin may delete anyone's.
+    DeleteRecord {
+        /// Whether the caller wrote the record.
+        authored: bool,
+    },
     /// Keep one's own key set in the company, and read it back.
     KeepKeys,
     /// Read the company's key directory and vouching chain.
@@ -121,6 +126,7 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::ReadRecord
         | Action::ReviseRecord
         | Action::ShareRecord
+        | Action::DeleteRecord { authored: true }
         | Action::KeepKeys
         | Action::ReadKeys => Role::Member,
         Action::AddMember { role: Role::Owner }
@@ -141,6 +147,7 @@ pub fn decide(standing: Option<&Standing>, action: Action) -> Decision {
         | Action::DeleteGroup
         | Action::AddToGroup
         | Action::RemoveFromGroup
+        | Action::DeleteRecord { authored: false }
         | Action::DefineRecordType
         | Action::Vouch { genesis: false }
         | Action::KeyGroup

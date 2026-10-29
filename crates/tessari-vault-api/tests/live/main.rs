@@ -21,6 +21,7 @@ mod oauth_e2e;
 mod oidc;
 mod page;
 mod passkeys;
+mod record_delete;
 mod record_types;
 mod records;
 mod recovery;
@@ -321,6 +322,8 @@ fn probe(cast: &Cast, method: &Method, pattern: &str) -> Option<Probe> {
             });
             row(Some(body), not_author, hidden)
         }
+        // The owner may delete any record of the company, so the low row is the reader case in record_delete.
+        ("DELETE", "/api/companies/{company}/records/{record}") => row(None, None, hidden),
         _ => None,
     }
 }

@@ -3,6 +3,7 @@
 mod entity;
 mod opened;
 mod page;
+mod removal;
 mod repository;
 mod service;
 mod tessaridb;

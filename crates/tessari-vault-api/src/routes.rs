@@ -9,8 +9,8 @@ use axum::http::Method;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handlers::{
-    audit, companies, enrolment, files, groups, members, oidc, page, passkeys, record_types,
-    records, shares, sign_in,
+    audit, companies, enrolment, files, groups, members, oidc, page, passkeys, record_removal,
+    record_types, records, shares, sign_in,
 };
 use crate::key_routes;
 use crate::state::AppState;
@@ -173,6 +173,11 @@ pub fn routes() -> Vec<Route> {
             Method::PUT,
             "/api/companies/{company}/records/{record}",
             put(records::revise),
+        ),
+        route(
+            Method::DELETE,
+            "/api/companies/{company}/records/{record}",
+            delete(record_removal::delete),
         ),
         route(
             Method::POST,

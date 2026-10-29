@@ -16,16 +16,18 @@ const READS: [Action; 2] = [Action::ReadMembers, Action::ReadGroups];
 const KEYS: [Action; 2] = [Action::KeepKeys, Action::ReadKeys];
 
 /// What every active member may do with records; which records is decided on the record itself.
-const RECORDS: [Action; 4] = [
+const RECORDS: [Action; 5] = [
     Action::CreateRecord {
         allowed: Roles::ALL,
     },
     Action::ReadRecord,
     Action::ReviseRecord,
     Action::ShareRecord,
+    Action::DeleteRecord { authored: true },
 ];
 
-const MANAGING: [Action; 14] = [
+const MANAGING: [Action; 15] = [
+    Action::DeleteRecord { authored: false },
     Action::KeyGroup,
     Action::Vouch { genesis: false },
     Action::DefineRecordType,

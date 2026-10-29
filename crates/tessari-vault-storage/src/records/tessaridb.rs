@@ -8,7 +8,7 @@ use tessari_vault_types::{AccountId, CompanyId, KeyId, RecordId, base64url};
 
 use super::entity::{OpenedRevision, RecordEntity};
 use super::opened::opened_from;
-use super::repository::{RecordRepository, Write};
+use super::repository::{RecordRepository, Removal, Write};
 use super::vault::RecordVaults;
 use crate::access::{GUARD, bind, membership_id, thrown};
 use crate::audit::RECORD;
@@ -268,5 +268,14 @@ impl RecordRepository for TessaridbRecordRepository {
             .await
             .map_err(|error| thrown(error.into()))?;
         opened_from(answers)
+    }
+
+    async fn delete(
+        &self,
+        place: &Place,
+        guard: Vec<(String, Value)>,
+        removal: Removal<'_>,
+    ) -> Result<()> {
+        super::removal::delete(&self.database, place, guard, removal).await
     }
 }
