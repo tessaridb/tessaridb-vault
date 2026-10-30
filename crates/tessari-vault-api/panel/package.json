@@ -1,6 +1,6 @@
 {
   "name": "tessaridb-vault-panel",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "author": "boogvar",
   "private": true,
   "description": "Source for the web application the vault serves. Records are encrypted and decrypted here, in the browser; the server stores ciphertext only. The build's output is committed to ../assets/ and embedded by include_str!, so nothing here is needed to build or run the server.",

@@ -9,7 +9,7 @@ yanked = "deny"
 multiple-versions = "warn"
 wildcards = "deny"
 # A workspace path dependency has no version to range over and no publisher but us; cargo-deny reads the internal
-# crates as wildcards. The exemption covers path dependencies only — a registry wildcard is still refused.
+# crates as wildcards. The exemption covers path dependencies only -- a registry wildcard is still refused.
 allow-wildcard-paths = true
 
 [licenses]

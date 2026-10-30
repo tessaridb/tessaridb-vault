@@ -197,7 +197,10 @@ fn s3_attachment_storage_is_optional_but_all_four_settings_are_required_together
             .iter()
             .copied()
             .chain(
-                required.into_iter().zip(values).filter(|(key, _)| *key != missing),
+                required
+                    .into_iter()
+                    .zip(values)
+                    .filter(|(key, _)| *key != missing),
             )
             .collect();
         let error = NodeConfig::from_lookup(lookup(&pairs)).expect_err(missing);
@@ -217,6 +220,29 @@ fn s3_attachment_storage_is_optional_but_all_four_settings_are_required_together
     assert_eq!(s3.bucket, "vault-attachments");
     assert_eq!(s3.region, "us-east-1");
     assert!(!format!("{config:?}").contains("an-application-secret"));
+}
+
+#[test]
+fn s3_region_is_not_empty() {
+    let pairs: Vec<(&str, &str)> = STORE
+        .iter()
+        .copied()
+        .chain([
+            ("TESSARIDB_VAULT_S3_ENDPOINT", "https://s3.example.com"),
+            ("TESSARIDB_VAULT_S3_BUCKET", "vault-attachments"),
+            ("TESSARIDB_VAULT_S3_ACCESS_KEY", "vault-application"),
+            ("TESSARIDB_VAULT_S3_SECRET_KEY", "an-application-secret"),
+            ("TESSARIDB_VAULT_S3_REGION", ""),
+        ])
+        .collect();
+    let error = NodeConfig::from_lookup(lookup(&pairs)).expect_err("an empty region");
+    assert!(matches!(
+        error,
+        Error::InvalidConfig {
+            field: "TESSARIDB_VAULT_S3_REGION",
+            reason: "required",
+        }
+    ));
 }
 
 #[test]

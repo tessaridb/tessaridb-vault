@@ -1606,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "tessari-vault-api"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "async-trait",
  "axum",
@@ -1630,11 +1630,11 @@ dependencies = [
 
 [[package]]
 name = "tessari-vault-constants"
-version = "0.0.1"
+version = "0.0.2"
 
 [[package]]
 name = "tessari-vault-core"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "coset",
  "ring",
@@ -1648,7 +1648,7 @@ dependencies = [
 
 [[package]]
 name = "tessari-vault-crypto"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "argon2",
  "tessari-vault-constants",
@@ -1659,14 +1659,14 @@ dependencies = [
 
 [[package]]
 name = "tessari-vault-daemons"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "tessari-vault-infrastructure"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "argon2",
  "async-trait",
@@ -1686,7 +1686,7 @@ dependencies = [
 
 [[package]]
 name = "tessari-vault-node"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "axum",
  "tessari-vault-api",
@@ -1702,7 +1702,7 @@ dependencies = [
 
 [[package]]
 name = "tessari-vault-observability"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "thiserror",
  "tracing-appender",
@@ -1711,7 +1711,7 @@ dependencies = [
 
 [[package]]
 name = "tessari-vault-storage"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "async-trait",
  "serde_json",
@@ -1727,7 +1727,7 @@ dependencies = [
 
 [[package]]
 name = "tessari-vault-types"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "tessari-vault-constants",
  "thiserror",

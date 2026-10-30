@@ -152,7 +152,16 @@ fn s3_settings(lookup: &impl Fn(&str) -> Option<String>) -> Result<Option<S3Conf
         bucket: required(KEYS[1])?,
         access_key: required(KEYS[2])?,
         secret_key: required(KEYS[3])?,
-        region: lookup("TESSARIDB_VAULT_S3_REGION").unwrap_or_else(|| "us-east-1".to_owned()),
+        region: match lookup("TESSARIDB_VAULT_S3_REGION") {
+            Some(region) if !region.is_empty() => region,
+            Some(_) => {
+                return Err(Error::InvalidConfig {
+                    field: "TESSARIDB_VAULT_S3_REGION",
+                    reason: "required",
+                });
+            }
+            None => "us-east-1".to_owned(),
+        },
     }))
 }
 
