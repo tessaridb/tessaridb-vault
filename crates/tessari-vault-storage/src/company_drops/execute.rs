@@ -14,11 +14,12 @@ use crate::records::{RecordVaults, parts};
 use crate::{Error, Result};
 
 /// The tables that hold a company's rows by their `company` field.
-const COMPANY_TABLES: [&str; 14] = [
+const COMPANY_TABLES: [&str; 15] = [
     "memberships",
     "records",
     "record_types",
     "files",
+    "file_objects",
     "member_keys",
     "chains",
     "statements",
@@ -83,6 +84,19 @@ impl FromRecord for Kept {
             id: row.take("file_id")?,
             size: row.take("size")?,
             kept: row.take("kept")?,
+        })
+    }
+}
+
+/// One external object to remove after the company's metadata is gone.
+struct ObjectRow {
+    key: String,
+}
+
+impl FromRecord for ObjectRow {
+    fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
+        Ok(Self {
+            key: row.take("object_key")?,
         })
     }
 }
@@ -184,6 +198,16 @@ impl CompanyDropService {
                 ));
             }
         }
+        let objects = records::<ObjectRow>(
+            self.database
+                .read_at(
+                    &self.place,
+                    "SELECT object_key FROM file_objects WHERE company = $company;",
+                    vec![bind("company", c)],
+                )
+                .await?,
+            "file object",
+        )?;
         let held: Vec<Value> = records::<Id>(
             self.database
                 .read_at(
@@ -211,6 +235,11 @@ impl CompanyDropService {
             .transact_at(&self.place, &script, "", parameters)
             .await
             .map_err(|error| thrown(error.into()))?;
+        if let Some(store) = &self.objects {
+            for object in objects {
+                let _ = store.delete(&object.key).await;
+            }
+        }
         Ok(())
     }
 }

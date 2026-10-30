@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use tessari_vault_infrastructure::custody::{Passwords, SigninKeys, TotpSeal, VaultKeys};
+use tessari_vault_infrastructure::s3::ObjectStorage;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 
 use crate::accounts::{AccountService, TessaridbAccountRepository};
@@ -11,7 +12,7 @@ use crate::chain::{ChainService, TessaridbChainRepository};
 use crate::companies::{CompanyService, TessaridbCompanyRepository};
 use crate::company_drops::CompanyDropService;
 use crate::enrolments::EnrolmentService;
-use crate::files::{FileService, TessaridbFiles};
+use crate::files::{FileService, S3Files, TessaridbFiles};
 use crate::group_keys::{GroupKeyService, TessaridbGroupKeyRepository};
 use crate::groups::{GroupService, TessaridbGroupRepository};
 use crate::identities::IdentityService;
@@ -89,7 +90,12 @@ pub struct Storage {
 impl Storage {
     /// Every service, over `database`, working at `place`, with the keys the service key made.
     #[must_use]
-    pub fn new(database: &Database, place: &Place, custody: Custody) -> Self {
+    pub fn new(
+        database: &Database,
+        place: &Place,
+        custody: Custody,
+        objects: Option<Arc<dyn ObjectStorage>>,
+    ) -> Self {
         let Custody {
             passwords,
             seal,
@@ -102,7 +108,11 @@ impl Storage {
             Arc::clone(&vault_keys),
             Arc::clone(&seal),
         ));
-        let company_drops = Arc::new(CompanyDropService::new(database.clone(), place.clone()));
+        let company_drops = Arc::new(CompanyDropService::new(
+            database.clone(),
+            place.clone(),
+            objects.clone(),
+        ));
         let vaults = Arc::new(RecordVaults::new(database.clone(), vault_keys));
         let accounts = Arc::new(AccountService::new(
             Arc::new(TessaridbAccountRepository::new(database.clone())),
@@ -187,12 +197,17 @@ impl Storage {
             database.clone(),
             place.clone(),
         ));
+        let repository: Arc<dyn crate::files::FileRepository> = match objects {
+            Some(ref client) => Arc::new(S3Files::new(database.clone(), Arc::clone(client))),
+            None => Arc::new(TessaridbFiles::new(database.clone())),
+        };
         let files = Arc::new(FileService::new(
-            Arc::new(TessaridbFiles::new(database.clone())),
+            repository,
             Arc::clone(&records),
             Arc::clone(&vaults),
             database.clone(),
             place.clone(),
+            objects,
         ));
         let keys = Arc::new(KeyService::new(
             Arc::new(TessaridbKeyRepository::new(database.clone())),

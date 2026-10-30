@@ -386,13 +386,14 @@ async fn part_zero(world: &World, company: &str, file: &str) -> String {
 }
 
 /// The tables that hold a company's rows by its `company` field, which a deletion must leave empty of it.
-const COMPANY_TABLES: [&str; 14] = [
+const COMPANY_TABLES: [&str; 15] = [
     "groups",
     "memberships",
     "company_drops",
     "records",
     "record_types",
     "files",
+    "file_objects",
     "member_keys",
     "chains",
     "statements",
@@ -578,4 +579,75 @@ async fn a_deletion_past_its_wait_is_carried_out_and_leaves_only_the_trail() {
         )
         .await;
     assert_eq!(status, StatusCode::OK, "B is untouched: {body}");
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
+async fn a_company_drop_removes_its_s3_objects_and_their_metadata() {
+    use crate::files::{FakeObjects, new_file};
+
+    let objects = std::sync::Arc::new(FakeObjects::default());
+    let world = World::with_objects(objects.clone()).await;
+    let cast = Cast::new(&world).await;
+    let signer = Signer::new();
+    let owner = signing_owner(&world, &cast, &signer).await;
+    let a = cast.company_a.as_str();
+    let (path, created) = new_file(&world, &cast, 4_194_304).await;
+    assert_eq!(created["kept"], "s3");
+    let (status, body) = world
+        .put_octets(
+            &format!("{path}?offset=0"),
+            &cast.member_a,
+            vec![9; 4_194_304],
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    assert_eq!(objects.keys().len(), 1);
+    let base = format!("/api/companies/{a}/drop");
+    let (status, _) = world
+        .call(
+            Method::POST,
+            &base,
+            Some(&owner),
+            Some(asked(a, &signer, now())),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let (status, _) = world
+        .call(
+            Method::POST,
+            &format!("{base}/confirm"),
+            Some(&cast.platform),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    world
+        .database
+        .run_at(
+            &world.place,
+            "UPDATE company_drops:$c SET drop_after = 0;",
+            vec![(
+                "c".to_owned(),
+                tessari_vault_infrastructure::tessaridb::Value::from(a),
+            )],
+        )
+        .await
+        .expect("the wait is over");
+    let dropped = world
+        .storage
+        .company_drops
+        .drop_due()
+        .await
+        .expect("the company drop");
+    assert_eq!(dropped.len(), 1);
+    assert!(
+        objects.keys().is_empty(),
+        "S3 objects are removed with the company"
+    );
+    assert_eq!(
+        count(&world, "SELECT * FROM file_objects WHERE company = $c;", a).await,
+        0,
+        "object metadata is removed with the company"
+    );
 }

@@ -7,6 +7,7 @@ import type { Control } from "./custom-fields-view.ts";
 import type { SshKeyValue } from "./fields.ts";
 import { sshImportProblem } from "./ssh-field.ts";
 import { generateSshKey, importSshKey } from "./ssh.ts";
+import { downloadText, sshDownloadName } from "./ssh-download.ts";
 
 /** The control for the SSH key field `label`, holding `initial`; a new key is commented with the field's label. */
 export function sshKeyControl(label: string, initial: SshKeyValue | null, id: string): Control {
@@ -31,11 +32,33 @@ export function sshKeyControl(label: string, initial: SshKeyValue | null, id: st
       area.setAttribute("aria-invalid", "true");
     }
   };
+  const publicDownload = el("button", { type: "button" }, "Download public key");
+  const privateDownload = el("button", { type: "button" }, "Download private key");
   const draw = (): void => {
-    fill(shown, ...(value === null ? [el("p", { class: "muted" }, "No key yet.")] : [el("p", { class: "value mono" }, value.publicKey), el("p", { class: "muted mono" }, value.fingerprint)]));
+    fill(
+      shown,
+      ...(value === null
+        ? [el("p", { class: "muted" }, "No key yet.")]
+        : [
+            el("p", { class: "value mono" }, value.publicKey),
+            el("p", { class: "muted mono" }, value.fingerprint),
+            el("details", {}, el("summary", {}, "Private key"), el("pre", { class: "value mono" }, value.privateKey)),
+            el("div", { class: "input-line" }, publicDownload, privateDownload),
+          ]),
+    );
     make.textContent = value === null ? "Make a key" : "Make a new key";
     paste.textContent = value === null ? "Paste a key" : "Paste another key";
   };
+  publicDownload.addEventListener("click", () => {
+    if (value !== null) {
+      downloadText(sshDownloadName(label, "public"), value.publicKey);
+    }
+  });
+  privateDownload.addEventListener("click", () => {
+    if (value !== null) {
+      downloadText(sshDownloadName(label, "private"), value.privateKey);
+    }
+  });
   const replaced = (next: SshKeyValue, words: string): void => {
     const had = value !== null;
     value = next;

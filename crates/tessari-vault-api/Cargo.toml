@@ -34,6 +34,8 @@ path = "tests/live/main.rs"
 
 [dev-dependencies]
 tessari-vault-infrastructure.workspace = true
+tessaridb-s3-client.workspace = true
+async-trait.workspace = true
 serde_json.workspace = true
 tower.workspace = true
 ring.workspace = true

@@ -175,3 +175,81 @@ fn the_public_url_names_the_passkey_relying_party_and_must_be_https_or_loopback(
         );
     }
 }
+
+#[test]
+fn s3_attachment_storage_is_optional_but_all_four_settings_are_required_together() {
+    let config = NodeConfig::from_lookup(lookup(&STORE)).expect("no S3 by default");
+    assert!(config.s3.is_none());
+    let required = [
+        "TESSARIDB_VAULT_S3_ENDPOINT",
+        "TESSARIDB_VAULT_S3_BUCKET",
+        "TESSARIDB_VAULT_S3_ACCESS_KEY",
+        "TESSARIDB_VAULT_S3_SECRET_KEY",
+    ];
+    let values = [
+        "https://s3.example.com",
+        "vault-attachments",
+        "vault-application",
+        "an-application-secret",
+    ];
+    for missing in required {
+        let pairs: Vec<(&str, &str)> = STORE
+            .iter()
+            .copied()
+            .chain(
+                required.into_iter().zip(values).filter(|(key, _)| *key != missing),
+            )
+            .collect();
+        let error = NodeConfig::from_lookup(lookup(&pairs)).expect_err(missing);
+        assert!(
+            matches!(error, Error::InvalidConfig { field, reason: "required" } if field == missing),
+            "{error}"
+        );
+    }
+    let pairs: Vec<(&str, &str)> = STORE
+        .iter()
+        .copied()
+        .chain(required.into_iter().zip(values))
+        .collect();
+    let config = NodeConfig::from_lookup(lookup(&pairs)).expect("a complete S3 config");
+    let s3 = config.s3.as_ref().expect("S3 is configured");
+    assert_eq!(s3.endpoint, "https://s3.example.com");
+    assert_eq!(s3.bucket, "vault-attachments");
+    assert_eq!(s3.region, "us-east-1");
+    assert!(!format!("{config:?}").contains("an-application-secret"));
+}
+
+#[test]
+fn s3_requires_https_outside_a_loopback_trial() {
+    let pairs: Vec<(&str, &str)> = STORE
+        .iter()
+        .copied()
+        .chain([
+            ("TESSARIDB_VAULT_S3_ENDPOINT", "http://s3.example.com"),
+            ("TESSARIDB_VAULT_S3_BUCKET", "vault-attachments"),
+            ("TESSARIDB_VAULT_S3_ACCESS_KEY", "vault-application"),
+            ("TESSARIDB_VAULT_S3_SECRET_KEY", "an-application-secret"),
+        ])
+        .collect();
+    let error = NodeConfig::from_lookup(lookup(&pairs)).expect_err("plain HTTP is not a trial");
+    assert!(matches!(
+        error,
+        Error::InvalidConfig {
+            field: "TESSARIDB_VAULT_S3_ENDPOINT",
+            ..
+        }
+    ));
+    let pairs: Vec<(&str, &str)> = STORE
+        .iter()
+        .copied()
+        .chain([
+            ("TESSARIDB_VAULT_S3_ENDPOINT", "http://127.0.0.1:9100"),
+            ("TESSARIDB_VAULT_S3_BUCKET", "vault-attachments"),
+            ("TESSARIDB_VAULT_S3_ACCESS_KEY", "vault-application"),
+            ("TESSARIDB_VAULT_S3_SECRET_KEY", "an-application-secret"),
+            ("TESSARIDB_VAULT_S3_REGION", "test-region-1"),
+        ])
+        .collect();
+    let config = NodeConfig::from_lookup(lookup(&pairs)).expect("loopback HTTP is a trial");
+    assert_eq!(config.s3.expect("S3").region, "test-region-1");
+}

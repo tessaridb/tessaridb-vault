@@ -63,7 +63,7 @@ function withField(type: string, value: unknown): unknown {
 }
 
 describe("record content", () => {
-  it("names the eleven built-in types", () => {
+  it("names the twelve built-in types", () => {
     assert.deepEqual(BUILT_IN_TYPES.map((type) => type.id), [
       "login",
       "secure-note",
@@ -71,6 +71,7 @@ describe("record content", () => {
       "file",
       "payment-card",
       "identity",
+      "contact",
       "server",
       "database",
       "api-credential",
@@ -83,7 +84,7 @@ describe("record content", () => {
     const keyId = random(16);
     const key = await importRecordKey(random(32));
     const keys = new Map([[hex(keyId), key]]);
-    assert.equal(BUILT_IN_TYPES.length, 11, "the loop below covers every built-in type");
+    assert.equal(BUILT_IN_TYPES.length, 12, "the loop below covers every built-in type");
     for (const [index, template] of BUILT_IN_TYPES.entries()) {
       const document = filled(recordFromTemplate(template, `A ${template.id}`));
       const context = { company: "c", record: `r-${index}`, revision: 1, keyId };

@@ -70,6 +70,8 @@ DEFINE TABLE IF NOT EXISTS files (file_id string, company string, record string,
 written int, created int); \
 DEFINE INDEX IF NOT EXISTS by_id ON files FIELDS file_id UNIQUE; \
 DEFINE INDEX IF NOT EXISTS by_record ON files FIELDS record; \
+DEFINE TABLE IF NOT EXISTS file_objects (company string, file string, offset int, object_key string, size int); \
+DEFINE INDEX IF NOT EXISTS by_file_part ON file_objects FIELDS company, file, offset UNIQUE; \
 DEFINE BUCKET IF NOT EXISTS record_files MAX 4194304; \
 DEFINE TABLE IF NOT EXISTS member_keys (company string, account string, key_id string, agreement_public string, \
 signing_public string, kdf_salt string, kdf_memory int, kdf_passes int, kdf_lanes int, created int); \

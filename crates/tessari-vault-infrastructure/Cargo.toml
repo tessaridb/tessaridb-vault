@@ -18,6 +18,8 @@ tessari-vault-constants.workspace = true
 tessaridb-client.workspace = true
 ring.workspace = true
 tessaridb-oauth-client.workspace = true
+tessaridb-s3-client.workspace = true
+async-trait.workspace = true
 # The server's verifier needs the PHC string form the browser build leaves out.
 argon2 = { workspace = true, features = ["password-hash"] }
 unicode-normalization.workspace = true

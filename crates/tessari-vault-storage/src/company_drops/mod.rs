@@ -8,6 +8,7 @@ mod reads;
 
 use tessari_vault_core::access::Action;
 use tessari_vault_core::company_drop::{Act, statement, verify};
+use tessari_vault_infrastructure::s3::ObjectStorage;
 use tessari_vault_infrastructure::tessaridb::{Answer, Database, Place, Value};
 use tessari_vault_types::{CompanyId, base64url};
 
@@ -48,11 +49,20 @@ impl DropState {
 pub struct CompanyDropService {
     database: Database,
     place: Place,
+    objects: Option<std::sync::Arc<dyn ObjectStorage>>,
 }
 
 impl CompanyDropService {
-    pub(crate) const fn new(database: Database, place: Place) -> Self {
-        Self { database, place }
+    pub(crate) const fn new(
+        database: Database,
+        place: Place,
+        objects: Option<std::sync::Arc<dyn ObjectStorage>>,
+    ) -> Self {
+        Self {
+            database,
+            place,
+            objects,
+        }
     }
 
     /// An owner asks for `company`'s deletion with `signature` over the request statement for `at`, made by their own

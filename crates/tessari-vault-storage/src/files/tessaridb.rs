@@ -57,7 +57,7 @@ pub(crate) fn part_size() -> Result<i64> {
 }
 
 /// Which part holds the byte at `offset`.
-fn part_index(offset: i64) -> Result<i64> {
+pub(crate) fn part_index(offset: i64) -> Result<i64> {
     offset
         .checked_div(part_size()?)
         .ok_or_else(|| unreadable("part index"))
@@ -174,6 +174,7 @@ impl FileRepository for TessaridbFiles {
                 ]);
                 "PUT record_files:$part = $bytes;".to_owned()
             }
+            Kept::S3 => return Err(unreadable("backend")),
         };
         let script = format!(
             "BEGIN; {GUARD} {SHARES_UNCHANGED} {IN_ORDER} {store} UPDATE files:$file SET written = $end; {record} \
@@ -186,6 +187,7 @@ impl FileRepository for TessaridbFiles {
                     .await
             }
             Kept::Bucket => self.database.transact_at(place, &script, "", guard).await,
+            Kept::S3 => return Err(unreadable("backend")),
         };
         written.map_err(|error| thrown(error.into()))?;
         Ok(())
@@ -239,6 +241,7 @@ impl FileRepository for TessaridbFiles {
                     .ok_or_else(|| unreadable("part offset"))?;
                 Ok(slice(&joined(answers, parts)?, skipped, limit))
             }
+            Kept::S3 => Err(unreadable("backend")),
         }
     }
 }

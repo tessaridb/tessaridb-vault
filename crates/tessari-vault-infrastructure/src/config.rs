@@ -25,6 +25,36 @@ pub struct NodeConfig {
     pub oidc: Option<OidcConfig>,
     /// The passkey relying party, from the address people reach the server at, when one is configured.
     pub passkeys: Option<PasskeyParty>,
+    /// Optional external storage for new large ciphertext attachments.
+    pub s3: Option<S3Config>,
+}
+
+/// TessariDB S3 for new large attachments. The secret is never printed.
+#[derive(Clone)]
+pub struct S3Config {
+    /// The S3 endpoint; HTTPS outside a loopback trial.
+    pub endpoint: String,
+    /// The dedicated attachment bucket.
+    pub bucket: String,
+    /// The application access key, never the S3 root key.
+    pub access_key: String,
+    /// The application secret key.
+    pub secret_key: String,
+    /// The signing region.
+    pub region: String,
+}
+
+impl std::fmt::Debug for S3Config {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("S3Config")
+            .field("endpoint", &self.endpoint)
+            .field("bucket", &self.bucket)
+            .field("access_key", &self.access_key)
+            .field("secret_key", &"<redacted>")
+            .field("region", &self.region)
+            .finish()
+    }
 }
 
 /// The relying party passkeys are scoped to: the host people reach the server at, and that origin.
@@ -66,6 +96,64 @@ fn passkey_party(public_url: &str) -> Result<PasskeyParty> {
         rp_id: host.to_owned(),
         origin: url.origin().ascii_serialization(),
     })
+}
+
+fn s3_settings(lookup: &impl Fn(&str) -> Option<String>) -> Result<Option<S3Config>> {
+    const KEYS: [&str; 4] = [
+        "TESSARIDB_VAULT_S3_ENDPOINT",
+        "TESSARIDB_VAULT_S3_BUCKET",
+        "TESSARIDB_VAULT_S3_ACCESS_KEY",
+        "TESSARIDB_VAULT_S3_SECRET_KEY",
+    ];
+    if KEYS.iter().all(|key| lookup(key).is_none()) {
+        return Ok(None);
+    }
+    let required = |key: &'static str| {
+        lookup(key)
+            .filter(|value| !value.is_empty())
+            .ok_or(Error::InvalidConfig {
+                field: key,
+                reason: "required",
+            })
+    };
+    let endpoint = required(KEYS[0])?;
+    let url = url::Url::parse(&endpoint).map_err(|_| Error::InvalidConfig {
+        field: KEYS[0],
+        reason: "an absolute HTTP(S) URL",
+    })?;
+    let host = url.host_str().ok_or(Error::InvalidConfig {
+        field: KEYS[0],
+        reason: "a URL with a host",
+    })?;
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+    if !(url.scheme() == "https" || (url.scheme() == "http" && loopback)) {
+        return Err(Error::InvalidConfig {
+            field: KEYS[0],
+            reason: "https, or http to localhost or a loopback address",
+        });
+    }
+    if url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || !url.username().is_empty()
+    {
+        return Err(Error::InvalidConfig {
+            field: KEYS[0],
+            reason: "an endpoint with no path, query, fragment or user",
+        });
+    }
+    Ok(Some(S3Config {
+        endpoint,
+        bucket: required(KEYS[1])?,
+        access_key: required(KEYS[2])?,
+        secret_key: required(KEYS[3])?,
+        region: lookup("TESSARIDB_VAULT_S3_REGION").unwrap_or_else(|| "us-east-1".to_owned()),
+    }))
 }
 
 /// An OpenID Connect issuer and this server's registration there.
@@ -162,6 +250,7 @@ impl NodeConfig {
         let passkeys = lookup("TESSARIDB_VAULT_PUBLIC_URL")
             .map(|url| passkey_party(&url))
             .transpose()?;
+        let s3 = s3_settings(&lookup)?;
         Ok(Self {
             store: StoreConfig {
                 address: required("TESSARIDB_VAULT_STORE")?,
@@ -176,6 +265,7 @@ impl NodeConfig {
             service_key_file: required("TESSARIDB_VAULT_SERVICE_KEY_FILE")?.into(),
             oidc,
             passkeys,
+            s3,
         })
     }
 }
