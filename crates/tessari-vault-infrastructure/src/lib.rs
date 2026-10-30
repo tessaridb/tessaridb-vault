@@ -7,6 +7,7 @@ pub mod hardening;
 pub mod health;
 pub mod oidc;
 pub mod random;
+pub mod s3;
 pub mod tessaridb;
 
 pub use error::{Error, Result};

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tessari_vault_constants::FILE_PART_MAX_BYTES;
 use tessari_vault_core::access::Action;
 use tessari_vault_infrastructure::random;
+use tessari_vault_infrastructure::s3::ObjectStorage;
 use tessari_vault_infrastructure::tessaridb::{Database, Place, RefusalClass};
 use tessari_vault_types::{CompanyId, FileId, RecordId};
 
@@ -24,6 +25,7 @@ pub struct FileService {
     vaults: Arc<RecordVaults>,
     database: Database,
     place: Place,
+    objects: Option<Arc<dyn ObjectStorage>>,
 }
 
 fn count(value: u64) -> Result<i64> {
@@ -37,6 +39,7 @@ impl FileService {
         vaults: Arc<RecordVaults>,
         database: Database,
         place: Place,
+        objects: Option<Arc<dyn ObjectStorage>>,
     ) -> Self {
         Self {
             repository,
@@ -44,6 +47,7 @@ impl FileService {
             vaults,
             database,
             place,
+            objects,
         }
     }
 
@@ -71,7 +75,7 @@ impl FileService {
         let (entity, reached) = self.records.reached(actor, company, record).await?;
         reached.editing()?;
         let file = FileId::from_random(random::bytes()?);
-        let kept = Kept::for_size(size);
+        let kept = Kept::for_size_with_s3(size, self.objects.is_some());
         let at = FileRef {
             company,
             record,
@@ -141,7 +145,7 @@ impl FileService {
         let part_sized = end == meta.size || end.checked_sub(offset) == Some(FILE_PART_MAX_BYTES);
         let shaped = match meta.kept {
             Kept::Vault => whole,
-            Kept::Bucket => part_sized,
+            Kept::Bucket | Kept::S3 => part_sized,
         };
         if !in_order || !shaped {
             return Err(Error::Conflict(Conflict::OutOfOrder));

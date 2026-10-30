@@ -57,7 +57,7 @@ services:
       - vault-keys:/keys
 
   vault:
-    image: tessaridb/vault:0.0.1
+    image: tessaridb/vault:0.0.2
     restart: unless-stopped
     network_mode: "service:tessaridb"
     depends_on:
@@ -73,6 +73,12 @@ services:
       TESSARIDB_VAULT_PUBLIC_URL: ${VAULT_PUBLIC_URL:-http://localhost:8080}
       TESSARIDB_VAULT_PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:?set PLATFORM_ADMIN_EMAIL in .env}
       TESSARIDB_VAULT_PLATFORM_ADMIN_NAME: ${PLATFORM_ADMIN_NAME:?set PLATFORM_ADMIN_NAME in .env}
+      # To keep new large files in TessariDB S3, add all four of these to this
+      # environment block (and VAULT_S3_REGION if it differs from us-east-1):
+      #   TESSARIDB_VAULT_S3_ENDPOINT: ${VAULT_S3_ENDPOINT}
+      #   TESSARIDB_VAULT_S3_BUCKET: ${VAULT_S3_BUCKET}
+      #   TESSARIDB_VAULT_S3_ACCESS_KEY: ${VAULT_S3_ACCESS_KEY}
+      #   TESSARIDB_VAULT_S3_SECRET_KEY: ${VAULT_S3_SECRET_KEY}
     volumes:
       - vault-keys:/keys:ro
     stop_grace_period: 30s

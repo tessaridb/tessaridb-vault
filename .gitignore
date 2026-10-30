@@ -8,6 +8,7 @@
 *.db
 *.rdb
 *.log
+.scratchpad/
 
 # Env / secrets
 .env

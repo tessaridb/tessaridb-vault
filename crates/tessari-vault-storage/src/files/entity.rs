@@ -6,6 +6,24 @@ use tessari_vault_types::FileId;
 
 use crate::{Error, Result};
 
+/// One S3 object key published as a file part.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FileObject {
+    pub(crate) offset: i64,
+    pub(crate) key: String,
+    pub(crate) size: i64,
+}
+
+impl FromRecord for FileObject {
+    fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
+        Ok(Self {
+            offset: row.take("offset")?,
+            key: row.take("object_key")?,
+            size: row.take("size")?,
+        })
+    }
+}
+
 /// One `files` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FileEntity {
@@ -33,6 +51,8 @@ pub enum Kept {
     Vault,
     /// In the files bucket: the browser's layer only.
     Bucket,
+    /// In TessariDB S3: the browser's layer only.
+    S3,
 }
 
 impl Kept {
@@ -46,12 +66,23 @@ impl Kept {
         }
     }
 
+    /// Where a file of `size` bytes is kept when S3 is optionally enabled.
+    #[must_use]
+    pub const fn for_size_with_s3(size: u64, s3: bool) -> Self {
+        match (size <= MAX_VAULT_FILE_BYTES, s3) {
+            (true, _) => Self::Vault,
+            (false, false) => Self::Bucket,
+            (false, true) => Self::S3,
+        }
+    }
+
     /// The word it is stored and sent as.
     #[must_use]
     pub const fn word(self) -> &'static str {
         match self {
             Self::Vault => "vault",
             Self::Bucket => "bucket",
+            Self::S3 => "s3",
         }
     }
 }
@@ -78,6 +109,7 @@ impl FileEntity {
         let kept = match self.kept.as_str() {
             "vault" => Kept::Vault,
             "bucket" => Kept::Bucket,
+            "s3" => Kept::S3,
             _ => return Err(fault("kept")),
         };
         Ok(FileMeta {
@@ -86,5 +118,30 @@ impl FileEntity {
             kept,
             written: u64::try_from(self.written).map_err(|_| fault("written"))?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FileEntity, Kept};
+
+    #[test]
+    fn every_backend_word_reads_back_as_written() {
+        for (word, expected) in [
+            ("vault", Kept::Vault),
+            ("bucket", Kept::Bucket),
+            ("s3", Kept::S3),
+        ] {
+            let meta = FileEntity {
+                id: "ab".repeat(16),
+                size: 10,
+                kept: word.to_owned(),
+                written: 0,
+            }
+            .into_model()
+            .expect("a known backend");
+            assert_eq!(meta.kept, expected);
+            assert_eq!(meta.kept.word(), word);
+        }
     }
 }

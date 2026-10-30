@@ -14,6 +14,7 @@ use tessari_vault_infrastructure::custody::{
     KeyRing, PasswordCost, Passwords, SigninKeys, TotpSeal, VaultKeys,
 };
 use tessari_vault_infrastructure::oidc::OidcProvider;
+use tessari_vault_infrastructure::s3::ObjectStorage;
 use tessari_vault_infrastructure::tessaridb::{Database, Place, StoreConfig};
 use tessari_vault_storage::{Custody, Storage, migrate};
 use tessari_vault_types::{AccountId, Email, Name};
@@ -142,6 +143,7 @@ fn storage_on(
     database: &Database,
     place: &Place,
     ring: &str,
+    objects: Option<std::sync::Arc<dyn ObjectStorage>>,
 ) -> (Storage, std::sync::Arc<VaultKeys>) {
     let turn = TURN.fetch_add(1, Ordering::Relaxed);
     let key_file =
@@ -171,6 +173,7 @@ fn storage_on(
             signin_keys,
             vault_keys: std::sync::Arc::clone(&vault_keys),
         },
+        objects,
     );
     (storage, vault_keys)
 }
@@ -191,6 +194,7 @@ pub struct World {
     pub server_database: Database,
     /// The company vault keys the server derives, for the rows that open a vault behind its back.
     pub vault_keys: std::sync::Arc<VaultKeys>,
+    pub objects: Option<std::sync::Arc<dyn ObjectStorage>>,
     pub node: Node,
 }
 
@@ -219,7 +223,13 @@ impl World {
 
     /// A world whose server holds the ring `ring` (the key file's text).
     pub async fn on_ring(ring: &str) -> Self {
-        Self::build_on(None, None, ring).await
+        Self::build_on(None, None, ring, None).await
+    }
+
+    /// A world whose large files go to the object double, with the ordinary ring.
+    pub async fn with_objects(objects: std::sync::Arc<dyn ObjectStorage>) -> Self {
+        let ring = format!("1 {}\n2 {}\n", older_epoch_key(), "cd".repeat(32));
+        Self::build_on(None, None, &ring, Some(objects)).await
     }
 
     async fn build(
@@ -228,13 +238,14 @@ impl World {
     ) -> Self {
         // Two epochs, so every live test runs on a current epoch with an older one beside it.
         let ring = format!("1 {}\n2 {}\n", older_epoch_key(), "cd".repeat(32));
-        Self::build_on(oidc, data, &ring).await
+        Self::build_on(oidc, data, &ring, None).await
     }
 
     async fn build_on(
         oidc: Option<std::sync::Arc<OidcProvider>>,
         data: Option<&std::path::Path>,
         ring: &str,
+        objects: Option<std::sync::Arc<dyn ObjectStorage>>,
     ) -> Self {
         let node = Node::start_in(data).await;
         let database = Database::new(
@@ -270,7 +281,7 @@ impl World {
         migrate(&server_database, &place)
             .await
             .expect("the schema applies a second time unchanged");
-        let (storage, vault_keys) = storage_on(&server_database, &place, ring);
+        let (storage, vault_keys) = storage_on(&server_database, &place, ring, objects.clone());
         Self {
             app: router(AppState {
                 storage: storage.clone(),
@@ -285,6 +296,7 @@ impl World {
             server_database,
             place,
             vault_keys,
+            objects,
             node,
         }
     }
@@ -300,7 +312,12 @@ impl World {
 
     /// The server's storage over this world's namespace as a server holding the ring `ring` would build it.
     pub fn storage_on(&self, ring: &str) -> (Storage, std::sync::Arc<VaultKeys>) {
-        storage_on(&self.server_database, &self.place, ring)
+        storage_on(
+            &self.server_database,
+            &self.place,
+            ring,
+            self.objects.clone(),
+        )
     }
 
     /// A session for `account`, as sign-in will issue one.

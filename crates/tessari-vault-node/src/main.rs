@@ -29,6 +29,7 @@ use tessari_vault_infrastructure::custody::{
 use tessari_vault_infrastructure::hardening::forbid_core_dumps;
 use tessari_vault_infrastructure::health::{PROBE_BUDGET, probe, probe_address};
 use tessari_vault_infrastructure::oidc::OidcProvider;
+use tessari_vault_infrastructure::s3::{ObjectStorage, S3};
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_observability::init_tracing;
 use tessari_vault_storage::{Custody, Storage, migrate};
@@ -136,7 +137,13 @@ async fn run() -> Result<&'static str, StartError> {
     let place = Place::new(config.namespace.as_str(), config.database.as_str())?;
     let database = Database::new(config.store.clone(), STORE_CONNECTIONS)?;
     migrate(&database, &place).await?;
-    let storage = Storage::new(&database, &place, custody);
+    let objects = config.s3.as_ref().map(S3::new).transpose()?;
+    let storage = Storage::new(
+        &database,
+        &place,
+        custody,
+        objects.map(|s3| Arc::new(s3) as Arc<dyn ObjectStorage>),
+    );
     let mut platform_admin = None;
     if let Some((email, name)) = &config.platform_admin {
         let email = Email::parse(email).map_err(|_| StartError::PlatformAdmin("address"))?;

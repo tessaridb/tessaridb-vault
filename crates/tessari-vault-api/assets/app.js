@@ -750,7 +750,9 @@ ${target.detail}`.toLowerCase().includes(wanted));
       ["Number", "concealed"],
       ["Expires", "month-year"],
       ["Security code", "concealed"],
-      ["PIN", "concealed"]
+      ["PIN", "concealed"],
+      ["Card type", "text"],
+      ["Billing address", "multiline"]
     ]),
     main("Identity", "identity", [
       ["First name", "text"],
@@ -758,7 +760,21 @@ ${target.detail}`.toLowerCase().includes(wanted));
       ["Date of birth", "date"],
       ["Email", "email"],
       ["Phone", "phone"],
-      ["Address", "multiline"]
+      ["Address", "multiline"],
+      ["Job title", "text"],
+      ["Organization", "text"],
+      ["Website", "url"],
+      ["Social profiles", "multiline"]
+    ]),
+    main("Contact", "contact", [
+      ["Name", "text"],
+      ["Role", "text"],
+      ["Company", "text"],
+      ["Email", "email"],
+      ["Phone", "phone"],
+      ["Website", "url"],
+      ["Social profiles", "multiline"],
+      ["Notes", "multiline"]
     ]),
     main("Server", "server", [
       ["Address", "text"],
@@ -2788,6 +2804,21 @@ ${END}
     return describe(publicKey, comment, pem);
   }
 
+  // src/records/ssh-download.ts
+  function sshDownloadName(label, half) {
+    const base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+    const name = base === "" ? "id-ed25519" : base;
+    return half === "public" ? `${name}.pub` : name;
+  }
+  function downloadText(name, contents) {
+    const url = URL.createObjectURL(new Blob([contents], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = name;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   // src/records/ssh-field-view.ts
   function sshKeyControl(label, initial, id) {
     let value = initial;
@@ -2811,11 +2842,31 @@ ${END}
         area.setAttribute("aria-invalid", "true");
       }
     };
+    const publicDownload = el("button", { type: "button" }, "Download public key");
+    const privateDownload = el("button", { type: "button" }, "Download private key");
     const draw2 = () => {
-      fill(shown, ...value === null ? [el("p", { class: "muted" }, "No key yet.")] : [el("p", { class: "value mono" }, value.publicKey), el("p", { class: "muted mono" }, value.fingerprint)]);
+      fill(
+        shown,
+        ...value === null ? [el("p", { class: "muted" }, "No key yet.")] : [
+          el("p", { class: "value mono" }, value.publicKey),
+          el("p", { class: "muted mono" }, value.fingerprint),
+          el("details", {}, el("summary", {}, "Private key"), el("pre", { class: "value mono" }, value.privateKey)),
+          el("div", { class: "input-line" }, publicDownload, privateDownload)
+        ]
+      );
       make.textContent = value === null ? "Make a key" : "Make a new key";
       paste.textContent = value === null ? "Paste a key" : "Paste another key";
     };
+    publicDownload.addEventListener("click", () => {
+      if (value !== null) {
+        downloadText(sshDownloadName(label, "public"), value.publicKey);
+      }
+    });
+    privateDownload.addEventListener("click", () => {
+      if (value !== null) {
+        downloadText(sshDownloadName(label, "private"), value.privateKey);
+      }
+    });
     const replaced = (next, words) => {
       const had = value !== null;
       value = next;
