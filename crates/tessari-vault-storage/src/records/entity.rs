@@ -27,11 +27,11 @@ pub(crate) struct RecordEntity {
 impl FromRecord for RecordEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("record_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             record_type: row.take("record_type")?,
             revision: row.take("revision")?,
             key_id: row.take("key_id")?,
-            author: row.take("author")?,
+            author: crate::answers::reference(&mut row, "author")?,
             share_version: row.take("share_version")?,
             rotate: row.take("rotate")?,
             created: row.take("created")?,

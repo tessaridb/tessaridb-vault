@@ -23,7 +23,7 @@ struct EscrowedAccount {
 impl FromRecord for EscrowedAccount {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            account: row.take("account")?,
+            account: crate::answers::reference(&mut row, "account")?,
         })
     }
 }
@@ -59,7 +59,7 @@ pub(super) async fn rekey(
          OR (GET recovery_keys:$company).key_id != $retiring; \
          UPDATE recovery_keys:$company SET key_id = $key_id, public = $public, rotate = false; \
          DELETE {vault}:$vid; CREATE {vault}:$vid = {{ body: $public }};{added} {dropped}\
-         DELETE FROM escrows WHERE company = $company AND recovery_key_id = $retiring; {RECORD} COMMIT;"
+         DELETE FROM escrows WHERE company = companies:$company AND recovery_key_id = recovery_keys:$company; {RECORD} COMMIT;"
     );
     database
         .transact_presenting(place, &script, "", guard, &vault, vault_key)
@@ -77,7 +77,7 @@ pub(super) async fn escrowed_to(
     let answers = database
         .read_at(
             place,
-            "SELECT account FROM escrows WHERE company = $company AND recovery_key_id = $key_id \
+            "SELECT account FROM escrows WHERE company = companies:$company AND recovery_key_id = recovery_keys:$company \
              LIMIT $limit USING INDEX by_recovery_key;",
             vec![
                 bind("company", company.as_str()),
@@ -129,7 +129,7 @@ pub(super) async fn keep(
     ]);
     let script = format!(
         "BEGIN; {GUARD} THROW 'recovery keyed' IF (GET recovery_keys:$company).key_id != NONE; \
-         CREATE recovery_keys:$company = {{ company: $company, key_id: $key_id, public: $public, \
+         CREATE recovery_keys:$company = {{ company: companies:$company, key_id: $key_id, public: $public, \
          rotate: false, created: time::now() }}; CREATE {vault}:$vid = {{ body: $public }};{added} {RECORD} COMMIT;"
     );
     database

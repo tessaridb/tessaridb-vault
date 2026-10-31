@@ -36,7 +36,7 @@ pub(crate) struct FileEntity {
 impl FromRecord for FileEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("file_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             size: row.take("size")?,
             kept: row.take("kept")?,
             written: row.take("written")?,

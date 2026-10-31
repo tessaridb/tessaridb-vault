@@ -22,7 +22,7 @@ struct Named {
 impl FromRecord for Named {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            name: row.take("name")?,
+            name: crate::answers::reference(&mut row, "name")?,
         })
     }
 }
@@ -39,11 +39,34 @@ async fn names(
     Ok(rows.into_iter().map(|row| row.name).collect())
 }
 
+struct EdgeNamed {
+    name: String,
+}
+
+impl FromRecord for EdgeNamed {
+    fn from_row(row: Row) -> std::result::Result<Self, MappingFault> {
+        Ok(Self {
+            name: row.id().trim_matches('\'').to_owned(),
+        })
+    }
+}
+
+async fn edge_names(
+    database: &Database,
+    place: &Place,
+    script: &str,
+    parameters: Vec<(String, Value)>,
+) -> Result<HashSet<String>> {
+    let rows: Vec<EdgeNamed> =
+        answers::records(database.read_at(place, script, parameters).await?, "edge")?;
+    Ok(rows.into_iter().map(|row| row.name).collect())
+}
+
 async fn team_members(database: &Database, place: &Place, team: &str) -> Result<HashSet<String>> {
-    names(
+    edge_names(
         database,
         place,
-        "SELECT account_id AS name FROM groups:$group<-in_group<-accounts;",
+        "SELECT * FROM groups:$group<-in_group<-accounts;",
         vec![bind("group", team)],
     )
     .await
@@ -55,16 +78,29 @@ pub(super) async fn reach(
     company: &CompanyId,
     group: &GroupId,
 ) -> Result<Option<Vec<KeyEntity>>> {
-    let heads: Option<GroupHead> = answers::single(
-        database
-            .read_at(
-                place,
-                "SELECT company, kind FROM groups:$group;",
-                vec![bind("group", group.as_str())],
-            )
-            .await?,
-        "group",
-    )?;
+    let heads: Option<GroupHead> = if group.as_str() == company.as_str() {
+        answers::single(
+            database
+                .read_at(
+                    place,
+                    "SELECT *, 'company' AS kind, $group AS company FROM companies:$group;",
+                    vec![bind("group", group.as_str())],
+                )
+                .await?,
+            "company",
+        )?
+    } else {
+        answers::single(
+            database
+                .read_at(
+                    place,
+                    "SELECT company, kind FROM groups:$group;",
+                    vec![bind("group", group.as_str())],
+                )
+                .await?,
+            "group",
+        )?
+    };
     let Some(head) = heads.filter(|head| head.company == company.as_str()) else {
         return Ok(None);
     };
@@ -72,7 +108,7 @@ pub(super) async fn reach(
     let members = names(
         database,
         place,
-        "SELECT account AS name FROM memberships WHERE company = $company AND state = 'active' \
+        "SELECT account AS name FROM memberships WHERE company = companies:$company AND is_active = true \
              LIMIT $limit USING INDEX by_company;",
         vec![
             bind("company", company.as_str()),
@@ -85,10 +121,10 @@ pub(super) async fn reach(
         "team" => team_members(database, place, group.as_str()).await?,
         "department" => {
             let mut reach = team_members(database, place, group.as_str()).await?;
-            let teams = names(
+            let teams = edge_names(
                 database,
                 place,
-                "SELECT group_id AS name FROM groups:$group<-part_of<-groups;",
+                "SELECT * FROM groups:$group<-part_of<-groups;",
                 vec![bind("group", group.as_str())],
             )
             .await?;
@@ -103,7 +139,7 @@ pub(super) async fn reach(
         database
             .read_at(
                 place,
-                "SELECT * FROM member_keys WHERE company = $company LIMIT $limit USING INDEX by_company;",
+                "SELECT * FROM member_keys WHERE company = companies:$company LIMIT $limit USING INDEX by_company;",
                 vec![
                     bind("company", company.as_str()),
                     bind("limit", KEY_LIST_MAX),

@@ -45,7 +45,7 @@ impl ChainRepository for TessaridbChainRepository {
             .read_at(
                 place,
                 "SELECT * FROM chains:$company; \
-                 SELECT * FROM statements WHERE company = $company ORDER BY seq LIMIT $limit \
+                 SELECT * FROM statements WHERE company = companies:$company ORDER BY seq LIMIT $limit \
                  USING INDEX by_company;",
                 vec![
                     bind("company", company.as_str()),
@@ -102,7 +102,7 @@ impl ChainRepository for TessaridbChainRepository {
             Some(pin) => {
                 guard.push(bind("pin", base64url::encode(pin).as_str()));
                 "THROW 'stale chain' IF (GET chains:$company).length != NONE; \
-                 CREATE chains:$company = { company: $company, owner_signing: $pin, length: 1, created: $now };"
+                 CREATE chains:$company = { company: companies:$company, owner_signing: $pin, length: 1, created: $now };"
             }
             None => {
                 "THROW 'stale chain' IF (GET chains:$company).length != $previous; \
@@ -110,8 +110,8 @@ impl ChainRepository for TessaridbChainRepository {
             }
         };
         let script = format!(
-            "BEGIN; {GUARD} {placed} CREATE statements:$statement = {{ company: $company, seq: $seq, \
-             bytes: $bytes, signature: $signature, author: $author, created: $now }}; {RECORD} COMMIT;"
+            "BEGIN; {GUARD} {placed} CREATE statements:$statement = {{ company: companies:$company, seq: $seq, \
+             bytes: $bytes, signature: $signature, author: accounts:$author, created: $now }}; {RECORD} COMMIT;"
         );
         self.database
             .transact_at(place, &script, "", guard)

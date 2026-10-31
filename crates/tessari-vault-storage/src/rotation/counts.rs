@@ -66,11 +66,7 @@ impl RotationService {
     pub async fn remaining(&self) -> Result<Remaining> {
         let companies = self
             .database
-            .read_at(
-                &self.place,
-                "SELECT key_epoch FROM groups WHERE kind = 'company';",
-                Vec::new(),
-            )
+            .read_at(&self.place, "SELECT key_epoch FROM companies;", Vec::new())
             .await?;
         let credentials = self
             .database

@@ -11,17 +11,17 @@ pub(crate) struct AccountEntity {
     pub(crate) id: String,
     pub(crate) email: String,
     pub(crate) name: String,
-    pub(crate) state: String,
+    pub(crate) is_active: bool,
     pub(crate) platform_admin: bool,
 }
 
 impl FromRecord for AccountEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("account_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             email: row.take("email")?,
             name: row.take("name")?,
-            state: row.take("state")?,
+            is_active: row.take("is_active")?,
             platform_admin: row.take("platform_admin")?,
         })
     }
@@ -53,7 +53,11 @@ impl AccountEntity {
             id: AccountId::parse(&self.id).map_err(|_| fault("id"))?,
             email: Email::parse(&self.email).map_err(|_| fault("email"))?,
             name: Name::parse(&self.name).map_err(|_| fault("name"))?,
-            state: self.state.parse().map_err(|_| fault("state"))?,
+            state: if self.is_active {
+                AccountState::Active
+            } else {
+                AccountState::Suspended
+            },
             platform_admin: self.platform_admin,
         })
     }

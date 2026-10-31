@@ -147,9 +147,14 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
             bind("key_id", key.key_id().as_str()),
             bind("public", base64url::encode(key.public()).as_str()),
         ]);
+        let group_ref = if group.as_str() == company.as_str() {
+            "companies:$group"
+        } else {
+            "groups:$group"
+        };
         let script = format!(
             "BEGIN; {GUARD} THROW 'keys exist' IF (GET group_keys:$group).key_id != NONE; \
-             CREATE group_keys:$group = {{ company: $company, group_id: $group, key_id: $key_id, \
+             CREATE group_keys:$group = {{ company: companies:$company, group_id: {group_ref}, key_id: $key_id, \
              group_public: $public, rotate: false, created: time::now() }}; \
              CREATE {vault}:$vid = {{ body: $public }};{added} {RECORD} COMMIT;"
         );
@@ -180,13 +185,18 @@ impl GroupKeyRepository for TessaridbGroupKeyRepository {
             bind("public", base64url::encode(key.public()).as_str()),
             bind("named", format!("group:{}", key.key_id().as_str()).as_str()),
         ]);
+        let target_ref = if group.as_str() == company.as_str() {
+            "companies:$group"
+        } else {
+            "groups:$group"
+        };
         // The vault record is made again, so no wrap of the old key survives on it.
         let script = format!(
             "BEGIN; {GUARD} THROW 'keys exist' IF (GET group_keys:$group).rotate != true \
-             OR (GET group_keys:$group).company != $company; \
+             OR (GET group_keys:$group).company != companies:$company; \
              UPDATE group_keys:$group SET key_id = $key_id, group_public = $public, rotate = false; \
              DELETE {vault}:$vid; CREATE {vault}:$vid = {{ body: $public }};{added} \
-             UPDATE shares SET recipient = $named WHERE company = $company AND target = $group; {RECORD} COMMIT;"
+             UPDATE shares SET recipient = $named WHERE company = companies:$company AND target = {target_ref}; {RECORD} COMMIT;"
         );
         self.database
             .transact_presenting(place, &script, "", guard, &vault, vault_key)

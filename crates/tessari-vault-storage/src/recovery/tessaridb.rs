@@ -64,9 +64,9 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
             .database
             .read_at(
                 place,
-                "SELECT * FROM member_keys WHERE company = $company AND account IN \
-                 (SELECT account FROM memberships WHERE company = $company AND member_role = 'owner' \
-                 AND state = 'active' LIMIT $limit) LIMIT $limit;",
+                "SELECT * FROM member_keys WHERE company = companies:$company AND account IN \
+                 (SELECT account FROM memberships WHERE company = companies:$company AND member_role = 'owner' \
+                 AND is_active = true LIMIT $limit) LIMIT $limit;",
                 vec![
                     bind("company", company.as_str()),
                     bind("limit", KEY_LIST_MAX),
@@ -185,7 +185,7 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
         let script = format!(
             "BEGIN; {GUARD} THROW 'unknown key' IF (GET recovery_keys:$company).key_id != $recovery_key; \
              THROW 'no key' IF (GET member_keys:$keys).key_id = NONE; \
-             UPSERT escrows:$keys = {{ company: $company, account: $account, recovery_key_id: $recovery_key, \
+             UPSERT escrows:$keys = {{ company: companies:$company, account: accounts:$account, recovery_key_id: recovery_keys:$company, \
              created: $audit_at }}; DELETE {vault}:$vid; CREATE {vault}:$vid = {{ body: $wrap }}; {RECORD} COMMIT;"
         );
         self.database
@@ -205,8 +205,11 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
             .database
             .read_at(
                 place,
-                "SELECT recovery_key_id FROM escrows:$keys;",
-                vec![bind("keys", membership_id(company, account).as_str())],
+                "SELECT (GET recovery_keys:$company).key_id AS recovery_key_id FROM escrows:$keys;",
+                vec![
+                    bind("keys", membership_id(company, account).as_str()),
+                    bind("company", company.as_str()),
+                ],
             )
             .await?;
         answers::single(answers, "escrow")
@@ -225,11 +228,11 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
         // The read and the member's notice commit together, before the escrow is opened.
         let script = format!(
             "BEGIN; {GUARD} THROW 'not found' IF (GET escrows:$keys).recovery_key_id = NONE; \
-             CREATE recovery_notices = {{ company: $company, account: $account, by_account: $audit_actor, \
+             CREATE recovery_notices = {{ company: companies:$company, account: accounts:$account, by_account: accounts:$audit_actor, \
              kind: 'escrow.read', created: $audit_at }}; {RECORD} COMMIT;"
         );
         let opened =
-            format!("RETURN (GET escrows:$keys).recovery_key_id; REVEAL body FROM {vault}:$vid;");
+            format!("RETURN (GET recovery_keys:$company).key_id; REVEAL body FROM {vault}:$vid;");
         let answers = self
             .database
             .transact_presenting(place, &script, &opened, guard, &vault, vault_key)
@@ -270,8 +273,8 @@ impl RecoveryRepository for TessaridbRecoveryRepository {
             .database
             .read_at(
                 place,
-                "SELECT by_account, kind, created FROM recovery_notices WHERE company = $company \
-                 AND account = $account ORDER BY created LIMIT $limit USING INDEX by_member;",
+                "SELECT by_account, kind, created FROM recovery_notices WHERE company = companies:$company \
+                 AND account = accounts:$account ORDER BY created LIMIT $limit USING INDEX by_member;",
                 vec![
                     bind("company", company.as_str()),
                     bind("account", account.as_str()),

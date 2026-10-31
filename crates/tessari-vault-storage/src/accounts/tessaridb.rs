@@ -1,7 +1,7 @@
 //! Accounts on TessariDB: the `accounts` table.
 
 use async_trait::async_trait;
-use tessari_vault_infrastructure::tessaridb::{Database, Place, Value};
+use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_types::{AccountId, Email};
 
 use super::AccountEntity;
@@ -49,16 +49,19 @@ impl AccountRepository for TessaridbAccountRepository {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        let ids = Value::Array(ids.iter().map(|id| Value::from(id.as_str())).collect());
-        let answers = self
-            .database
-            .read_at(
-                place,
-                "SELECT * FROM accounts WHERE account_id IN $ids;",
-                vec![("ids".to_owned(), ids)],
-            )
-            .await?;
-        answers::records(answers, "account")
+        let mut found = Vec::new();
+        for id in ids {
+            let answers = self
+                .database
+                .read_at(
+                    place,
+                    "SELECT * FROM accounts:$id;",
+                    vec![bind("id", id.as_str())],
+                )
+                .await?;
+            found.extend(answers::records(answers, "account")?);
+        }
+        Ok(found)
     }
 
     async fn create_admin(
@@ -71,9 +74,13 @@ impl AccountRepository for TessaridbAccountRepository {
         self.database
             .run_at(
                 place,
-                "CREATE accounts:$id = { account_id: $id, email: $email, name: $name, state: 'active', \
+                "CREATE accounts:$id = { email: $email, name: $name, is_active: true, \
                  platform_admin: true, created: time::now() };",
-                vec![bind("id", id.as_str()), bind("email", email.as_str()), bind("name", name)],
+                vec![
+                    bind("id", id.as_str()),
+                    bind("email", email.as_str()),
+                    bind("name", name),
+                ],
             )
             .await?;
         Ok(())

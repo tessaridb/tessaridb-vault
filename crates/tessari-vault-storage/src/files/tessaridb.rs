@@ -78,7 +78,7 @@ impl FileRepository for TessaridbFiles {
             .run_at(
                 place,
                 // By address, as records are read.
-                "SELECT * FROM (SELECT * FROM files:$file LIMIT 2) WHERE record = $record AND company = $company;",
+                "SELECT * FROM (SELECT * FROM files:$file LIMIT 2) WHERE record = records:$record AND company = companies:$company;",
                 located(at),
             )
             .await?;
@@ -102,7 +102,7 @@ impl FileRepository for TessaridbFiles {
         ]);
         let script = format!(
             "BEGIN; {GUARD} {COMPANYS_RECORD} {SHARES_UNCHANGED} \
-             CREATE files:$file = {{ file_id: $file, company: $company, record: $record, author: $author, \
+             CREATE files:$file = {{ company: companies:$company, record: records:$record, author: accounts:$author, \
              size: $size, kept: $kept, written: 0, created: $now }}; {RECORD} COMMIT;"
         );
         self.database
@@ -133,8 +133,8 @@ impl FileRepository for TessaridbFiles {
         }
         // The uploader alone, checked again where the row is deleted, so a file named by nobody else is never another's.
         let script = format!(
-            "BEGIN; {GUARD} THROW 'not found' IF (GET files:$file).author != $author \
-             OR (GET files:$file).record != $record; {bytes} DELETE files:$file; {RECORD} COMMIT;"
+            "BEGIN; {GUARD} THROW 'not found' IF (GET files:$file).author != accounts:$author \
+             OR (GET files:$file).record != records:$record; {bytes} DELETE files:$file; {RECORD} COMMIT;"
         );
         self.database
             .transact_presenting(place, &script, "", guard, &vault, vault_key)

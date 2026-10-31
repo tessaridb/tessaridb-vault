@@ -128,7 +128,7 @@ impl PasskeyService {
             bind("backup", registered.backup_eligible),
         ]);
         let script = format!(
-            "BEGIN; CREATE passkeys = {{ account: $account, credential: $credential, public_key: $key, \
+            "BEGIN; CREATE passkeys = {{ account: accounts:$account, credential: $credential, public_key: $key, \
              sign_count: $count, backup_eligible: $backup, created: time::now() }}; {records}COMMIT;"
         );
         let created = self
@@ -156,7 +156,7 @@ impl PasskeyService {
             .database
             .read_at(
                 &self.place,
-                "SELECT credential FROM passkeys WHERE account = $account;",
+                "SELECT credential FROM passkeys WHERE account = accounts:$account;",
                 vec![bind("account", account.as_str())],
             )
             .await?;

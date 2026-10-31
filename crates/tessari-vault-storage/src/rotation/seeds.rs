@@ -21,7 +21,7 @@ struct Sealed {
 impl FromRecord for Sealed {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            account: row.take("account_id")?,
+            account: row.id().trim_matches('\'').to_owned(),
             totp: row.take("totp")?,
             factor: row.take("totp_factor")?,
         })
@@ -41,7 +41,7 @@ impl RotationService {
             .database
             .read_at(
                 &self.place,
-                "SELECT account_id, totp, totp_factor FROM credentials;",
+                "SELECT totp, totp_factor FROM credentials;",
                 Vec::new(),
             )
             .await?;

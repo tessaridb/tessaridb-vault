@@ -30,6 +30,9 @@ pub enum Error {
 /// A state the store holds that the request would break.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum Conflict {
+    /// The company name is already registered.
+    #[error("a company with this name exists already")]
+    CompanyExists,
     /// The account is already a member of the company.
     #[error("the account is already a member of this company")]
     AlreadyMember,

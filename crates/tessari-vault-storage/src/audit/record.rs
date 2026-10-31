@@ -43,7 +43,7 @@ pub(super) struct Chained {
 
 impl FromRecord for Chained {
     fn from_row(mut row: Row) -> Result<Self, MappingFault> {
-        let company = row.take("company")?;
+        let company = crate::answers::reference(&mut row, "company")?;
         let line = row.take("line")?;
         let prev = row.take("prev")?;
         let digest = row.take("digest")?;

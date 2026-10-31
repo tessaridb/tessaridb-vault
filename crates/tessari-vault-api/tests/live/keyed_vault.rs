@@ -125,7 +125,7 @@ async fn a_company_is_keyed_under_the_service_key_epoch_current_when_it_was_made
         .database
         .run_at(
             &world.place,
-            "RETURN (GET groups:$c).key_epoch;",
+            "RETURN (GET companies:$c).key_epoch;",
             vec![("c".to_owned(), Value::from(cast.company_a.as_str()))],
         )
         .await

@@ -17,8 +17,8 @@ pub(crate) struct RequestEntity {
 impl FromRecord for RequestEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("request_id")?,
-            account: row.take("account")?,
+            id: row.id().trim_matches('\'').to_owned(),
+            account: crate::answers::reference(&mut row, "account")?,
             handoff_public: row.take("handoff_public")?,
             created: row.take("created")?,
         })

@@ -18,7 +18,7 @@ pub(crate) struct GroupKeyEntity {
 impl FromRecord for GroupKeyEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            company: row.take("company")?,
+            company: crate::answers::reference(&mut row, "company")?,
             key_id: row.take("key_id")?,
             group_public: row.take("group_public")?,
             rotate: row.take("rotate")?,
@@ -36,7 +36,7 @@ pub(crate) struct GroupHead {
 impl FromRecord for GroupHead {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            company: row.take("company")?,
+            company: crate::answers::reference(&mut row, "company")?,
             kind: row.take("kind")?,
         })
     }

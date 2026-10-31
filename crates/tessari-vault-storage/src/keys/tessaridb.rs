@@ -63,7 +63,7 @@ impl KeyRepository for TessaridbKeyRepository {
             .database
             .read_at(
                 place,
-                "SELECT * FROM member_keys WHERE company = $company LIMIT $limit USING INDEX by_company;",
+                "SELECT * FROM member_keys WHERE company = companies:$company LIMIT $limit USING INDEX by_company;",
                 vec![
                     bind("company", company.as_str()),
                     bind("limit", KEY_LIST_MAX),
@@ -104,7 +104,7 @@ impl KeyRepository for TessaridbKeyRepository {
         let vault = RecordVaults::name(company);
         let script = format!(
             "BEGIN; {GUARD} THROW 'keys exist' IF (GET member_keys:$keys).key_id != NONE; \
-             CREATE member_keys:$keys = {{ company: $company, account: $account, key_id: $key_id, \
+             CREATE member_keys:$keys = {{ company: companies:$company, account: accounts:$account, key_id: $key_id, \
              agreement_public: $agreement, signing_public: $signing, kdf_salt: $salt, kdf_memory: $memory, \
              kdf_passes: $passes, kdf_lanes: $lanes, created: $now }}; \
              CREATE {vault}:$vid = {{ body: $wrapped }}; {RECORD} COMMIT;"

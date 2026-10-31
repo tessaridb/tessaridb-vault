@@ -119,12 +119,20 @@ async fn the_binary_lets_the_first_person_in_and_stops_on_sigterm() {
         listen: free_port(),
         issuer: Some(issuer.issuer().to_owned()),
     };
-    let Output { status, stdout, .. } = setup
+    let Output {
+        status,
+        stdout,
+        stderr,
+    } = setup
         .command(&binary())
         .arg("enrolment-link")
         .output()
         .expect("the operator command runs");
-    assert!(status.success(), "the operator command");
+    assert!(
+        status.success(),
+        "the operator command: {status} {}",
+        String::from_utf8_lossy(&stderr)
+    );
     let printed = String::from_utf8(stdout).expect("text");
     // The token is the line after its announcement; the process logs a line of its own as it stops.
     let mut lines = printed.lines();

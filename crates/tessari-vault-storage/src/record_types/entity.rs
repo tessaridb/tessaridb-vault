@@ -17,7 +17,7 @@ pub(crate) struct RecordTypeEntity {
 impl FromRecord for RecordTypeEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("type_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             allowed: row.take("allowed_roles")?,
             definition: row.take("definition")?,
             created: row.take("created")?,

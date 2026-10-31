@@ -14,7 +14,7 @@ use crate::{Result, answers};
 
 /// Refuses unless `$group` is a department or team of `$company`, the answer a group of another company gets.
 const GROUP_OF_COMPANY: &str = "\
-THROW 'not found' IF (GET groups:$group).company != $company OR (GET groups:$group).kind = 'company';";
+THROW 'not found' IF (GET groups:$group).company != companies:$company OR (GET groups:$group).kind = 'company';";
 
 pub(crate) struct TessaridbGroupRepository {
     database: Database,
@@ -46,7 +46,7 @@ impl GroupRepository for TessaridbGroupRepository {
             .database
             .read_at(
                 place,
-                "SELECT * FROM groups WHERE company = $company AND kind != 'company' USING INDEX by_company;",
+                "SELECT * FROM groups WHERE company = companies:$company AND kind != 'company' USING INDEX by_company;",
                 vec![bind("company", company.as_str())],
             )
             .await?;
@@ -64,7 +64,7 @@ impl GroupRepository for TessaridbGroupRepository {
             .read_at(
                 place,
                 // By address, as records are read.
-                "SELECT * FROM (SELECT * FROM groups:$group LIMIT 2) WHERE company = $company AND kind != 'company';",
+                "SELECT * FROM (SELECT * FROM groups:$group LIMIT 2) WHERE company = companies:$company AND kind != 'company';",
                 vec![bind("group", group.as_str()), bind("company", company.as_str())],
             )
             .await?;
@@ -76,7 +76,7 @@ impl GroupRepository for TessaridbGroupRepository {
             .database
             .read_at(
                 place,
-                "SELECT account_id FROM groups:$group<-in_group<-accounts;",
+                "SELECT id FROM groups:$group<-in_group<-accounts;",
                 vec![bind("group", group.as_str())],
             )
             .await?;
@@ -102,14 +102,22 @@ impl GroupRepository for TessaridbGroupRepository {
         let parent_check = if parent.as_str() == company.as_str() {
             ""
         } else {
-            "THROW 'wrong parent' IF (GET groups:$parent).company != $company \
+            "THROW 'wrong parent' IF (GET groups:$parent).company != companies:$company \
              OR (GET groups:$parent).kind != 'department';"
+        };
+        let (parent_ref, parent_edge) = if parent.as_str() == company.as_str() {
+            (
+                "companies:$parent",
+                "groups:$group->company_group->companies:$parent",
+            )
+        } else {
+            ("groups:$parent", "groups:$group->part_of->groups:$parent")
         };
         let script = format!(
             "BEGIN; {GUARD} {parent_check} \
-             CREATE groups:$group = {{ group_id: $group, company: $company, kind: $kind, name: $name, \
-             parent: $parent, state: 'active', created: time::now() }}; \
-             RELATE groups:$group->part_of->groups:$parent; {RECORD} COMMIT;"
+             CREATE groups:$group = {{ company: companies:$company, kind: $kind, name: $name, \
+             parent: {parent_ref}, is_active: true, created: time::now() }}; \
+             RELATE {parent_edge}; {RECORD} COMMIT;"
         );
         self.write(place, &script, parameters).await
     }
@@ -154,11 +162,16 @@ impl GroupRepository for TessaridbGroupRepository {
             ));
             parameters.push(bind(&name, account.as_str()));
         }
+        let parent_edge = if group.parent == company.as_str() {
+            "groups:$group->company_group->companies:$parent"
+        } else {
+            "groups:$group->part_of->groups:$parent"
+        };
         let script = format!(
             "BEGIN; {GUARD} {GROUP_OF_COMPANY} \
-             LET $inside = SELECT group_id FROM groups:$group<-part_of<-groups LIMIT 1; \
+             LET $inside = SELECT id FROM groups:$group<-part_of<-groups LIMIT 1; \
              THROW 'group not empty' IF array::len($inside) > 0; \
-             {edges} DELETE groups:$group->part_of->groups:$parent; DELETE groups:$group; {RECORD} COMMIT;"
+             {edges} DELETE {parent_edge}; DELETE groups:$group; {RECORD} COMMIT;"
         );
         self.write(place, &script, parameters).await
     }
@@ -179,7 +192,7 @@ impl GroupRepository for TessaridbGroupRepository {
         ]);
         let script = format!(
             "BEGIN; {GUARD} {GROUP_OF_COMPANY} \
-             THROW 'not a member' IF (GET memberships:$membership).state != 'active'; \
+             THROW 'not a member' IF (GET memberships:$membership).is_active != true; \
              RELATE accounts:$account->in_group->groups:$group; {RECORD} COMMIT;"
         );
         self.write(place, &script, parameters).await
@@ -217,7 +230,15 @@ impl GroupRepository for TessaridbGroupRepository {
             bind("account", leaving.account.as_str()),
             bind("gvid", format!("group.{}", leaving.group.as_str()).as_str()),
         ]);
-        let retire = retiring(&mut parameters, leaving.affected, None);
+        let retire = retiring(
+            &self.database,
+            place,
+            &mut parameters,
+            leaving.company,
+            leaving.affected,
+            None,
+        )
+        .await?;
         let revoke = match &leaving.revocation {
             Some(revocation) => {
                 parameters.push(bind("revoked", revocation.recipient.as_str()));

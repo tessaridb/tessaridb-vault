@@ -127,8 +127,10 @@ pub(crate) async fn standing(
 /// `$guard_m`, `$guard_c`, `$guard_role`, `$guard_state`, `$guard_epoch`.
 pub(crate) const GUARD: &str = "\
 THROW 'standing changed' IF (GET memberships:$guard_m).member_role != $guard_role \
-OR (GET memberships:$guard_m).state != 'active' OR (GET groups:$guard_c).state != $guard_state \
-OR (GET groups:$guard_c).key_epoch != $guard_epoch OR (GET groups:$guard_c).key_moving = true;";
+OR (GET memberships:$guard_m).is_active != true OR (GET companies:$guard_c).is_active != $guard_active \
+OR (GET companies:$guard_c).is_suspended != $guard_suspended \
+OR (GET companies:$guard_c).is_dropping != $guard_dropping \
+OR (GET companies:$guard_c).key_epoch != $guard_epoch OR (GET companies:$guard_c).key_moving = true;";
 
 /// The values [`GUARD`] binds and the audit event's: every guarded change is recorded on the company's trail in the
 /// same transaction, as `action` done to `target`.
@@ -161,7 +163,18 @@ pub(crate) fn guard_values(
         bind("guard_m", membership_id(company, actor.account()).as_str()),
         bind("guard_c", company.as_str()),
         bind("guard_role", standing.role.word()),
-        bind("guard_state", standing.company.word()),
+        bind(
+            "guard_active",
+            matches!(standing.company, CompanyState::Active),
+        ),
+        bind(
+            "guard_suspended",
+            matches!(standing.company, CompanyState::Suspended),
+        ),
+        bind(
+            "guard_dropping",
+            matches!(standing.company, CompanyState::Dropping),
+        ),
         bind("guard_epoch", i64::from(standing.key_epoch)),
     ]
 }
@@ -175,7 +188,7 @@ async fn read_standing(
     let answers = database
         .read_at(
             place,
-            "RETURN { membership: (GET memberships:$m), company: (GET groups:$c) };",
+            "RETURN { membership: (GET memberships:$m), company: (GET companies:$c) };",
             vec![
                 bind("m", membership_id(company, account).as_str()),
                 bind("c", company.as_str()),
@@ -198,20 +211,38 @@ fn standing_from(found: &BTreeMap<String, Value>) -> Result<Option<Standing>> {
     else {
         return Ok(None);
     };
-    if word(group, "kind")? != "company" {
-        return Ok(None);
-    }
     // A company whose vault a rotation is moving presents no key until it is done: a wrong key would spend the
     // node's throttle for every company.
     if group.get("key_moving") == Some(&Value::Bool(true)) {
         return Err(Error::Conflict(Conflict::KeysMoving));
     }
+    let company = match (
+        flag(group, "is_active")?,
+        flag(group, "is_suspended")?,
+        flag(group, "is_dropping")?,
+    ) {
+        (true, false, false) => CompanyState::Active,
+        (false, true, false) => CompanyState::Suspended,
+        (false, false, true) => CompanyState::Dropping,
+        _ => return Err(unreadable("company", "state flags")),
+    };
     Ok(Some(Standing {
         role: parsed::<Role>(membership, "member_role")?,
-        member: parsed::<MemberState>(membership, "state")?,
-        company: parsed::<CompanyState>(group, "state")?,
+        member: if flag(membership, "is_active")? {
+            MemberState::Active
+        } else {
+            MemberState::Suspended
+        },
+        company,
         key_epoch: key_epoch(group)?,
     }))
+}
+
+fn flag(object: &BTreeMap<String, Value>, field: &'static str) -> Result<bool> {
+    match object.get(field) {
+        Some(Value::Bool(value)) => Ok(*value),
+        _ => Err(unreadable("company", field)),
+    }
 }
 
 /// The epoch a company row says its vault is keyed under.

@@ -114,7 +114,7 @@ pub(crate) struct ShareEntity {
 impl FromRecord for ShareEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            target: row.take("target")?,
+            target: crate::answers::reference(&mut row, "target")?,
             access: row.take("access")?,
             recipient: row.take("recipient")?,
         })
@@ -132,9 +132,9 @@ pub(crate) struct DirectGroup {
 impl FromRecord for DirectGroup {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            group: row.take("group_id")?,
-            company: row.take("company")?,
-            parent: row.take("parent")?,
+            group: row.id().trim_matches('\'').to_owned(),
+            company: crate::answers::reference(&mut row, "company")?,
+            parent: crate::answers::reference(&mut row, "parent")?,
         })
     }
 }
@@ -147,7 +147,7 @@ pub(crate) struct Named {
 impl FromRecord for Named {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            name: row.take("name")?,
+            name: crate::answers::reference(&mut row, "name")?,
         })
     }
 }

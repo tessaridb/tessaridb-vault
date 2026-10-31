@@ -17,10 +17,10 @@ pub(crate) struct GroupEntity {
 impl FromRecord for GroupEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("group_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             kind: row.take("kind")?,
             name: row.take("name")?,
-            parent: row.take("parent")?,
+            parent: crate::answers::reference(&mut row, "parent")?,
         })
     }
 }
@@ -59,9 +59,9 @@ pub(crate) struct MemberRow {
 }
 
 impl FromRecord for MemberRow {
-    fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
+    fn from_row(row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            account: row.take("account_id")?,
+            account: row.id().trim_matches('\'').to_owned(),
         })
     }
 }

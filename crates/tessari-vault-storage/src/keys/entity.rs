@@ -26,7 +26,7 @@ pub(crate) struct KeyEntity {
 impl FromRecord for KeyEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            account: row.take("account")?,
+            account: crate::answers::reference(&mut row, "account")?,
             key_id: row.take("key_id")?,
             agreement_public: row.take("agreement_public")?,
             signing_public: row.take("signing_public")?,

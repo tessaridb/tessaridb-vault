@@ -49,7 +49,7 @@ struct Keyed {
 impl FromRecord for Keyed {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("group_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             epoch: row.take("key_epoch")?,
         })
     }
@@ -104,8 +104,8 @@ impl RotationService {
             .database
             .read_at(
                 &self.place,
-                "SELECT group_id, key_epoch FROM groups WHERE kind = 'company' \
-                 AND (key_epoch != $current OR key_moving = true);",
+                "SELECT key_epoch FROM companies \
+                 WHERE key_epoch != $current OR key_moving = true;",
                 vec![bind("current", i64::from(current))],
             )
             .await?;
@@ -153,7 +153,7 @@ impl RotationService {
         self.database
             .run_at(
                 &self.place,
-                "UPDATE groups:$c SET key_moving = true WHERE key_epoch = $epoch;",
+                "UPDATE companies:$c SET key_moving = true WHERE key_epoch = $epoch;",
                 vec![bind("c", company.as_str()), bind("epoch", i64::from(epoch))],
             )
             .await?;
@@ -165,7 +165,7 @@ impl RotationService {
         self.database
             .run_at(
                 &self.place,
-                "UPDATE groups:$c SET key_epoch = $current, key_moving = false WHERE key_epoch = $recorded;",
+                "UPDATE companies:$c SET key_epoch = $current, key_moving = false WHERE key_epoch = $recorded;",
                 vec![
                     bind("c", company.as_str()),
                     bind("current", i64::from(current)),
