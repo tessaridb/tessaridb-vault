@@ -14,14 +14,30 @@ COPY . .
 
 # `--locked`: the committed lock file is the dependency graph the tests ran
 # against. The web application and its WebAssembly module are committed build
-# output, so no Node is needed here.
-RUN cargo build --release --locked -p tessari-vault-node --bin tessaridb-vault
+# output, so no Node is needed here. A musl target produces a static binary and
+# keeps the build independent of any target directory from the host.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends musl-tools && \
+    rm -rf /var/lib/apt/lists/*
+ARG TARGETPLATFORM
+RUN case "$TARGETPLATFORM" in \
+      linux/amd64) target=x86_64-unknown-linux-musl ;; \
+      linux/arm64) target=aarch64-unknown-linux-musl ;; \
+      *) echo "unsupported platform: $TARGETPLATFORM" >&2; exit 2 ;; \
+    esac && \
+    rustup target add "$target" && \
+    CC=musl-gcc CARGO_TARGET_DIR=/tmp/vault-target \
+      cargo build --release --locked \
+      --target "$target" -p tessari-vault-node --bin tessaridb-vault && \
+    cp "/tmp/vault-target/$target/release/tessaridb-vault" /tmp/tessaridb-vault
 
 # ── run ─────────────────────────────────────────────────────────────────────
-# Distroless: the C runtime and CA certificates, no shell, no package manager.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:e792ab3d241a468a4fd7519ddbbebe66b49b5f365771716ea688ad40b6c6f1c2
+# The binary is statically linked, so the runtime needs no C, GCC or zlib
+# packages. Scratch keeps those vulnerable and unused libraries out of the image.
+FROM scratch
 
-COPY --from=build /src/target/release/tessaridb-vault /usr/local/bin/tessaridb-vault
+COPY --from=build /tmp/tessaridb-vault /usr/local/bin/tessaridb-vault
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY LICENSE /usr/share/doc/tessaridb-vault/LICENSE
 
 # What the server reads is in the README's configuration table. The listener has
@@ -39,7 +55,7 @@ ENV TESSARIDB_VAULT_LISTEN=0.0.0.0:8080
 
 EXPOSE 8080/tcp
 
-USER nonroot
+USER 65532:65532
 
 # `tessaridb-vault health` asks the server in this container whether it answers
 # (an unauthenticated route that names no account) and exits 0 when it does;
