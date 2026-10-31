@@ -14,7 +14,7 @@ application built into the server binary.
 [![licence](https://img.shields.io/badge/licence-BUSL--1.1-6B5FD1?style=flat-square)](LICENSE)
 [![rust](https://img.shields.io/badge/rust-1.98%2B-6B5FD1?style=flat-square)](#building-and-checking)
 
-[tessaridb.com](https://tessaridb.com) · [TessariDB](https://github.com/tessaridb/tessaridb)
+[vault.tessaridb.com](https://vault.tessaridb.com) · [TessariDB](https://github.com/tessaridb/tessaridb)
 
 </div>
 
