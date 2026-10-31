@@ -108,7 +108,7 @@ impl FileRepository for S3Files {
         };
         let script = format!(
             "BEGIN; {GUARD} {SHARES_UNCHANGED} {IN_ORDER} \
-             CREATE file_objects = {{ company: $company, file: $file, offset: $offset, object_key: $key, size: $size }}; \
+             CREATE file_objects = {{ company: companies:$company, file: files:$file, offset: $offset, object_key: $key, size: $size }}; \
              UPDATE files:$file SET written = $end; {record} COMMIT;"
         );
         self.database
@@ -147,7 +147,7 @@ impl FileRepository for S3Files {
             .transact_at(
                 place,
                 &recorded,
-                "SELECT offset, object_key, size FROM file_objects WHERE company = $company AND file = $file AND offset >= $first AND offset <= $last ORDER BY offset;",
+                "SELECT offset, object_key, size FROM file_objects WHERE company = companies:$company AND file = files:$file AND offset >= $first AND offset <= $last ORDER BY offset;",
                 guard,
             )
             .await
@@ -194,14 +194,14 @@ impl FileRepository for S3Files {
             .database
             .read_at(
                 place,
-                "SELECT offset, object_key, size FROM file_objects WHERE company = $company AND file = $file;",
+                "SELECT offset, object_key, size FROM file_objects WHERE company = companies:$company AND file = files:$file;",
                 guard.clone(),
             )
             .await?;
         let objects = records::<FileObject>(answers, "file object")?;
         let script = format!(
-            "BEGIN; {GUARD} THROW 'not found' IF (GET files:$file).author != $author \
-             OR (GET files:$file).record != $record; DELETE FROM file_objects WHERE company = $company AND file = $file; \
+            "BEGIN; {GUARD} THROW 'not found' IF (GET files:$file).author != accounts:$author \
+             OR (GET files:$file).record != records:$record; DELETE FROM file_objects WHERE company = companies:$company AND file = files:$file; \
              DELETE files:$file; {RECORD} COMMIT;"
         );
         self.database

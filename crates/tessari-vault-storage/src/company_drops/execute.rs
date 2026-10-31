@@ -2,7 +2,7 @@
 //! bodies and small files were sealed under, and its rows, graph edges and bucket parts go with it in the same
 //! transaction. Its audit trail stays, ending with the drop, because the trail is what outlives the company.
 
-use tessari_vault_infrastructure::tessaridb::{FromRecord, MappingFault, Row, Value};
+use tessari_vault_infrastructure::tessaridb::{FromRecord, MappingFault, Row};
 use tessari_vault_types::{AccountId, CompanyId};
 
 use super::CompanyDropService;
@@ -14,7 +14,8 @@ use crate::records::{RecordVaults, parts};
 use crate::{Error, Result};
 
 /// The tables that hold a company's rows by their `company` field.
-const COMPANY_TABLES: [&str; 15] = [
+const COMPANY_TABLES: [&str; 16] = [
+    "companies",
     "memberships",
     "records",
     "record_types",
@@ -41,7 +42,7 @@ struct Due {
 impl FromRecord for Due {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            company: row.take("company")?,
+            company: crate::answers::reference(&mut row, "company")?,
             confirmed_by: row.take("confirmed_by")?,
         })
     }
@@ -51,8 +52,8 @@ impl FromRecord for Due {
 struct Id(String);
 
 impl FromRecord for Id {
-    fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
-        Ok(Self(row.take("id")?))
+    fn from_row(row: Row) -> std::result::Result<Self, MappingFault> {
+        Ok(Self(row.id().trim_matches('\'').to_owned()))
     }
 }
 
@@ -65,8 +66,8 @@ struct Placed {
 impl FromRecord for Placed {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("group_id")?,
-            parent: row.take("parent")?,
+            id: row.id().trim_matches('\'').to_owned(),
+            parent: crate::answers::reference(&mut row, "parent")?,
         })
     }
 }
@@ -81,7 +82,7 @@ struct Kept {
 impl FromRecord for Kept {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("file_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             size: row.take("size")?,
             kept: row.take("kept")?,
         })
@@ -140,15 +141,15 @@ impl CompanyDropService {
             },
         );
         parameters.push(bind("company", c));
-        let mut script = String::from(
-            "BEGIN; THROW 'standing changed' IF (GET groups:$company).state != 'dropping' \
-             OR (GET company_drops:$company).state != 'scheduled'; ",
+        let mut script = format!(
+            "BEGIN; THROW 'standing changed' IF (GET companies:$company).is_dropping != true \
+             OR (GET company_drops:$company).state != 'scheduled'; {RECORD} ",
         );
         let groups = records::<Placed>(
             self.database
                 .read_at(
                     &self.place,
-                    "SELECT group_id, parent FROM groups WHERE company = $company AND kind != 'company';",
+                    "SELECT *, parent FROM groups WHERE company = companies:$company AND kind != 'company';",
                     vec![bind("company", c)],
                 )
                 .await?,
@@ -159,7 +160,7 @@ impl CompanyDropService {
                 self.database
                     .read_at(
                         &self.place,
-                        "SELECT account_id AS id FROM groups:$group<-in_group<-accounts;",
+                        "SELECT * FROM groups:$group<-in_group<-accounts;",
                         vec![bind("group", group.id.as_str())],
                     )
                     .await?,
@@ -171,7 +172,12 @@ impl CompanyDropService {
                 ));
                 parameters.push(bind(&format!("m{g}_{m}"), member.0.as_str()));
             }
-            script.push_str(&format!("DELETE groups:$g{g}->part_of->groups:$p{g}; "));
+            let edge = if group.parent == company.as_str() {
+                "company_group->companies"
+            } else {
+                "part_of->groups"
+            };
+            script.push_str(&format!("DELETE groups:$g{g}->{edge}:$p{g}; "));
             parameters.push(bind(&format!("g{g}"), group.id.as_str()));
             parameters.push(bind(&format!("p{g}"), group.parent.as_str()));
         }
@@ -179,7 +185,7 @@ impl CompanyDropService {
             self.database
                 .read_at(
                     &self.place,
-                    "SELECT file_id, size, kept FROM files WHERE company = $company;",
+                    "SELECT *, size, kept FROM files WHERE company = companies:$company;",
                     vec![bind("company", c)],
                 )
                 .await?,
@@ -202,34 +208,46 @@ impl CompanyDropService {
             self.database
                 .read_at(
                     &self.place,
-                    "SELECT object_key FROM file_objects WHERE company = $company;",
+                    "SELECT object_key FROM file_objects WHERE company = companies:$company;",
                     vec![bind("company", c)],
                 )
                 .await?,
             "file object",
         )?;
-        let held: Vec<Value> = records::<Id>(
+        let held = records::<Id>(
             self.database
                 .read_at(
                     &self.place,
-                    "SELECT record_id AS id FROM records WHERE company = $company;",
+                    "SELECT * FROM records WHERE company = companies:$company;",
                     vec![bind("company", c)],
                 )
                 .await?,
             "record",
-        )?
-        .into_iter()
-        .map(|Id(id)| Value::from(id.as_str()))
-        .collect();
-        parameters.push(("records".to_owned(), Value::Array(held)));
-        script.push_str("DELETE FROM revisions WHERE record IN $records; ");
+        )?;
+        let record_refs = held
+            .iter()
+            .enumerate()
+            .map(|(index, Id(id))| {
+                parameters.push(bind(&format!("r{index}"), id.as_str()));
+                format!("records:$r{index}")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        script.push_str(&format!(
+            "DELETE FROM revisions WHERE record IN [{record_refs}]; "
+        ));
         for table in COMPANY_TABLES {
-            script.push_str(&format!("DELETE FROM {table} WHERE company = $company; "));
+            if table != "companies" {
+                script.push_str(&format!(
+                    "DELETE FROM {table} WHERE company = companies:$company; "
+                ));
+            }
         }
+        script.push_str("DELETE companies:$company; ");
         // The vault's name is built from a checked company id; it is grammar and cannot be bound.
         let vault = RecordVaults::name(company);
         script.push_str(&format!(
-            "DELETE company_drops:$company; DROP VAULT {vault}; {RECORD} COMMIT;"
+            "DELETE company_drops:$company; DROP VAULT {vault}; COMMIT;"
         ));
         self.database
             .transact_at(&self.place, &script, "", parameters)

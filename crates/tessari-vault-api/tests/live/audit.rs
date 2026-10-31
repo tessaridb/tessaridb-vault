@@ -330,7 +330,7 @@ async fn the_chain_holds_and_names_the_row_changed_behind_the_servers_back() {
         .database
         .run_at(
             &world.place,
-            "UPDATE audit_events SET reason = 'nothing to see' WHERE company = $company AND seq = 2;",
+            "UPDATE audit_events SET reason = 'nothing to see' WHERE company = companies:$company AND seq = 2;",
             vec![("company".to_owned(), a.into())],
         )
         .await;

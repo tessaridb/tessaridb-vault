@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use tessari_vault_infrastructure::tessaridb::{Answer, Number, Value};
+use tessari_vault_infrastructure::tessaridb::{Answer, Number, StoreRecordId, Value};
 use tessari_vault_types::{KeyId, base64url};
 
 use super::entity::{OpenedRevision, Sealed};
@@ -67,6 +67,20 @@ fn text<'a>(object: &'a Value, field: &str) -> Result<&'a str> {
     }
 }
 
+/// The textual id of a native record reference.
+fn reference(object: &Value, field: &str) -> Result<String> {
+    match object {
+        Value::Object(fields) => match fields.get(field) {
+            Some(Value::Record(reference)) => match &reference.id {
+                StoreRecordId::Text(id) => Ok(id.clone()),
+                _ => Err(unreadable(field)),
+            },
+            _ => Err(unreadable(field)),
+        },
+        _ => Err(unreadable(field)),
+    }
+}
+
 /// The whole-number field `field` of an object.
 fn whole(object: &Value, field: &str) -> Result<i64> {
     match object {
@@ -107,7 +121,7 @@ pub(crate) fn opened_from(mut answers: Vec<Answer>) -> Result<OpenedRevision> {
         author_key: KeyId::parse(text(&row, "author_key")?)
             .map_err(|_| unreadable("author key"))?,
         chain_seq: whole(&row, "chain_seq")?,
-        author: text(&row, "author")?.to_owned(),
+        author: reference(&row, "author")?,
         recipients,
     })
 }

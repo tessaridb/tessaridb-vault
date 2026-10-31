@@ -153,6 +153,7 @@ impl From<Error> for ApiError {
 
 const fn conflicted(conflict: Conflict) -> ApiError {
     let (code, message) = match conflict {
+        Conflict::CompanyExists => ("company_exists", "a company with this name exists already"),
         Conflict::AlreadyMember => (
             "already_member",
             "the account is already a member of this company",

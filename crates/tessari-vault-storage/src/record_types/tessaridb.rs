@@ -32,7 +32,7 @@ impl RecordTypeRepository for TessaridbRecordTypeRepository {
             .database
             .read_at(
                 place,
-                "SELECT * FROM record_types WHERE company = $company USING INDEX by_company;",
+                "SELECT * FROM record_types WHERE company = companies:$company USING INDEX by_company;",
                 vec![bind("company", company.as_str())],
             )
             .await?;
@@ -50,7 +50,7 @@ impl RecordTypeRepository for TessaridbRecordTypeRepository {
             .run_at(
                 place,
                 // By address, as records are read.
-                "SELECT * FROM (SELECT * FROM record_types:$type LIMIT 2) WHERE company = $company;",
+                "SELECT * FROM (SELECT * FROM record_types:$type LIMIT 2) WHERE company = companies:$company;",
                 vec![bind("type", id.as_str()), bind("company", company.as_str())],
             )
             .await?;
@@ -73,10 +73,10 @@ impl RecordTypeRepository for TessaridbRecordTypeRepository {
         ]);
         let script = format!(
             "BEGIN; {GUARD} \
-             THROW 'not found' IF (GET records:$definition).company != $company \
-             OR (GET records:$definition).author != $author \
+             THROW 'not found' IF (GET records:$definition).company != companies:$company \
+             OR (GET records:$definition).author != accounts:$author \
              OR (GET records:$definition).record_type != 'record-type'; \
-             CREATE record_types:$type = {{ type_id: $type, company: $company, allowed_roles: $allowed, \
+             CREATE record_types:$type = {{ company: companies:$company, allowed_roles: $allowed, \
              definition: $definition, created: $now }}; {RECORD} COMMIT;"
         );
         self.database

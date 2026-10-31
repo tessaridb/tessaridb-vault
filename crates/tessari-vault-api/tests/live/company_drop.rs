@@ -449,15 +449,20 @@ async fn a_deletion_past_its_wait_is_carried_out_and_leaves_only_the_trail() {
     );
     crate::group_keys::member_in_team(&world, &cast, &cast.member_a_id).await;
     let revisions = format!(
-        "SELECT * FROM revisions WHERE record = '{}';",
+        "SELECT * FROM revisions WHERE record = records:'{}';",
         cast.record_a
     );
     let joined = format!("SELECT * FROM accounts:'{}'->in_group;", cast.member_a_id);
-    let placed = format!("SELECT * FROM groups:'{}'->part_of;", cast.team_a);
+    let company_placed = format!(
+        "SELECT * FROM groups:'{}'->company_group->companies;",
+        cast.department_a
+    );
+    let department_placed = format!("SELECT * FROM groups:'{}'->part_of->groups;", cast.team_a);
     for (statement, what) in [
         (&revisions, "revisions"),
         (&joined, "a member's group edges"),
-        (&placed, "the team's place"),
+        (&company_placed, "the department's place in the company"),
+        (&department_placed, "the team's place in the department"),
     ] {
         assert!(
             count(&world, statement, a).await > 0,
@@ -518,7 +523,7 @@ async fn a_deletion_past_its_wait_is_carried_out_and_leaves_only_the_trail() {
         assert_eq!(
             count(
                 &world,
-                &format!("SELECT * FROM {table} WHERE company = $c;"),
+                &format!("SELECT * FROM {table} WHERE company = companies:$c;"),
                 a
             )
             .await,
@@ -529,7 +534,8 @@ async fn a_deletion_past_its_wait_is_carried_out_and_leaves_only_the_trail() {
     for (statement, what) in [
         (&revisions, "revisions"),
         (&joined, "a member's group edges"),
-        (&placed, "the team's place"),
+        (&company_placed, "the department's place in the company"),
+        (&department_placed, "the team's place in the department"),
     ] {
         assert_eq!(
             count(&world, statement, a).await,
@@ -540,7 +546,7 @@ async fn a_deletion_past_its_wait_is_carried_out_and_leaves_only_the_trail() {
     assert!(
         count(
             &world,
-            "SELECT * FROM audit_events WHERE company = $c AND action = 'company.drop';",
+            "SELECT * FROM audit_events WHERE action = 'company.drop';",
             a
         )
         .await
@@ -548,7 +554,7 @@ async fn a_deletion_past_its_wait_is_carried_out_and_leaves_only_the_trail() {
         "the drop is the trail's last word"
     );
     assert!(
-        count(&world, "SELECT * FROM audit_events WHERE company = $c;", a).await > 1,
+        count(&world, "SELECT * FROM audit_events;", a).await > 1,
         "the trail outlives the rows"
     );
     let info = world
@@ -646,7 +652,12 @@ async fn a_company_drop_removes_its_s3_objects_and_their_metadata() {
         "S3 objects are removed with the company"
     );
     assert_eq!(
-        count(&world, "SELECT * FROM file_objects WHERE company = $c;", a).await,
+        count(
+            &world,
+            "SELECT * FROM file_objects WHERE company = companies:$c;",
+            a
+        )
+        .await,
         0,
         "object metadata is removed with the company"
     );

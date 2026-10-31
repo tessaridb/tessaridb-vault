@@ -144,15 +144,15 @@ async fn a_record_is_deleted_whole_by_its_author_or_an_admin_and_by_nobody_else(
         )
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    for table in [
-        "records WHERE record_id",
-        "revisions WHERE record",
-        "shares WHERE record",
-        "files WHERE record",
+    for (table, condition) in [
+        ("records", ""),
+        ("revisions", "WHERE record = records:$record"),
+        ("shares", "WHERE record = records:$record"),
+        ("files", "WHERE record = records:$record"),
     ] {
         let left = answered(
             &world,
-            &format!("RETURN array::len((SELECT * FROM {table} = $record));"),
+            &format!("RETURN (SELECT count(*) AS n FROM {table} {condition}).n ?? 0;"),
             &mine,
         )
         .await;
@@ -182,7 +182,7 @@ async fn a_record_is_deleted_whole_by_its_author_or_an_admin_and_by_nobody_else(
         "the large file's part is still in the bucket"
     );
 
-    let shared = "RETURN array::len((SELECT * FROM shares WHERE record = $record));";
+    let shared = "RETURN array::len((SELECT * FROM shares WHERE record = records:$record));";
     assert_eq!(answered(&world, shared, &owners).await, Value::from(1_i64));
     let (status, body) =
         delete_for(&world, &record_path(&cast, &owners), &cast.admin_a, ENCODED).await;

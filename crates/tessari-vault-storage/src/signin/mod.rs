@@ -239,7 +239,7 @@ impl SignInService {
             .database
             .read_at(
                 &self.place,
-                "SELECT verifier, key_epoch, totp, totp_factor, totp_last_step FROM credentials WHERE account_id = $account LIMIT 1;",
+                "SELECT * FROM credentials:$account;",
                 vec![bind("account", account.as_str())],
             )
             .await?;

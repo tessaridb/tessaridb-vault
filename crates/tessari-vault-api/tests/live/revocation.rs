@@ -425,4 +425,30 @@ async fn leaving_the_company_rotates_every_key_and_record_the_leaver_could_open(
     );
     assert_eq!(due_for(&world, &cast, &cast.member_a, &for_all).await, true);
     assert_eq!(due_for(&world, &cast, &cast.owner_a, &theirs).await, true);
+
+    let new_company_key = "dc".repeat(16);
+    crate::shares::keyed(
+        &world,
+        &cast,
+        &cast.company_a,
+        &new_company_key,
+        &[&cast.owner_a_key, &cast.member_a_key],
+    )
+    .await;
+    let answer = world
+        .database
+        .run_at(
+            &world.place,
+            "SELECT recipient FROM shares WHERE record = records:$record;",
+            vec![(
+                "record".to_owned(),
+                tessari_vault_infrastructure::tessaridb::Value::from(for_all),
+            )],
+        )
+        .await
+        .expect("the shares read back");
+    assert!(
+        format!("{answer:?}").contains(&format!("group:{new_company_key}")),
+        "{answer:?}"
+    );
 }

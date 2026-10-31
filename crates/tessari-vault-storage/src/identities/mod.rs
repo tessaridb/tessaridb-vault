@@ -236,7 +236,7 @@ impl IdentityService {
             .database
             .run_at(
                 &self.place,
-                "CREATE identities = { issuer: $issuer, subject: $subject, account: $account, linked: time::now() };",
+                "CREATE identities = { issuer: $issuer, subject: $subject, account: accounts:$account, linked: time::now() };",
                 vec![
                     bind("issuer", identity.issuer.as_str()),
                     bind("subject", identity.subject.as_str()),
@@ -266,7 +266,7 @@ impl tessari_vault_infrastructure::tessaridb::FromRecord for LinkedAccount {
         mut row: tessari_vault_infrastructure::tessaridb::Row,
     ) -> std::result::Result<Self, tessari_vault_infrastructure::tessaridb::MappingFault> {
         Ok(Self {
-            account: row.take("account")?,
+            account: crate::answers::reference(&mut row, "account")?,
         })
     }
 }

@@ -1,4 +1,4 @@
-//! The company group row, the membership row, and what they read as.
+//! The company row, the membership row, and what they read as.
 
 use tessari_vault_infrastructure::tessaridb::{FromRecord, MappingFault, Row};
 use tessari_vault_types::{AccountId, CompanyId, CompanyState, MemberState, Name, Role};
@@ -13,20 +13,24 @@ fn fault(record: &'static str, what: &str) -> Error {
     }
 }
 
-/// One `groups` row of kind `company`.
+/// One `companies` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompanyEntity {
     pub(crate) id: String,
     pub(crate) name: String,
-    pub(crate) state: String,
+    pub(crate) is_active: bool,
+    pub(crate) is_suspended: bool,
+    pub(crate) is_dropping: bool,
 }
 
 impl FromRecord for CompanyEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("group_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             name: row.take("name")?,
-            state: row.take("state")?,
+            is_active: row.take("is_active")?,
+            is_suspended: row.take("is_suspended")?,
+            is_dropping: row.take("is_dropping")?,
         })
     }
 }
@@ -34,7 +38,7 @@ impl FromRecord for CompanyEntity {
 /// A company.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Company {
-    /// Its id, which is also its own group's.
+    /// Its id.
     pub id: CompanyId,
     /// Its name.
     pub name: Name,
@@ -44,10 +48,16 @@ pub struct Company {
 
 impl CompanyEntity {
     pub(crate) fn into_model(self) -> Result<Company> {
+        let state = match (self.is_active, self.is_suspended, self.is_dropping) {
+            (true, false, false) => CompanyState::Active,
+            (false, true, false) => CompanyState::Suspended,
+            (false, false, true) => CompanyState::Dropping,
+            _ => return Err(fault("company", "state flags")),
+        };
         Ok(Company {
             id: CompanyId::parse(&self.id).map_err(|_| fault("company", "id"))?,
             name: Name::parse(&self.name).map_err(|_| fault("company", "name"))?,
-            state: self.state.parse().map_err(|_| fault("company", "state"))?,
+            state,
         })
     }
 }
@@ -58,16 +68,16 @@ pub(crate) struct MembershipEntity {
     pub(crate) company: String,
     pub(crate) account: String,
     pub(crate) role: String,
-    pub(crate) state: String,
+    pub(crate) is_active: bool,
 }
 
 impl FromRecord for MembershipEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            company: row.take("company")?,
-            account: row.take("account")?,
+            company: crate::answers::reference(&mut row, "company")?,
+            account: crate::answers::reference(&mut row, "account")?,
             role: row.take("member_role")?,
-            state: row.take("state")?,
+            is_active: row.take("is_active")?,
         })
     }
 }
@@ -87,10 +97,11 @@ impl MembershipEntity {
             company: CompanyId::parse(&self.company).map_err(|_| fault("membership", "company"))?,
             account: AccountId::parse(&self.account).map_err(|_| fault("membership", "account"))?,
             role: self.role.parse().map_err(|_| fault("membership", "role"))?,
-            state: self
-                .state
-                .parse()
-                .map_err(|_| fault("membership", "state"))?,
+            state: if self.is_active {
+                MemberState::Active
+            } else {
+                MemberState::Suspended
+            },
         })
     }
 }

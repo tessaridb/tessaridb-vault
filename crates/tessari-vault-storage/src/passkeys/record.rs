@@ -27,7 +27,7 @@ pub(super) struct Stored {
 impl FromRecord for Stored {
     fn from_row(mut row: Row) -> Result<Self, MappingFault> {
         Ok(Self {
-            account: row.take("account")?,
+            account: crate::answers::reference(&mut row, "account")?,
             public_key: row.take("public_key")?,
             sign_count: row.take("sign_count")?,
         })

@@ -390,7 +390,7 @@ async fn an_s3_failure_publishes_no_part_and_a_finalization_conflict_leaves_it_u
         .database
         .run_at(
             &world.place,
-            "CREATE file_objects = { company: $company, file: $file, offset: 0, object_key: 'other', size: 1 };",
+            "CREATE file_objects = { company: companies:$company, file: files:$file, offset: 0, object_key: 'other', size: 1 };",
             vec![
                 ("company".to_owned(), StoreValue::from(cast.company_a.as_str())),
                 ("file".to_owned(), StoreValue::from(file)),

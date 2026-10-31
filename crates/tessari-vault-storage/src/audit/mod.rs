@@ -26,7 +26,7 @@ pub(crate) const RECORD: &str = "\
 LET $audit_prev = (GET audit_heads:$audit_company).digest ?? ''; \
 LET $audit_seq = ((GET audit_heads:$audit_company).seq ?? 0) + 1; \
 LET $audit_digest = crypto::sha256(array::join([$audit_prev, $audit_line], '|')); \
-CREATE audit_events = { company: $audit_company, seq: $audit_seq, at: $audit_at, actor: $audit_actor, \
+CREATE audit_events = { company: companies:$audit_company, seq: $audit_seq, at: $audit_at, actor: $audit_actor, \
 action: $audit_action, target: $audit_target, reason: $audit_reason, line: $audit_line, prev: $audit_prev, \
 digest: $audit_digest }; \
 UPSERT audit_heads:$audit_company = { digest: $audit_digest, seq: $audit_seq };";
@@ -140,7 +140,7 @@ impl AuditService {
             .read_at(
                 &self.place,
                 "SELECT seq, at, actor, action, target, reason FROM audit_events \
-                 WHERE company = $company AND seq < $before ORDER BY seq DESC LIMIT $page;",
+                 WHERE company = companies:$company AND seq < $before ORDER BY seq DESC LIMIT $page;",
                 vec![
                     bind("company", company.as_str()),
                     bind("before", before.unwrap_or(i64::MAX)),
@@ -171,7 +171,7 @@ impl AuditService {
             .read_at(
                 &self.place,
                 "SELECT seq, at, company, actor, action, target, reason, line, prev, digest FROM audit_events \
-                 WHERE company = $company ORDER BY seq;",
+                 WHERE company = companies:$company ORDER BY seq;",
                 vec![bind("company", company.as_str())],
             )
             .await?;

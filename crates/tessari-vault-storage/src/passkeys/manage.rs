@@ -38,7 +38,7 @@ struct Company {
 impl FromRecord for Company {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            company: row.take("company")?,
+            company: crate::answers::reference(&mut row, "company")?,
         })
     }
 }
@@ -54,7 +54,7 @@ impl PasskeyService {
             .database
             .read_at(
                 &self.place,
-                "SELECT company FROM memberships WHERE account = $account LIMIT $limit;",
+                "SELECT company FROM memberships WHERE account = accounts:$account LIMIT $limit;",
                 vec![
                     bind("account", actor.account().as_str()),
                     bind("limit", KEY_LIST_MAX),
@@ -91,7 +91,7 @@ impl PasskeyService {
             .read_at(
                 &self.place,
                 "SELECT credential, backup_eligible, time::unix(created) AS created FROM passkeys \
-                 WHERE account = $account LIMIT $limit USING INDEX by_account;",
+                 WHERE account = accounts:$account LIMIT $limit USING INDEX by_account;",
                 vec![
                     bind("account", actor.account().as_str()),
                     bind("limit", KEY_LIST_MAX),
@@ -114,8 +114,8 @@ impl PasskeyService {
         ]);
         let script = format!(
             "BEGIN; LET $held = SELECT count(*) AS n FROM passkeys WHERE credential = $credential \
-             AND account = $account; THROW 'not found' IF $held[0].n != 1; \
-             DELETE FROM passkeys WHERE credential = $credential AND account = $account; {records}COMMIT;"
+             AND account = accounts:$account; THROW 'not found' IF $held[0].n != 1; \
+             DELETE FROM passkeys WHERE credential = $credential AND account = accounts:$account; {records}COMMIT;"
         );
         self.database
             .transact_at(&self.place, &script, "", parameters)

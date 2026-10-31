@@ -74,7 +74,7 @@ pub(crate) struct NoticeEntity {
 impl FromRecord for NoticeEntity {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            by_account: row.take("by_account")?,
+            by_account: crate::answers::reference(&mut row, "by_account")?,
             kind: row.take("kind")?,
             created: row.take("created")?,
         })

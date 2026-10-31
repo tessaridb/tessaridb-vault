@@ -2,6 +2,25 @@
 
 All notable changes to TessariDB Vault are documented here. The format follows Keep a Changelog, and versions use the project's third-digit release scheme.
 
+## [0.0.3] - 2026-10-31
+
+### Changed
+
+- Companies now use a dedicated table with native TessariDB record ids and unique names instead of sharing the group table. Departments, teams and related records reference their company and other entities by native record ids and database-enforced references.
+- Company and record lifecycle state uses indexed boolean flags. Companies can be suspended temporarily and resumed without deletion; the company-drop workflow keeps its explicit multi-step state.
+- Duplicate company names return HTTP 409 with `company_exists`.
+- The container build produces static musl binaries and ships them from `scratch` with only the server, CA certificates and licence.
+
+### Migration notes
+
+- Version 0.0.3 replaces the company persistence schema. It does not backfill, convert or delete legacy rows. Use a fresh deployment; no user data migration is provided.
+- After 0.0.3 declares the new schema, do not open that store with 0.0.2. Keep legacy installations on 0.0.2 or roll forward to a corrective release.
+
+### Fixed
+
+- Company-parent graph edges now use `company_group`, while department-parent edges keep `part_of`, so department/team traversal and deletion use the correct native tables.
+- Company-key rotation updates company-target shares through `companies` instead of leaving them on the old group key.
+
 ## [0.0.2] - 2026-10-31
 
 ### Added
@@ -29,5 +48,6 @@ All notable changes to TessariDB Vault are documented here. The format follows K
 - Initial TessariDB Vault release: corporate end-to-end encrypted records, sharing, embedded web panel, own sign-in with TOTP and passkeys, OIDC, organizational recovery, audit trail, and TessariDB-backed attachment storage.
 - Multi-architecture container image and self-hosted Compose deployment.
 
+[0.0.3]: https://github.com/tessaridb/tessaridb-vault/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/tessaridb/tessaridb-vault/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/tessaridb/tessaridb-vault/releases/tag/v0.0.1

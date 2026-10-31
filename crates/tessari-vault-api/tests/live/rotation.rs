@@ -26,7 +26,7 @@ async fn row(world: &World, company: &str) -> (Option<Value>, Option<Value>) {
         .database
         .run_at(
             &world.place,
-            "RETURN { epoch: (GET groups:$c).key_epoch, moving: (GET groups:$c).key_moving };",
+            "RETURN { epoch: (GET companies:$c).key_epoch, moving: (GET companies:$c).key_moving };",
             vec![bound("c", company)],
         )
         .await
@@ -215,7 +215,7 @@ async fn a_move_cut_short_refuses_requests_and_is_finished_by_the_next_rotation(
         .database
         .run_at(
             &world.place,
-            "UPDATE groups:$c SET key_moving = true;",
+            "UPDATE companies:$c SET key_moving = true;",
             vec![bound("c", &cast.company_a)],
         )
         .await
@@ -321,7 +321,7 @@ async fn the_platform_admin_resets_a_sign_in_resting_on_a_retired_epoch_and_no_o
             .database
             .run_at(
                 &world.place,
-                "SELECT action, target FROM audit_events WHERE company = $c AND action = 'sign_in.reset';",
+                "SELECT action, target FROM audit_events WHERE company = companies:$c AND action = 'sign_in.reset';",
                 vec![bound("c", company)],
             )
             .await

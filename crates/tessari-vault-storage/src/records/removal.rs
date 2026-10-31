@@ -24,7 +24,7 @@ struct Held {
 impl FromRecord for Held {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            id: row.take("file_id")?,
+            id: row.id().trim_matches('\'').to_owned(),
             size: row.take("size")?,
             kept: row.take("kept")?,
         })
@@ -82,7 +82,7 @@ pub(super) async fn delete(
         database
             .read_at(
                 place,
-                "SELECT file_id, size, kept FROM files WHERE record = $record AND company = $company \
+                "SELECT size, kept FROM files WHERE record = records:$record AND company = companies:$company \
                  USING INDEX by_record;",
                 vec![bind("record", record), bind("company", company)],
             )
@@ -115,10 +115,10 @@ pub(super) async fn delete(
     let script = format!(
         "BEGIN; {GUARD} {COMPANYS_RECORD} \
          THROW 'stale revision' IF (GET records:$record).revision != $expected; {SHARES_UNCHANGED} \
-         THROW 'stale revision' IF array::len((SELECT file_id FROM files WHERE record = $record)) != $files; \
+         THROW 'stale revision' IF array::len((SELECT record FROM files WHERE record = records:$record)) != $files; \
          {revisions}{files} \
-         DELETE FROM revisions WHERE record = $record; DELETE FROM shares WHERE record = $record; \
-         DELETE FROM files WHERE record = $record; DELETE records:$record; {RECORD} COMMIT;"
+         DELETE FROM revisions WHERE record = records:$record; DELETE FROM shares WHERE record = records:$record; \
+         DELETE FROM files WHERE record = records:$record; DELETE records:$record; {RECORD} COMMIT;"
     );
     database
         .transact_presenting(place, &script, "", guard, &vault, removal.vault_key)

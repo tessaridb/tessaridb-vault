@@ -152,8 +152,8 @@ impl EnrolmentService {
         ]);
         let script = format!(
             "BEGIN; \
-             LET $held = SELECT account_id FROM credentials WHERE account_id = $account LIMIT 1; \
-             THROW 'already enrolled' IF array::len($held) > 0; \
+             LET $held = GET credentials:$account; \
+             THROW 'already enrolled' IF ($held.verifier ?? 'none') != 'none'; \
              LET $now = GET enrolments:$pointer; \
              THROW 'standing changed' IF ($now.key ?? 'none') != $old; \
              DELETE enrolments:$old; \
@@ -267,9 +267,9 @@ impl EnrolmentService {
                 &self.place,
                 "BEGIN; LET $held = GET enrolments:$key; \
                  THROW 'not found' IF $held = NONE OR $held.factor != $factor; \
-                 LET $enrolled = SELECT account_id FROM credentials WHERE account_id = $account LIMIT 1; \
-                 THROW 'already enrolled' IF array::len($enrolled) > 0; \
-                 CREATE credentials:$account = { account_id: $account, verifier: $verifier, key_epoch: $key_epoch, totp: $sealed, \
+                 LET $enrolled = GET credentials:$account; \
+                 THROW 'already enrolled' IF ($enrolled.verifier ?? 'none') != 'none'; \
+                 CREATE credentials:$account = { verifier: $verifier, key_epoch: $key_epoch, totp: $sealed, \
                  totp_factor: $factor, totp_last_step: $step, created: time::now() }; \
                  DELETE enrolments:$key; DELETE enrolments:$pointer; COMMIT;",
                 "",

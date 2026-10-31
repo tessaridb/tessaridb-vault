@@ -104,7 +104,7 @@ impl CompanyDropService {
         ]);
         let script = format!(
             "BEGIN; {GUARD} THROW 'drop scheduled' IF (GET company_drops:$company).state = 'scheduled'; \
-             UPSERT company_drops:$company = {{ company: $company, state: 'requested', requested_by: $by, \
+             UPSERT company_drops:$company = {{ company: companies:$company, state: 'requested', requested_by: $by, \
              requested_at: $at, signature: $signature }}; {RECORD} COMMIT;"
         );
         self.database
@@ -139,9 +139,9 @@ impl CompanyDropService {
         ]);
         let script = format!(
             "BEGIN; THROW 'not found' IF (GET company_drops:$company).state != 'requested' \
-             OR (GET groups:$company).state != 'active'; \
+             OR (GET companies:$company).is_active != true; \
              UPDATE company_drops:$company SET state = 'scheduled', confirmed_by = $by, drop_after = $after; \
-             UPDATE groups:$company SET state = 'dropping'; {RECORD} COMMIT;"
+             UPDATE companies:$company SET is_active = false, is_suspended = false, is_dropping = true; {RECORD} COMMIT;"
         );
         self.database
             .transact_at(&self.place, &script, "", parameters)
@@ -185,7 +185,8 @@ impl CompanyDropService {
         let script = format!(
             "BEGIN; {GUARD} THROW 'not found' IF (GET company_drops:$company) = NONE; \
              DELETE company_drops:$company; \
-             UPDATE groups SET state = 'active' WHERE group_id = $company AND state = 'dropping'; \
+             UPDATE companies:$company SET is_active = true, is_suspended = false, is_dropping = false \
+             WHERE is_active = true OR is_dropping = true; \
              {RECORD} COMMIT;"
         );
         self.database

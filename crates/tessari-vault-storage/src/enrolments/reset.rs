@@ -4,7 +4,7 @@
 //! password throughout; the reset only lets them set a new sign-in password and authenticator.
 
 use tessari_vault_core::access::Refusal;
-use tessari_vault_infrastructure::tessaridb::{Answer, Number, Value};
+use tessari_vault_infrastructure::tessaridb::{Answer, Number, StoreRecordId, Value};
 use tessari_vault_types::AccountId;
 
 use super::{EnrolmentService, EnrolmentToken};
@@ -34,7 +34,7 @@ impl EnrolmentService {
             .read_at(
                 &self.place,
                 "RETURN { epoch: (GET credentials:$a).key_epoch, \
-                 companies: (SELECT company FROM memberships WHERE account = $a) };",
+                 companies: (SELECT company FROM memberships WHERE account = accounts:$a) };",
                 vec![bind("a", account.as_str())],
             )
             .await?;
@@ -59,7 +59,10 @@ impl EnrolmentService {
                 .iter()
                 .filter_map(|row| match row {
                     Value::Object(fields) => match fields.get("company") {
-                        Some(Value::String(company)) => Some(company.clone()),
+                        Some(Value::Record(reference)) => match &reference.id {
+                            StoreRecordId::Text(company) => Some(company.clone()),
+                            _ => None,
+                        },
                         _ => None,
                     },
                     _ => None,

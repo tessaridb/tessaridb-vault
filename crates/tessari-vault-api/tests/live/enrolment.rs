@@ -288,4 +288,14 @@ async fn a_new_companys_owner_link_is_answered_once_to_the_platform_admin_who_ma
         Value::Null,
         "an enrolled owner needs no link: {body}"
     );
+    let (status, body) = world
+        .call(
+            Method::POST,
+            "/api/companies",
+            Some(&platform),
+            Some(made("Gamma")),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error_code"], "company_exists", "{body}");
 }

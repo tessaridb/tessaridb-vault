@@ -11,5 +11,6 @@ pub use config::StoreConfig;
 pub use place::Place;
 pub use pool::Database;
 pub use tessaridb_client::{
-    Answer, FromRecord, MappingFault, Number, RefusalClass, Row, Value, VaultKey,
+    Answer, FromRecord, MappingFault, Number, RecordId as StoreRecordId, RecordRef, RefusalClass,
+    Row, Value, VaultKey,
 };

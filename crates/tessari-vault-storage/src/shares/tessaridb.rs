@@ -15,37 +15,75 @@ use crate::{Result, answers};
 
 /// Refuses a target outside the company and a target holding no key, or another key than the one wrapped to.
 const GROUP_KEY: &str = "\
-THROW 'not found' IF (GET groups:$target).company != $company; \
+THROW 'not found' IF $target != $company AND (GET groups:$target).company != companies:$company; \
+THROW 'not found' IF $target = $company AND (GET companies:$target) = NONE; \
 THROW 'no key' IF (GET group_keys:$target).key_id = NONE; \
 THROW 'unknown key' IF (GET group_keys:$target).key_id != $key_id;";
 
 /// The same for a member, whose membership and key set share the row id `<company>_<account>`.
 const MEMBER_KEY: &str = "\
-THROW 'not found' IF (GET memberships:$membership).company != $company \
-OR (GET memberships:$membership).state != 'active'; \
+THROW 'not found' IF (GET memberships:$membership).company != companies:$company \
+OR (GET memberships:$membership).is_active != true; \
 THROW 'no key' IF (GET member_keys:$membership).key_id = NONE; \
 THROW 'unknown key' IF (GET member_keys:$membership).key_id != $key_id;";
 
 /// The statements retiring the keys of `retired` groups and every record shared with any of `retired`, or written
 /// by `author`: each is marked for rotation, and a record's share version moves so a read decided before the commit
 /// refuses. Binds `$retired`, `$retired_author` and `$retired_limit` beside the caller's `$company`.
-pub(crate) fn retiring(
+pub(crate) async fn retiring(
+    database: &Database,
+    place: &Place,
     parameters: &mut Vec<(String, Value)>,
+    company: &CompanyId,
     retired: Vec<String>,
     author: Option<&AccountId>,
-) -> &'static str {
-    parameters.extend([
-        bind(
-            "retired",
-            Value::Array(retired.into_iter().map(Value::from).collect()),
-        ),
-        bind("retired_author", author.map_or("", AccountId::as_str)),
-        bind("retired_limit", RECORD_LIST_MAX),
-    ]);
-    "UPDATE group_keys SET rotate = true WHERE company = $company AND group_id IN $retired; \
-     UPDATE records SET rotate = true, share_version = share_version + 1 WHERE company = $company \
-     AND (author = $retired_author OR record_id IN (SELECT record FROM shares WHERE company = $company \
-     AND target IN $retired LIMIT $retired_limit));"
+) -> Result<String> {
+    let targets = retired
+        .iter()
+        .enumerate()
+        .map(|(index, group)| {
+            if group == company.as_str() {
+                format!("companies:$r{index}")
+            } else {
+                format!("groups:$r{index}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    for (index, group) in retired.iter().enumerate() {
+        parameters.push(bind(&format!("r{index}"), group.as_str()));
+    }
+    parameters.push(bind("retired_limit", RECORD_LIST_MAX));
+    let affected: Vec<Named> = answers::records(
+        database
+            .read_at(
+                place,
+                &format!(
+                    "SELECT record AS name FROM shares WHERE company = companies:$company \
+                     AND target IN [{targets}] LIMIT $retired_limit;"
+                ),
+                parameters.clone(),
+            )
+            .await?,
+        "share",
+    )?;
+    let mut statements = format!(
+        "UPDATE group_keys SET rotate = true WHERE company = companies:$company AND group_id IN [{targets}];"
+    );
+    for (index, record) in affected.iter().enumerate() {
+        statements.push_str(&format!(
+            " UPDATE records:$affected{index} SET rotate = true, share_version = share_version + 1;"
+        ));
+        parameters.push(bind(&format!("affected{index}"), record.name.as_str()));
+    }
+    if let Some(author) = author {
+        parameters.push(bind("retired_author", author.as_str()));
+        statements.push_str(
+            " UPDATE records SET rotate = true, share_version = share_version + 1 \
+             WHERE company = companies:$company AND author = accounts:$retired_author;",
+        );
+    }
+    Ok(statements)
 }
 
 pub(crate) struct TessaridbShareRepository {
@@ -65,7 +103,7 @@ impl ShareRepository for TessaridbShareRepository {
             .database
             .read_at(
                 place,
-                "SELECT group_id, company, parent FROM accounts:$account->in_group->groups;",
+                "SELECT id, company, parent FROM accounts:$account->in_group->groups;",
                 vec![bind("account", account.as_str())],
             )
             .await?;
@@ -77,7 +115,7 @@ impl ShareRepository for TessaridbShareRepository {
             .database
             .read_at(
                 place,
-                "SELECT target, access, recipient FROM shares WHERE record = $record LIMIT $limit \
+                "SELECT target, access, recipient FROM shares WHERE record = records:$record LIMIT $limit \
                  USING INDEX by_record;",
                 vec![bind("record", record), bind("limit", RECORD_LIST_MAX)],
             )
@@ -91,12 +129,19 @@ impl ShareRepository for TessaridbShareRepository {
         company: &CompanyId,
         target: &str,
     ) -> Result<Vec<String>> {
+        let table = if target == company.as_str() {
+            "companies"
+        } else {
+            "groups"
+        };
         let rows: Vec<Named> = answers::records(
             self.database
                 .read_at(
                     place,
-                    "SELECT record AS name FROM shares WHERE company = $company AND target = $target \
-                     LIMIT $limit USING INDEX by_target;",
+                    &format!(
+                        "SELECT record AS name FROM shares WHERE company = companies:$company \
+                         AND target = {table}:$target LIMIT $limit USING INDEX by_target;"
+                    ),
                     vec![
                         bind("company", company.as_str()),
                         bind("target", target),
@@ -154,6 +199,11 @@ impl ShareRepository for TessaridbShareRepository {
                 MEMBER_KEY
             }
         };
+        let target_ref = if target == write.company.as_str() {
+            "companies:$target"
+        } else {
+            "groups:$target"
+        };
         guard.extend([
             bind("company", write.company.as_str()),
             bind("record", write.record.as_str()),
@@ -179,13 +229,13 @@ impl ShareRepository for TessaridbShareRepository {
         ]);
         let script = format!(
             "BEGIN; {GUARD} \
-             THROW 'not found' IF (GET records:$record).company != $company; \
+             THROW 'not found' IF (GET records:$record).company != companies:$company; \
              THROW 'stale revision' IF (GET records:$record).revision != $revision; \
              {SHARES_UNCHANGED} \
              {target_key} \
              THROW 'already shared' IF (GET shares:$sid).record != NONE; \
-             CREATE shares:$sid = {{ company: $company, record: $record, target_kind: $kind, target: $target, \
-             access: $access, recipient: $recipient, by_account: $by, created: $now }}; \
+             CREATE shares:$sid = {{ company: companies:$company, record: records:$record, target_kind: $kind, target: {target_ref}, \
+             access: $access, recipient: $recipient, by_account: accounts:$by, created: $now }}; \
              UPDATE records:$record SET share_version = $next; \
              ADD RECIPIENT $recipient TO {vault}:$vid KEY $wrap; {RECORD} COMMIT;"
         );
@@ -229,10 +279,10 @@ impl ShareRepository for TessaridbShareRepository {
         // Older revisions keep their wraps: the removed member could already open them. The next revision rotates.
         let script = format!(
             "BEGIN; {GUARD} \
-             THROW 'not found' IF (GET records:$record).company != $company; \
+             THROW 'not found' IF (GET records:$record).company != companies:$company; \
              THROW 'stale revision' IF (GET records:$record).revision != $revision; \
              {SHARES_UNCHANGED} \
-             THROW 'not found' IF (GET shares:$sid).record != $record; \
+             THROW 'not found' IF (GET shares:$sid).record != records:$record; \
              REMOVE RECIPIENT (GET shares:$sid).recipient FROM {vault}:$vid; \
              DELETE shares:$sid; \
              UPDATE records:$record SET share_version = $next, rotate = true; {RECORD} COMMIT;"

@@ -19,7 +19,7 @@ struct Open {
 impl FromRecord for Open {
     fn from_row(mut row: Row) -> std::result::Result<Self, MappingFault> {
         Ok(Self {
-            company: row.take("company")?,
+            company: crate::answers::reference(&mut row, "company")?,
             state: row.take("state")?,
             drop_after: row.take("drop_after")?,
         })
@@ -59,7 +59,7 @@ impl CompanyDropService {
             .database
             .read_at(
                 &self.place,
-                "SELECT company, state, drop_after FROM company_drops WHERE company = $company;",
+                "SELECT company, state, drop_after FROM company_drops WHERE company = companies:$company;",
                 vec![bind("company", company.as_str())],
             )
             .await?;

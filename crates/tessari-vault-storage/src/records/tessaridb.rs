@@ -18,7 +18,7 @@ use crate::{Error, Result, answers};
 /// Refuses unless `$record` is `$company`'s, the answer a record that does not exist gets; who reaches it is decided
 /// before the write.
 pub(crate) const COMPANYS_RECORD: &str =
-    "THROW 'not found' IF (GET records:$record).company != $company;";
+    "THROW 'not found' IF (GET records:$record).company != companies:$company;";
 
 /// Refuses when a share was made or removed since the caller's reach was decided, so a removal committed in between
 /// is never served past.
@@ -34,7 +34,7 @@ const OWN_KEY: &str = "THROW 'unknown key' IF (GET member_keys:$own_keys).key_id
 /// The statements that store one revision: its row, its sealed body, and the author's wrapped key beside it.
 fn revision_statements(vault: &str) -> String {
     format!(
-        "CREATE revisions:$vid = {{ record: $record, revision: $revision, author: $author, author_key: $author_key, \
+        "CREATE revisions:$vid = {{ record: records:$record, revision: $revision, author: accounts:$author, author_key: $author_key, \
          chain_seq: $chain_seq, signature: $signature, size: $size, created: $now }}; \
          CREATE {vault}:$vid = {{ body: $body }}; \
          ADD RECIPIENT $recipient TO {vault}:$vid KEY $wrap;"
@@ -131,7 +131,7 @@ impl RecordRepository for TessaridbRecordRepository {
             .database
             .read_at(
                 place,
-                "SELECT * FROM records WHERE company = $company AND author = $author LIMIT $limit \
+                "SELECT * FROM records WHERE company = companies:$company AND author = accounts:$author LIMIT $limit \
                  USING INDEX by_author;",
                 vec![
                     bind("company", company.as_str()),
@@ -155,7 +155,7 @@ impl RecordRepository for TessaridbRecordRepository {
                 place,
                 // By address, which no index can stand in for; an address holds one record, so a ceiling of two
                 // is never reached.
-                "SELECT * FROM (SELECT * FROM records:$record LIMIT 2) WHERE company = $company;",
+                "SELECT * FROM (SELECT * FROM records:$record LIMIT 2) WHERE company = companies:$company;",
                 vec![
                     bind("record", record.as_str()),
                     bind("company", company.as_str()),
@@ -171,25 +171,21 @@ impl RecordRepository for TessaridbRecordRepository {
         company: &CompanyId,
         ids: Vec<String>,
     ) -> Result<Vec<RecordEntity>> {
-        if ids.is_empty() {
-            return Ok(Vec::new());
+        let mut found = Vec::new();
+        for id in ids {
+            let answers = self
+                .database
+                .read_at(
+                    place,
+                    "SELECT * FROM (SELECT * FROM records:$id LIMIT 2) WHERE company = companies:$company;",
+                    vec![bind("id", id.as_str()), bind("company", company.as_str())],
+                )
+                .await?;
+            if let Some(entity) = answers::single(answers, "record")? {
+                found.push(entity);
+            }
         }
-        let answers = self
-            .database
-            .read_at(
-                place,
-                "SELECT * FROM records WHERE record_id IN $ids AND company = $company LIMIT $limit;",
-                vec![
-                    bind(
-                        "ids",
-                        Value::Array(ids.into_iter().map(Value::from).collect()),
-                    ),
-                    bind("company", company.as_str()),
-                    bind("limit", RECORD_LIST_MAX),
-                ],
-            )
-            .await?;
-        answers::records(answers, "record")
+        Ok(found)
     }
 
     async fn create(
@@ -208,15 +204,15 @@ impl RecordRepository for TessaridbRecordRepository {
                     ("type_roles".to_owned(), role_words(roles.words())),
                 ]);
                 "THROW 'standing changed' IF (GET record_types:$type_id).allowed_roles != $type_roles \
-                 OR (GET record_types:$type_id).company != $company;"
+                 OR (GET record_types:$type_id).company != companies:$company;"
             }
             None => "",
         };
         let script = format!(
             "BEGIN; {GUARD} {type_unchanged} {OWN_KEY} \
-             LET $taken = GET records:$record; THROW 'record exists' IF ($taken.record_id ?? 'none') != 'none'; \
-             CREATE records:$record = {{ record_id: $record, company: $company, record_type: $type, \
-             revision: $revision, key_id: $key_id, author: $author, state: 'active', share_version: 0, rotate: false, created: $now, \
+             LET $taken = GET records:$record; THROW 'record exists' IF ($taken.record_type ?? 'none') != 'none'; \
+             CREATE records:$record = {{ company: companies:$company, record_type: $type, \
+             revision: $revision, key_id: $key_id, author: accounts:$author, is_active: true, share_version: 0, rotate: false, created: $now, \
              updated: $now }}; {revision} {RECORD} COMMIT;"
         );
         self.write(place, &script, guard, write).await

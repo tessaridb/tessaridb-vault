@@ -33,8 +33,8 @@ fn located(company: &CompanyId, id: &KeyId) -> Vec<(String, Value)> {
 }
 
 /// Refuses unless request `$id` is the company's and, with `$account` bound, the caller's.
-const THEIRS: &str = "THROW 'not found' IF (GET recovery_requests:$id).company != $company \
-OR (GET recovery_requests:$id).account != $account;";
+const THEIRS: &str = "THROW 'not found' IF (GET recovery_requests:$id).company != companies:$company \
+OR (GET recovery_requests:$id).account != accounts:$account;";
 
 #[async_trait]
 impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
@@ -55,7 +55,7 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
         ]);
         let script = format!(
             "BEGIN; {GUARD} THROW 'no escrow' IF (GET escrows:$keys).recovery_key_id = NONE; \
-             CREATE recovery_requests:$id = {{ request_id: $id, company: $company, account: $account, \
+             CREATE recovery_requests:$id = {{ company: companies:$company, account: accounts:$account, \
              handoff_public: $handoff, created: $audit_at, expires: $expires }}; {RECORD} COMMIT;"
         );
         self.database
@@ -75,7 +75,7 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
             .database
             .read_at(
                 place,
-                "SELECT * FROM recovery_requests WHERE company = $company AND handed_by = NONE \
+                "SELECT * FROM recovery_requests WHERE company = companies:$company AND handed_by = NONE \
                  AND expires > $now LIMIT $limit USING INDEX by_company;",
                 vec![
                     bind("company", company.as_str()),
@@ -100,13 +100,12 @@ impl RecoveryRequestRepository for TessaridbRecoveryRequestRepository {
         guard.extend(located(company, id));
         guard.push(bind("wrap", base64url::encode(wrap).as_str()));
         let script = format!(
-            "BEGIN; {GUARD} THROW 'not found' IF (GET recovery_requests:$id).company != $company; \
+            "BEGIN; {GUARD} THROW 'not found' IF (GET recovery_requests:$id).company != companies:$company; \
              THROW 'recovery closed' IF (GET recovery_requests:$id).handed_by != NONE \
              OR (GET recovery_requests:$id).expires <= $audit_at; \
-             LET $member = (GET recovery_requests:$id).account; \
-             UPDATE recovery_requests:$id SET handed_by = $audit_actor; \
+             UPDATE recovery_requests:$id SET handed_by = accounts:$audit_actor; \
              CREATE {vault}:$hid = {{ body: $wrap }}; \
-             CREATE recovery_notices = {{ company: $company, account: $member, by_account: $audit_actor, \
+             CREATE recovery_notices = {{ company: companies:$company, account: (GET recovery_requests:$id).account, by_account: accounts:$audit_actor, \
              kind: 'recovery', created: $audit_at }}; {RECORD} COMMIT;"
         );
         self.database
