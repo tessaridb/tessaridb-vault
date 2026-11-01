@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use tessari_vault_infrastructure::oidc::Identity;
 use tessari_vault_infrastructure::random;
 use tessari_vault_infrastructure::tessaridb::{Database, Place};
 use tessari_vault_types::{AccountId, CompanyId, CompanyState, Email, MemberState, Name};
@@ -14,6 +15,7 @@ use crate::access::Actor;
 use crate::accounts::AccountService;
 use crate::audit;
 use crate::enrolments::{EnrolmentService, EnrolmentToken};
+use crate::identities::IdentityService;
 use crate::records::RecordVaults;
 use crate::{Error, Result};
 
@@ -25,6 +27,7 @@ pub struct CompanyService {
     repository: Arc<dyn CompanyRepository>,
     accounts: Arc<AccountService>,
     enrolments: Arc<EnrolmentService>,
+    identities: Arc<IdentityService>,
     vaults: Arc<RecordVaults>,
     database: Database,
     place: Place,
@@ -35,6 +38,7 @@ impl CompanyService {
         repository: Arc<dyn CompanyRepository>,
         accounts: Arc<AccountService>,
         enrolments: Arc<EnrolmentService>,
+        identities: Arc<IdentityService>,
         vaults: Arc<RecordVaults>,
         database: Database,
         place: Place,
@@ -43,6 +47,7 @@ impl CompanyService {
             repository,
             accounts,
             enrolments,
+            identities,
             vaults,
             database,
             place,
@@ -62,6 +67,7 @@ impl CompanyService {
         name: &Name,
         owner_email: &Email,
         owner_name: &Name,
+        owner_identity: Option<Identity>,
     ) -> Result<(Company, AccountId, Option<EnrolmentToken>)> {
         actor.platform()?;
         let joining = self.joining(owner_email, owner_name).await?;
@@ -83,19 +89,24 @@ impl CompanyService {
             )
             .await?;
         let owner = joining.id().clone();
-        let issued = audit::Event {
-            company: id.as_str(),
-            action: "enrolment.issue",
-            target: owner.as_str(),
-        };
-        let link = match self
-            .enrolments
-            .issue_recorded(&owner, audit::binds(actor, &issued))
-            .await
-        {
-            Ok(token) => Some(token),
-            Err(Error::Conflict(crate::Conflict::Enrolled)) => None,
-            Err(error) => return Err(error),
+        let link = if let Some(identity) = owner_identity {
+            self.identities.ensure_linked(&owner, &identity).await?;
+            None
+        } else {
+            let issued = audit::Event {
+                company: id.as_str(),
+                action: "enrolment.issue",
+                target: owner.as_str(),
+            };
+            match self
+                .enrolments
+                .issue_recorded(&owner, audit::binds(actor, &issued))
+                .await
+            {
+                Ok(token) => Some(token),
+                Err(Error::Conflict(crate::Conflict::Enrolled)) => None,
+                Err(error) => return Err(error),
+            }
         };
         Ok((
             Company {

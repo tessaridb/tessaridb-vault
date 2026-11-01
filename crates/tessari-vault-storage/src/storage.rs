@@ -131,10 +131,17 @@ impl Storage {
             Arc::clone(&seal),
             Arc::clone(&sessions),
         ));
+        let identities = Arc::new(IdentityService::new(
+            database.clone(),
+            place.clone(),
+            Arc::clone(&accounts),
+            Arc::clone(&sessions),
+        ));
         let companies = Arc::new(CompanyService::new(
             Arc::new(TessaridbCompanyRepository::new(database.clone())),
             Arc::clone(&accounts),
             Arc::clone(&enrolments),
+            Arc::clone(&identities),
             Arc::clone(&vaults),
             database.clone(),
             place.clone(),
@@ -163,12 +170,6 @@ impl Storage {
             Arc::clone(&group_keys),
             database.clone(),
             place.clone(),
-        ));
-        let identities = Arc::new(IdentityService::new(
-            database.clone(),
-            place.clone(),
-            Arc::clone(&accounts),
-            Arc::clone(&sessions),
         ));
         let passkeys = Arc::new(PasskeyService::new(
             database.clone(),

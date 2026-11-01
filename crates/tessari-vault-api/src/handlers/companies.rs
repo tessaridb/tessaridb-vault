@@ -4,6 +4,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
+use tessari_vault_infrastructure::oidc::Identity;
 use tessari_vault_storage::accounts::Account;
 use tessari_vault_types::{CompanyState, Email, Name};
 
@@ -71,10 +72,18 @@ pub(crate) async fn list(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct OwnerIdentity {
+    issuer: String,
+    subject: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct NewCompany {
     name: String,
     owner_email: String,
     owner_name: String,
+    owner_identity: Option<OwnerIdentity>,
 }
 
 pub(crate) async fn create(
@@ -85,10 +94,14 @@ pub(crate) async fn create(
     let name = Name::parse(&body.name).map_err(|_| ApiError::INVALID)?;
     let email = Email::parse(&body.owner_email).map_err(|_| ApiError::INVALID)?;
     let owner = Name::parse(&body.owner_name).map_err(|_| ApiError::INVALID)?;
+    let identity = body.owner_identity.map(|identity| Identity {
+        issuer: identity.issuer,
+        subject: identity.subject,
+    });
     let (company, owner, link) = state
         .storage
         .companies
-        .create(&actor, &name, &email, &owner)
+        .create(&actor, &name, &email, &owner, identity)
         .await?;
     Ok((
         StatusCode::CREATED,

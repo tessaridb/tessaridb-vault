@@ -206,6 +206,57 @@ async fn a_return_whose_token_or_request_is_not_this_one_completes_nothing() {
 
 #[tokio::test]
 #[ignore = "needs TESSARIDB_BIN"]
+async fn a_company_owner_linked_at_provisioning_signs_in_through_the_issuer() {
+    let issuer = Issuer::start().await;
+    let world = World::with_issuer(issuer.issuer()).await;
+    let cast = Cast::new(&world).await;
+    let body = serde_json::json!({
+        "name": "oidc_owned",
+        "owner_email": "owner@oidc.test",
+        "owner_name": "OIDC Owner",
+        "owner_identity": { "issuer": issuer.issuer(), "subject": "oidc-owner" },
+    });
+    let (status, created) = world
+        .call(
+            Method::POST,
+            "/api/companies",
+            Some(&cast.platform),
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let owner = created["owner_account_id"].as_str().expect("an owner");
+    assert!(created["owner_enrolment"].is_null(), "{created}");
+
+    let (begun, cookie) = start(&world, "oidc-owner").await;
+    let query = returned(&issuer, &begun, "o1", begun.grant.clone());
+    let (status, answer) = sign_in_return(&world, &query, Some(&cookie)).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    let session = answer["session"].as_str().expect("a session");
+    let (status, me) = world
+        .call(Method::GET, "/api/me", Some(session), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{me}");
+    assert_eq!(me["account"]["id"], owner, "{me}");
+
+    let (status, second) = world
+        .call(
+            Method::POST,
+            "/api/companies",
+            Some(&cast.platform),
+            Some(serde_json::json!({
+                "name": "oidc_second",
+                "owner_email": "owner@oidc.test",
+                "owner_name": "OIDC Owner",
+                "owner_identity": { "issuer": issuer.issuer(), "subject": "oidc-owner" },
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{second}");
+}
+
+#[tokio::test]
+#[ignore = "needs TESSARIDB_BIN"]
 async fn a_return_completes_only_for_the_party_that_began_it() {
     let issuer = Issuer::start().await;
     let world = World::with_issuer(issuer.issuer()).await;

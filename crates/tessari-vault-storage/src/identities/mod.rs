@@ -194,13 +194,7 @@ impl IdentityService {
         }))
     }
 
-    /// A session for the active account `identity` is linked to; `None` when it is linked to none, or the account
-    /// cannot sign in.
-    ///
-    /// # Errors
-    ///
-    /// When the store fails.
-    pub async fn sign_in(&self, identity: &Identity) -> Result<Option<SessionToken>> {
+    async fn account_of(&self, identity: &Identity) -> Result<Option<AccountId>> {
         let answers = self
             .database
             .read_at(
@@ -212,10 +206,21 @@ impl IdentityService {
                 ],
             )
             .await?;
-        let account = crate::answers::records::<LinkedAccount>(answers, "identity")?
-            .pop()
-            .and_then(|linked| AccountId::parse(&linked.account).ok());
-        let Some(account) = account else {
+        Ok(
+            crate::answers::records::<LinkedAccount>(answers, "identity")?
+                .pop()
+                .and_then(|linked| AccountId::parse(&linked.account).ok()),
+        )
+    }
+
+    /// A session for the active account `identity` is linked to; `None` when it is linked to none, or the account
+    /// cannot sign in.
+    ///
+    /// # Errors
+    ///
+    /// When the store fails.
+    pub async fn sign_in(&self, identity: &Identity) -> Result<Option<SessionToken>> {
+        let Some(account) = self.account_of(identity).await? else {
             return Ok(None);
         };
         match self.accounts.get(&account).await? {
@@ -223,6 +228,19 @@ impl IdentityService {
                 Ok(Some(self.sessions.issue(&account).await?))
             }
             _ => Ok(None),
+        }
+    }
+
+    /// Link `identity` to `account` unless it is already linked to that same account. A link to another is a conflict.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Conflict`] when the identity belongs to another account, or the store fails.
+    pub async fn ensure_linked(&self, account: &AccountId, identity: &Identity) -> Result<()> {
+        match self.account_of(identity).await? {
+            Some(found) if found == *account => Ok(()),
+            Some(_) => Err(Error::Conflict(Conflict::IdentityLinked)),
+            None => self.link(account, identity).await,
         }
     }
 

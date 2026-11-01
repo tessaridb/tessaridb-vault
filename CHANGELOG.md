@@ -2,6 +2,12 @@
 
 All notable changes to TessariDB Vault are documented here. The format follows Keep a Changelog, and versions use the project's third-digit release scheme.
 
+## [0.0.4] - 2026-11-01
+
+### Added
+
+- Company creation accepts an optional `owner_identity` with `issuer` and `subject`, linking the owner to their OpenID Connect identity at provisioning so they can sign in to the new company through the issuer immediately. Repeating the same link is idempotent; when no identity is supplied, the existing single-use enrolment flow is unchanged.
+
 ## [0.0.3] - 2026-10-31
 
 ### Changed
