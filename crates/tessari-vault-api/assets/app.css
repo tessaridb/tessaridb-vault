@@ -826,6 +826,16 @@ button.quiet:hover {
   margin-block: var(--s-3) var(--s-5);
 }
 
+.gate .other-ways {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.gate .other-ways > button,
+.gate .other-ways > .button {
+  inline-size: 100%;
+}
+
 /* Before signing in there is nothing to navigate: the sign-in card is the page. */
 body.signed-out .side {
   display: none;
